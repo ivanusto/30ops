@@ -1,0 +1,38 @@
+name: smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Byte compile
+        run: python -m compileall -q guards samplers bench
+
+      - name: Shell syntax
+        run: bash -n examples/train-guarded.sh
+
+      # These scripts run on a machine that may have neither nvidia-smi nor the
+      # thermal zones, so only argument parsing is exercised here. Anything
+      # touching the hardware is verified on the box itself.
+      - name: Argument parsing
+        run: |
+          for f in guards/*.py samplers/*.py bench/*.py; do
+            echo "== $f"
+            python "$f" --help > /dev/null
+          done
+
+      - name: Executable bits
+        run: |
+          fail=0
+          for f in guards/*.py samplers/*.py bench/*.py examples/*.sh; do
+            if [ ! -x "$f" ]; then echo "not executable: $f"; fail=1; fi
+          done
+          exit $fail

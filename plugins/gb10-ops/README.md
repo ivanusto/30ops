@@ -27,7 +27,7 @@ before the machine was gone.
 |---|---|
 | `guards/gb10-host-guard.py` | Host level memory guard. Watches `MemAvailable` and the `NV_ERR_NO_MEMORY` rate, finds the offending process, terminates it before the whole box goes down. |
 | `guards/thermal-run.py` | Wraps any long running local command in a cooling gate plus a thermal watchdog. Runs the child in its own process group and kills the group on a soak violation. |
-| `guards/thermal_guard_http.py` | Same idea for servers that cannot be interrupted mid job (ComfyUI, vLLM-Omni). Aborts over HTTP instead of by signal. |
+| `guards/thermal-guard-http.py` | Same idea for servers that cannot be interrupted mid job (ComfyUI, vLLM-Omni). Aborts over HTTP instead of by signal. |
 | `samplers/hw-sample.py` | Samples temperature, power and memory to fsync'd JSONL. Also drops a `HOT` flag file that a driver script can check between jobs. |
 | `bench/load-decode.py` | Drives sustained decode against an OpenAI compatible endpoint, for measuring power under load rather than at idle. |
 | `bench/summarize-samples.py` | Turns a sampler JSONL into one row of numbers, with the head and tail of the window trimmed. |
@@ -78,6 +78,9 @@ example, not as defaults to copy.
 | MemAvailable action | 3 GiB | The livelock reached 0.20 GiB and an earlier near miss reached 2 GiB. Both would fire. |
 | NVRM rate | 5 lines in 60 s | The livelock produced 24 lines in 21 seconds. A single line is far too noisy: this box has logged 6,697 of them since July. |
 
+Every one of these is a command line flag on the tool that uses it, so
+recalibrating means changing an argument, not editing a script.
+
 The obvious threshold is often wrong. "Alert below 8 GiB free" would have been
 red continuously during normal service on this machine.
 
@@ -104,7 +107,8 @@ No root required. Python 3 standard library only, plus `nvidia-smi` and
 `journalctl` on `PATH`.
 
 ```bash
-git clone <this repo> ~/gb10-ops
+git clone https://github.com/ivanusto/gb10-ops.git ~/gb10-ops
+mkdir -p ~/bin
 install -m755 ~/gb10-ops/guards/gb10-host-guard.py ~/gb10-ops/guards/thermal-run.py ~/bin/
 
 # Dry run first. It logs what it would kill without killing anything.
@@ -138,6 +142,10 @@ process group it created itself.
 Both guards sync every log line to disk. The whole point is that the failures
 here take the machine down without a shutdown sequence, so anything still sitting
 in a buffer is lost.
+
+## License
+
+MIT. See `LICENSE`.
 
 ## Status
 

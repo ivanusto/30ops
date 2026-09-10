@@ -1,33 +1,48 @@
 #!/usr/bin/env python3
-"""GB10 主機層記憶體守護：在整台停擺之前先動手。
+"""Host level memory guard for the GB10: act before the whole box stops responding.
 
-為什麼不是容器記憶體上限（0909 實測推翻了原本的計畫）：
-    容器 cgroup 的 memory.current 是 11 GiB，容器內所有行程的 RSS 加總是 4 GiB，
-    而同一時刻主機用掉 113 GiB。差的那 100 GiB 是 NVIDIA 驅動的統一記憶體配置，
-    **memory cgroup 與 RSS 都看不到它**。所以 `docker run --memory` 這條路
-    對這台的 GPU 工作負載完全無效，限制得到的東西不是會撐爆機器的那一塊。
+Why this is not a container memory limit (measured 2026-09-09, which overturned
+the original plan):
+    With a model resident, the container's cgroup memory.current read 11 GiB and
+    the sum of RSS for every process inside it was 4 GiB, while the host was
+    using 113 GiB at the same moment. The missing 100 GiB is unified memory
+    allocated through the NVIDIA driver, and **neither the memory cgroup nor RSS
+    can see it**. So `docker run --memory` is useless for GPU work on this
+    platform: it limits something that is not the thing that fills the machine.
 
-    唯一看得到那塊的是 `nvidia-smi --query-compute-apps=pid,used_memory`，
-    它會誠實回報 102843 MiB。所以守護程式要跑在主機層，用 MemAvailable 判斷危險，
-    用 compute-apps 找兇手。
+    Exactly one source sees that memory:
+    `nvidia-smi --query-compute-apps=pid,used_memory`, which honestly reports
+    102843 MiB. So the guard has to run at the host level, use MemAvailable to
+    decide that things are going wrong, and use compute-apps to pick the target.
 
-門檻怎麼定的（0909 用整晚的實測資料校準，不是憑感覺挑整數）：
-    正常雙機服務時 MemAvailable 就只有 7.85 GiB，而 46 分鐘的叢集復原全程最低
-    6.91 GiB。所以警戒線放 6 GiB（整晚零誤報），動手線放 3 GiB。
-    對照兩次真實事故：0906 停擺當晚掉到 0.20 GiB，Day 26 那次掉到 2 GiB，
-    兩次都會觸發。原本文章裡寫的 8 GiB 是錯的，那條線在正常服務時就一直亮紅燈。
+Where the thresholds came from (calibrated against a full night of samples on
+2026-09-09, not picked as round numbers):
+    In normal two node service MemAvailable sits at just 7.85 GiB, and a 46
+    minute cluster recovery never went below 6.91 GiB. So the warning line is
+    6 GiB (zero false positives overnight) and the action line is 3 GiB.
+    Against the two real incidents: the livelock on 2026-09-06 reached 0.20 GiB
+    and an earlier near miss reached 2 GiB. Both would fire. The 8 GiB figure
+    from the original write up was wrong; that line is red continuously during
+    normal service on this machine.
 
-觸發條件（兩條，任一成立都要連續數次才動手，避免瞬間尖峰誤殺）：
-    1. MemAvailable 低於 ACT_GIB，連續 SUSTAIN 次取樣
-    2. 60 秒內 NVRM 噴出 NVRM_RATE 行以上 NV_ERR_NO_MEMORY，且 MemAvailable 低於 WARN_GIB
-       （0906 停擺那晚是 21 秒內 24 行，而它比停擺早了 43 分鐘）
+Triggers (two of them; either one needs several consecutive samples before the
+guard acts, so that a momentary spike does not kill a healthy job):
+    1. MemAvailable below ACT_GIB for SUSTAIN consecutive samples
+    2. NVRM emitting NVRM_RATE or more NV_ERR_NO_MEMORY lines within 60 seconds
+       while MemAvailable is below WARN_GIB. The night of the 2026-09-06
+       livelock that was 24 lines in 21 seconds, and it arrived 43 minutes
+       before the machine was gone. A single line is far too noisy to use: this
+       box has logged 6,697 of them since July.
 
-動作：先把現場寫進日誌（誰在吃 GPU 記憶體、吃多少），再 SIGTERM 最大的那個
-非保護行程，20 秒後還在就 SIGKILL。**保護名單裡的行程永遠不動**，預設保護
-正在服務的 vLLM worker。用 --dry-run 只記錄不動手。
+Action: write the scene to the log first (who is holding GPU memory and how
+much), then SIGTERM the largest unprotected process, and SIGKILL it if it is
+still there 20 seconds later. **Processes matching the protect pattern are never
+touched**; the default protects a serving vLLM worker. Use --dry-run to log
+without acting.
 
-刻意不用 pkill/pgrep 的樣式比對：那會連自己的 shell 一起殺掉（踩過）。
-一律用 nvidia-smi 給的明確 pid。
+Deliberately no pkill/pgrep pattern matching: those match the full command line,
+which includes the shell that invoked them, and that is a good way to kill your
+own session. Only explicit pids from nvidia-smi are ever signalled.
 """
 import argparse, collections, json, os, re, signal, subprocess, sys, time
 
@@ -39,7 +54,8 @@ def log(fh, event, **kw):
     row = {"t": time.strftime("%FT%T%z"), "event": event, **kw}
     fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     fh.flush()
-    os.fsync(fh.fileno())          # 這台的死法之一是硬斷電，沒 flush 就等於沒寫
+    os.fsync(fh.fileno())          # one of this box's failure modes is a hard
+                                   # power cut, so unflushed is the same as unwritten
     if event != "sample":
         print(json.dumps(row, ensure_ascii=False), flush=True)
 
@@ -53,7 +69,7 @@ def mem_available_gib():
 
 
 def gpu_consumers():
-    """[(pid, name, mib)]，由大到小。這是唯一看得到統一記憶體配置的來源。"""
+    """[(pid, name, mib)], largest first. The only source that sees unified memory."""
     try:
         out = subprocess.run(
             ["nvidia-smi", "--query-compute-apps=pid,process_name,used_memory",
@@ -73,22 +89,33 @@ def gpu_consumers():
 
 
 def start_journal_follower():
-    """跟著核心日誌，只留 NVRM 記憶體錯誤的時間戳。"""
+    """Follow the kernel log. Only the timestamps of NVRM memory errors are kept."""
     p = subprocess.Popen(["journalctl", "-k", "-f", "-n", "0", "-o", "cat"],
                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     os.set_blocking(p.stdout.fileno(), False)
     return p
 
 
-def drain(proc, stamps):
+def drain(proc, stamps, carry):
+    """Read whatever is available without blocking; return the unfinished tail.
+
+    A non-blocking readline can hand back a partial line with no trailing
+    newline, and the rest of it arrives on the next call. Carrying that tail
+    over matters because NV_ERR_NO_MEMORY can be split across the boundary,
+    which would silently undercount the exact burst this guard triggers on.
+    """
     if proc.stdout is None:
-        return
+        return carry
     while True:
-        line = proc.stdout.readline()
-        if not line:
-            return
-        if "NV_ERR_NO_MEMORY" in line:
+        chunk = proc.stdout.readline()
+        if not chunk:
+            return carry
+        carry += chunk
+        if not carry.endswith("\n"):
+            return carry               # incomplete, wait for the remainder
+        if "NV_ERR_NO_MEMORY" in carry:
             stamps.append(time.time())
+        carry = ""
 
 
 def alive(pid):
@@ -105,7 +132,7 @@ def act(fh, consumers, protect, dry_run, reason):
     target = next((c for c in consumers
                    if not re.search(protect, c[1]) and c[0] != os.getpid()), None)
     if target is None:
-        log(fh, "no_target", note="所有 GPU 行程都在保護名單內，只記錄不動手")
+        log(fh, "no_target", note="every GPU process is protected, logging only")
         return
     pid, name, mib = target
     if dry_run:
@@ -134,15 +161,19 @@ def main():
     ap.add_argument("--interval", type=float, default=10.0)
     ap.add_argument("--warn-gib", type=float, default=6.0)
     ap.add_argument("--act-gib", type=float, default=3.0)
-    ap.add_argument("--sustain", type=int, default=3, help="連續幾次取樣才算數")
-    ap.add_argument("--nvrm-rate", type=int, default=5, help="60 秒內幾行才算暴衝")
-    ap.add_argument("--protect", default=r"VLLM::", help="行程名符合就永不中止")
+    ap.add_argument("--sustain", type=int, default=3,
+                    help="consecutive samples before it counts")
+    ap.add_argument("--nvrm-rate", type=int, default=5,
+                    help="lines within 60 seconds that count as a burst")
+    ap.add_argument("--protect", default=r"VLLM::",
+                    help="process names matching this are never terminated")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--log", default=LOG)
     a = ap.parse_args()
 
     stamps = collections.deque(maxlen=4096)
     jr = start_journal_follower()
+    carry = ""
     low_streak = 0
     last_state = None
     with open(a.log, "a", buffering=1) as fh:
@@ -150,12 +181,23 @@ def main():
             sustain=a.sustain, nvrm_rate=a.nvrm_rate, protect=a.protect,
             dry_run=a.dry_run, interval=a.interval)
         while True:
-            drain(jr, stamps)
+            # If the follower dies, every later read returns empty and trigger 2
+            # is silently gone while the guard still reports state "ok". That is
+            # the worst way for a watchdog to fail, so check and restart it.
+            if jr.poll() is not None:
+                log(fh, "journal_restart", returncode=jr.returncode,
+                    note="journalctl follower exited, NVRM detection was blind")
+                jr = start_journal_follower()
+                carry = ""
+            carry = drain(jr, stamps, carry)
             now = time.time()
             while stamps and now - stamps[0] > 60:
                 stamps.popleft()
             avail = mem_available_gib()
             rate = len(stamps)
+            # 0.0 GiB is a real and very bad reading, so never let it fall
+            # through a truthiness test and get logged as null.
+            avail_out = round(avail, 2) if avail is not None else None
 
             state = "ok"
             if avail is not None and avail < a.act_gib:
@@ -168,11 +210,11 @@ def main():
             if rate >= a.nvrm_rate and avail is not None and avail < a.warn_gib:
                 state = "critical" if low_streak else "warn"
 
-            log(fh, "sample", avail_gib=round(avail, 2) if avail else None,
-                nvrm_60s=rate, state=state, streak=low_streak)
+            log(fh, "sample", avail_gib=avail_out, nvrm_60s=rate,
+                state=state, streak=low_streak)
             if state != last_state:
                 log(fh, "state_change", frm=last_state, to=state,
-                    avail_gib=round(avail, 2) if avail else None, nvrm_60s=rate)
+                    avail_gib=avail_out, nvrm_60s=rate)
                 last_state = state
 
             fire = low_streak >= a.sustain or (
@@ -180,11 +222,11 @@ def main():
                 and low_streak >= 1)
             if fire:
                 act(fh, gpu_consumers(), a.protect, a.dry_run,
-                    reason=f"MemAvailable {avail:.2f} GiB 連續 {low_streak} 次；"
-                           f"60 秒內 NVRM {rate} 行")
+                    reason=f"MemAvailable {avail:.2f} GiB for {low_streak} samples; "
+                           f"NVRM {rate} lines in 60 s")
                 low_streak = 0
                 stamps.clear()
-                time.sleep(60)     # 動手之後給系統時間回穩，不要連環開火
+                time.sleep(60)     # let the system settle, do not fire repeatedly
             time.sleep(a.interval)
 
 

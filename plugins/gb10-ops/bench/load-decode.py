@@ -3,19 +3,27 @@
 
 For a power measurement the thing that must stay true is that the GPU is
 decoding for the whole window. Two traps this avoids: prefix caching, which
-turns a repeated prompt into a cheap prefill and shrinks the work (每個 worker
-用不同的隨機前綴), and short generations, which spend the window on prefill and
-scheduling instead of decode (max_tokens 拉長).
+turns a repeated prompt into a cheap prefill and shrinks the work (so every
+worker gets its own random prefix), and short generations, which spend the
+window on prefill and scheduling instead of decode (so max_tokens is long).
+
+The default prompt is Traditional Chinese, which is what the numbers on this box
+were collected with. Changing it with --prompt changes how many tokens the same
+text becomes, and different engines disagree about that for the same string, so
+do not compare token counts across prompts or across engines without checking
+that first.
 """
 import argparse, json, random, string, sys, threading, time
 import urllib.request
 
+DEFAULT_PROMPT = ("請用繁體中文寫一段技術說明，主題是統一記憶體架構下的推論排程，"
+                  "內容要具體、不要條列、不要開場白，長度不限。")
+
 def rand_tag(n=48):
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
-def one(base, model, key, max_tokens, stats, lock):
-    prompt = (f"[{rand_tag()}] 請用繁體中文寫一段技術說明，主題是統一記憶體架構下的"
-              f"推論排程，內容要具體、不要條列、不要開場白，長度不限。")
+def one(base, model, key, max_tokens, prompt_text, stats, lock):
+    prompt = f"[{rand_tag()}] {prompt_text}"
     body = json.dumps({
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -39,7 +47,8 @@ def one(base, model, key, max_tokens, stats, lock):
 def worker(args, deadline, stats, lock):
     while time.time() < deadline:
         try:
-            one(args.base, args.model, args.key, args.max_tokens, stats, lock)
+            one(args.base, args.model, args.key, args.max_tokens, args.prompt,
+                stats, lock)
         except Exception as e:
             with lock:
                 stats["errors"] += 1
@@ -54,6 +63,8 @@ def main():
     ap.add_argument("--concurrency", type=int, default=12)
     ap.add_argument("--seconds", type=float, default=600)
     ap.add_argument("--max-tokens", type=int, default=512)
+    ap.add_argument("--prompt", default=DEFAULT_PROMPT,
+                    help="prompt body; a random prefix is prepended per request")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 

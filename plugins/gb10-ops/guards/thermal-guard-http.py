@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Interrupt a ComfyUI render before this box heat soaks itself into a power cut.
+"""Interrupt a render over HTTP before this box heat soaks itself into a power cut.
 
 This machine drops power, with nothing in the kernel log, when it is held hot
-for long enough. The run that killed it on 2026-09-01 is sampled minute by
-minute in ~/h3-calib-hw.log, and the shape is the point:
+for long enough. The run that killed it on 2026-09-01 was sampled minute by
+minute, and the shape is the point:
 
     minute   gpu avg  gpu max  zone avg  zone max
          3      68.0       79      76.9        86
@@ -25,10 +25,16 @@ The fatal run had 417 s of it; the budget here is 240 s, which would have fired
 three minutes before the cut. Two instantaneous ceilings sit above the observed
 plateau as a backstop for a faster ramp than the one on record.
 
+This is the variant for servers that cannot be interrupted mid job, so it aborts
+over HTTP rather than by signal. The abort path posts to /interrupt and /queue,
+which are ComfyUI endpoints; point --server elsewhere only at something that
+speaks the same API. For a local command you can signal directly, use
+thermal-run.py instead.
+
 Losing a render beats losing the box.
 
-    python3 thermal_guard.py &                 # guard until interrupted
-    python3 thermal_guard.py --wait-cool 50    # block until it is cool, then exit
+    python3 thermal-guard-http.py &                 # guard until interrupted
+    python3 thermal-guard-http.py --wait-cool 50    # block until it is cool, then exit
 """
 import argparse
 import glob
@@ -38,7 +44,7 @@ import sys
 import time
 import urllib.request
 
-SERVER = "http://127.0.0.1:8188"
+DEFAULT_SERVER = "http://127.0.0.1:8188"
 
 
 def gpu_temp():
@@ -63,31 +69,32 @@ def zone_temp():
     return hottest or None
 
 
-def post(path, payload=None):
+def post(server, path, payload=None):
     data = json.dumps(payload or {}).encode()
-    req = urllib.request.Request(SERVER + path, data=data,
+    req = urllib.request.Request(server + path, data=data,
                                  headers={"Content-Type": "application/json"},
                                  method="POST")
     with urllib.request.urlopen(req, timeout=15) as r:
         return r.read()
 
 
-def interrupt():
+def interrupt(server):
     """Stop the running prompt and drop anything queued behind it."""
     for path, payload in (("/interrupt", {}), ("/queue", {"clear": True})):
         try:
-            post(path, payload)
+            post(server, path, payload)
         except Exception as exc:  # noqa: BLE001 - reported, never fatal
             print(f"guard: {path} failed: {type(exc).__name__}: {exc}", flush=True)
 
 
 def sample():
-    g, z = gpu_temp(), zone_temp()
-    return g, z
+    return gpu_temp(), zone_temp()
 
 
 def main():
     p = argparse.ArgumentParser()
+    p.add_argument("--server", default=DEFAULT_SERVER,
+                   help=f"base URL to abort against (default {DEFAULT_SERVER})")
     p.add_argument("--soak-zone", type=int, default=88,
                    help="thermal zone temperature that counts as soaking")
     p.add_argument("--soak-seconds", type=int, default=240,
@@ -101,6 +108,8 @@ def main():
                    help="instead of guarding, block until at or below this, then exit")
     p.add_argument("--wait-timeout", type=int, default=300)
     a = p.parse_args()
+
+    server = a.server.rstrip("/")
 
     if a.wait_cool is not None:
         waited = 0
@@ -116,7 +125,8 @@ def main():
         return 0
 
     print(f"guard: soak budget {a.soak_seconds}s at zone >= {a.soak_zone} C; "
-          f"ceilings GPU {a.gpu_ceiling} C, zone {a.zone_ceiling} C", flush=True)
+          f"ceilings GPU {a.gpu_ceiling} C, zone {a.zone_ceiling} C; "
+          f"abort target {server}", flush=True)
     peak_g = peak_z = 0
     soak = 0.0
     reported = False
@@ -149,7 +159,7 @@ def main():
         if why:
             print(f"guard: TRIPPED, {why} (now GPU {g} C zone {z} C, "
                   f"peaks {peak_g}/{peak_z}); interrupting", flush=True)
-            interrupt()
+            interrupt(server)
             return 1
         time.sleep(a.interval)
 
