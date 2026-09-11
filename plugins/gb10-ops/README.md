@@ -6,6 +6,12 @@ This box has two failure modes that a normal GPU server does not have, and the
 standard tools are blind to both of them. Everything here exists because one of
 them actually happened.
 
+The write-up behind this repo, in Traditional Chinese:
+[Day 28｜NVIDIA DGX Spark GB10 維運篇](https://ithelp.ithome.com.tw/articles/10409085),
+from the series 128GB 統一記憶體的三十天：DGX Spark 地端 LLM 與生成式 AI 部署實戰.
+It covers how each threshold here was arrived at, and what the two incidents
+looked like while they were happening.
+
 ## The two failure modes
 
 **Thermal soak, not peak temperature.** The chassis is small and the air path is
