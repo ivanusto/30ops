@@ -29,6 +29,9 @@ jobs:
             python "$f" --help > /dev/null
           done
 
+      - name: systemd unit
+        run: systemd-analyze verify systemd/gb10-host-guard.service
+
       - name: Executable bits
         run: |
           fail=0

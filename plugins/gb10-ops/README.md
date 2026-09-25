@@ -38,6 +38,7 @@ before the machine was gone.
 | `bench/load-decode.py` | Drives sustained decode against an OpenAI compatible endpoint, for measuring power under load rather than at idle. |
 | `bench/summarize-samples.py` | Turns a sampler JSONL into one row of numbers, with the head and tail of the window trimmed. |
 | `examples/train-guarded.sh` | How to put a fine-tune run behind the gate and the watchdog. |
+| `systemd/` | A system unit and its threshold file that run the memory guard as an unprivileged service account with `CAP_KILL`. |
 
 ## Why a host level guard and not a container memory limit
 
@@ -109,8 +110,9 @@ Three measurements that are not where you would expect them:
 
 ## Install
 
-No root required. Python 3 standard library only, plus `nvidia-smi` and
-`journalctl` on `PATH`.
+Python 3 standard library only, plus `nvidia-smi` and `journalctl` on `PATH`.
+The quick start below needs no root, but read the next section before relying
+on it for model servers running in containers.
 
 ```bash
 git clone https://github.com/ivanusto/gb10-ops.git ~/gb10-ops
@@ -128,6 +130,38 @@ nohup setsid gb10-host-guard.py >/dev/null 2>>~/gb10-host-guard.err &
 A systemd user unit is the tidier option but only if lingering is enabled for
 your account. With `Linger=no` a user unit does not survive logout, which is
 why the line above uses cron.
+
+### As a system service (recommended)
+
+A guard running under your own account can only signal your own processes.
+Model servers usually run in containers as root, so against them the guard
+logs `kill_failed` instead of acting. `systemd/` runs it as a dedicated
+service account that holds exactly two privileges: `CAP_KILL`, and membership
+in `systemd-journal` so it can read the kernel log. Everything else is locked
+down with `ProtectSystem=strict` and friends.
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin svc-guard
+sudo install -m755 -o root guards/gb10-host-guard.py /usr/local/bin/
+sudo install -m644 systemd/gb10-host-guard.env /etc/default/gb10-host-guard
+sudo install -m644 systemd/gb10-host-guard.service /etc/systemd/system/
+sudo install -d -o svc-guard -g svc-guard /var/log/gb10-ops
+sudo systemctl daemon-reload && sudo systemctl enable --now gb10-host-guard
+```
+
+The thresholds live in `/etc/default/gb10-host-guard`, and it ships with
+`DRY_RUN=--dry-run`. Watch `/var/log/gb10-ops/host-guard.jsonl` for a day,
+then empty that line and restart. If you used the cron line above, remove it
+and stop that instance, so that only one guard is running.
+
+Check the kernel log is actually readable by the service account. If it is
+not, `journalctl -k -f` does not exit, it just prints nothing, and the NVRM
+trigger is silently gone:
+
+```bash
+sudo systemd-run --wait --pipe -p User=svc-guard \
+    -p SupplementaryGroups=systemd-journal journalctl -k -n 3 --no-pager
+```
 
 Putting a long job behind the gate and the watchdog:
 

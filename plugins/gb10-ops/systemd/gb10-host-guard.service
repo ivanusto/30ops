@@ -1,0 +1,58 @@
+# /etc/systemd/system/gb10-host-guard.service
+# Host level memory guard for a DGX Spark (gb10-ops/guards/gb10-host-guard.py),
+# run as an unprivileged service account. The guard needs exactly two things a
+# plain user does not have: CAP_KILL to signal processes owned by other users,
+# and read access to the kernel journal. Nothing else is granted.
+#
+# Install:
+#   sudo useradd --system --no-create-home --shell /usr/sbin/nologin svc-guard
+#   sudo install -m755 -o root guards/gb10-host-guard.py /usr/local/bin/
+#   sudo install -m644 systemd/gb10-host-guard.env /etc/default/gb10-host-guard
+#   sudo install -m644 systemd/gb10-host-guard.service /etc/systemd/system/
+#   sudo install -d -o svc-guard -g svc-guard /var/log/gb10-ops
+#   sudo systemctl daemon-reload && sudo systemctl enable --now gb10-host-guard
+#
+# Start with DRY_RUN=--dry-run in the env file, watch the log for a day, then
+# remove it.
+
+[Unit]
+Description=GB10 host memory guard (gb10-ops)
+Documentation=https://github.com/ivanusto/gb10-ops
+After=network.target nvidia-persistenced.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=svc-guard
+Group=svc-guard
+# journalctl -k needs membership in systemd-journal; nvidia-smi needs nothing.
+SupplementaryGroups=systemd-journal
+EnvironmentFile=/etc/default/gb10-host-guard
+ExecStart=/usr/bin/python3 /usr/local/bin/gb10-host-guard.py \
+    --interval ${INTERVAL} --warn-gib ${WARN_GIB} --act-gib ${ACT_GIB} \
+    --sustain ${SUSTAIN} --nvrm-rate ${NVRM_RATE} --protect ${PROTECT} \
+    --log /var/log/gb10-ops/host-guard.jsonl $DRY_RUN
+Restart=always
+RestartSec=10
+
+# The only privilege: send signals to processes that are not ours.
+CapabilityBoundingSet=CAP_KILL
+AmbientCapabilities=CAP_KILL
+NoNewPrivileges=true
+
+# Everything else locked down. /proc must stay visible (MemAvailable, and
+# os.kill(pid, 0) liveness checks), so ProtectProc is left at default.
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/gb10-ops
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# nvidia-smi talks to the driver through /dev/nvidia*; do not set PrivateDevices.
+
+[Install]
+WantedBy=multi-user.target
