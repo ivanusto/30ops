@@ -13,7 +13,7 @@ See drills.md for what that costs during a NAS reboot.
 | OS | Debian 12 (bookworm) netinst, no desktop | `corosync-qnetd` is in main; nothing else is needed |
 | vCPU / RAM / disk | 1 vCPU, 1 GiB, 8 GiB | qnetd idles at a few MB |
 | Network | Virtualization Station virtual switch bridged to the node LAN, static IP | the nodes must reach it without DHCP or DNS |
-| Autostart | on, start order before any other VM | it must be up before the nodes need a vote after a NAS reboot |
+| Autostart | policy "Always", start delay 0 | the default "Keep previous state" leaves the VM off after a NAS reboot if someone had stopped it, and nobody notices a stopped QDevice day to day |
 | Snapshots / backup | none needed | there is no state worth keeping; rebuild in ten minutes from this file |
 | Hostname | `qnetd` | easy to recognise in logs |
 | Clock | `timedatectl set-timezone <your zone>`, `timedatectl set-local-rtc 1`, NTP on | Virtualization Station hands the guest an RTC in local time; Debian reads it as UTC, so every boot starts off by the UTC offset until NTP corrects it |
