@@ -16,6 +16,7 @@ See drills.md for what that costs during a NAS reboot.
 | Autostart | on, start order before any other VM | it must be up before the nodes need a vote after a NAS reboot |
 | Snapshots / backup | none needed | there is no state worth keeping; rebuild in ten minutes from this file |
 | Hostname | `qnetd` | easy to recognise in logs |
+| Clock | `timedatectl set-timezone <your zone>`, `timedatectl set-local-rtc 1`, NTP on | Virtualization Station hands the guest an RTC in local time; Debian reads it as UTC, so every boot starts off by the UTC offset until NTP corrects it |
 
 ## Install
 

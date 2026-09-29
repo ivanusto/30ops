@@ -24,7 +24,7 @@ an I/O stall shows up as a gap. Expected votes 3, quorum 2.
 | 1 | NAS reboot (QDevice VM gone, NFS gone) | 2 of 3 | Quorate stays Yes. Guests on NFS freeze on I/O until NFS returns plus the NFSv4.1 grace period. Guests on local storage keep running. `check.sh` exits 1 until the QDevice VM is back. | pending |
 | 2 | Node A powered off hard (QDevice up) | 2 of 3 | Quorate Yes on B. HA resources on A are fenced and restarted on B after the fence timeout (about 2 minutes). | pending |
 | 3 | Node A off **and** NAS rebooting at the same time | 1 of 3 | Quorate **No** on B. If B has active HA resources, `pve-ha-lrm` loses its lock and B self-fences (watchdog reboot) after about 60 s, taking its local guests with it. Everything is down until the NAS is back. | pending |
-| 4 | QDevice VM stopped by hand, both nodes up | 2 of 3 | Quorate Yes. `check.sh` exits 1. Confirms the VM is optional day to day and only matters during a node failure. | pending |
+| 4 | QDevice VM stopped by hand, both nodes up | 2 of 3 | Quorate Yes. `check.sh` exits 1. Confirms the VM is optional day to day and only matters during a node failure. | 2026-09-30. `poweroff` inside the VM at 00:26:11; `check.sh` went 0 to 1 at 00:26:16, votes 2/3, Quorate stayed Yes, HA test VM untouched. Started again from Virtualization Station: guest kernel 00:32:33, qnetd listening 00:32:42, `check.sh` back to 0 at 00:32:51. `corosync-qdevice` retries every 8 s, so expect up to 8 s after qnetd is up. |
 
 Drill 3 is the one to understand. The NAS is both shared storage and the
 third vote, so a NAS maintenance window is also a window in which a single
