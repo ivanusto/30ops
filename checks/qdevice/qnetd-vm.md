@@ -55,7 +55,15 @@ systemctl enable --now nftables
 
 ## What the NAS reboot does to it
 
-Virtualization Station stops the VM when QuTS hero reboots and restarts it
-after the NAS is back. The VM is gone for at least as long as NFS is. While it
-is gone the cluster has 2 of 3 votes and stays quorate. See drills.md for what
-happens if a node fails in the same window.
+QTS warns that Virtualization Station VMs are still running before it
+reboots. What happens next depends on the answer:
+
+- Continue anyway: Virtualization Station suspends the VM and resumes it
+  after the NAS is back. The guest does not boot; its clock is behind by the
+  length of the outage until NTP steps it (10 min 56 s in drill 1).
+- Shut the VM down first: it cold boots after the NAS is back, which is where
+  the autostart policy and the local RTC setting matter.
+
+Either way the VM came back 2 to 3 minutes after NFS was already serving.
+While it is gone the cluster has 2 of 3 votes and stays quorate. See
+drills.md for what happens if a node fails in the same window.
