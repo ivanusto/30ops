@@ -19,11 +19,22 @@ QNETD="${1:?usage: $0 <qnetd-ip>}"
 command -v pvecm >/dev/null || { echo "pvecm not found; is this a Proxmox VE node?"; exit 1; }
 [ -r "$CONF" ] || { echo "$CONF not found; is this node in a cluster?"; exit 1; }
 
+if grep -q 'model: *net' "$CONF"; then
+    CUR=$(awk '/device *\{/,0' "$CONF" | awk '/host:/ {print $2; exit}')
+    if [ "$CUR" = "$QNETD" ]; then
+        echo "QDevice already configured for $QNETD; nothing to do"
+        pvecm status | grep -E 'Quorate|Expected votes|Total votes|Qdevice'
+        exit 0
+    fi
+    echo "a QDevice is already configured (host $CUR); run 'pvecm qdevice remove' first"; exit 1
+fi
+
 # "name addr" per node from the nodelist section
 NODES=$(awk '/^nodelist/,/^}/' "$CONF" \
     | awk '/ name:/ {n=$2} /ring0_addr:/ {a=$2} n && a {print n, a; n=""; a=""}')
 N=$(echo "$NODES" | grep -c .)
-ONLINE=$(pvecm nodes 2>/dev/null | awk '$1 ~ /^[0-9]+$/' | grep -c .)
+# Node ID 0 is the QDevice row once one is configured; count real nodes only.
+ONLINE=$(pvecm nodes 2>/dev/null | awk '$1 ~ /^[0-9]+$/ && $1 > 0' | grep -c .)
 echo "nodes in corosync.conf ($N): $(echo "$NODES" | awk '{print $1}' | tr '\n' ' ')"
 echo "nodes online: $ONLINE"
 if [ "$ONLINE" -ne "$N" ]; then
@@ -37,23 +48,20 @@ if [ "$N" -ne 2 ]; then
     exit 1
 fi
 
-if grep -q 'model: *net' "$CONF"; then
-    CUR=$(awk '/device *\{/,0' "$CONF" | awk '/host:/ {print $2; exit}')
-    if [ "$CUR" = "$QNETD" ]; then
-        echo "QDevice already configured for $QNETD; nothing to do"
-        pvecm status | grep -E 'Quorate|Expected votes|Total votes|Qdevice'
-        exit 0
-    fi
-    echo "a QDevice is already configured (host $CUR); run 'pvecm qdevice remove' first"; exit 1
-fi
-
 # Every node needs the client daemon; setup does not install it for you.
+# Proxmox VE keeps each node's host key in /etc/pve/nodes/<name>/ssh_known_hosts
+# under the node name, not the address, so plain `ssh root@<addr>` fails host
+# key verification. Connect the way Proxmox VE itself does.
+export DEBIAN_FRONTEND=noninteractive
 echo "$NODES" | while read -r NAME ADDR; do
     echo "== $NAME ($ADDR): installing corosync-qdevice"
     if [ "$NAME" = "$(hostname)" ]; then
-        apt-get install -y corosync-qdevice >/dev/null
+        apt-get install -y -q corosync-qdevice >/dev/null
     else
-        ssh -o BatchMode=yes "root@$ADDR" 'apt-get install -y corosync-qdevice >/dev/null' </dev/null
+        ssh -o BatchMode=yes -o HostKeyAlias="$NAME" \
+            -o UserKnownHostsFile="/etc/pve/nodes/$NAME/ssh_known_hosts" \
+            -o GlobalKnownHostsFile=none "root@$ADDR" \
+            'DEBIAN_FRONTEND=noninteractive apt-get install -y -q corosync-qdevice >/dev/null' </dev/null
     fi
 done
 
