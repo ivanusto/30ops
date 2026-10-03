@@ -130,8 +130,14 @@ def main():
     peak_g = peak_z = 0
     soak = 0.0
     reported = False
+    prev = time.monotonic()
     while True:
         g, z = sample()
+        # Wall-clock step, not --interval: sample() shells out to nvidia-smi,
+        # so a pass takes longer than the sleep and counting intervals
+        # undercounted the soak.
+        now = time.monotonic()
+        step, prev = now - prev, now
         if g is not None:
             peak_g = max(peak_g, g)
         if z is not None:
@@ -140,7 +146,7 @@ def main():
         # The soak has to be continuous: dropping back below the threshold
         # means the cooling caught up, which is the state that survived.
         if z is not None and z >= a.soak_zone:
-            soak += a.interval
+            soak += step
             if soak >= a.soak_seconds / 2 and not reported:
                 print(f"guard: {soak:.0f}s into the {a.soak_seconds}s soak budget "
                       f"(zone {z} C, GPU {g} C)", flush=True)

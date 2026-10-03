@@ -94,10 +94,16 @@ def main():
     signal.signal(signal.SIGTERM, report)
 
     with open(a.out, "a", buffering=1) as fh:
+        prev = time.monotonic()
         while True:
             g, p, u = gpu()
             z = zone()
             avail, swap = memory()
+            # Measure the step instead of assuming it equals --interval: a pass
+            # that shells out to nvidia-smi takes noticeably longer than that,
+            # and counting intervals undercounted the soak.
+            now = time.monotonic()
+            step, prev = now - prev, now
             row = {"t": round(time.time(), 1), "gpu_c": g, "zone_c": z,
                    "power_w": p, "util": u, "avail_gib": avail, "swap_gib": swap}
             fh.write(json.dumps(row) + "\n")
@@ -117,7 +123,7 @@ def main():
 
             # The soak has to be unbroken. Dropping below the threshold means
             # the cooling caught up, and that is the state that survived.
-            soak = soak + a.interval if (z and z >= a.soak_zone) else 0.0
+            soak = soak + step if (z and z >= a.soak_zone) else 0.0
             longest_soak = max(longest_soak, soak)
             if soak >= a.soak_seconds and not os.path.exists(a.hot_flag):
                 with open(a.hot_flag, "w") as flag:

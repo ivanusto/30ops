@@ -111,14 +111,18 @@ def main():
     longest_soak = 0.0
     peak_zone = 0
     aborted = None
+    prev = time.monotonic()
     try:
         while proc.poll() is None:
             z = zone_c()
+            # Wall-clock step, not --interval: the pass itself takes time.
+            now = time.monotonic()
+            step, prev = now - prev, now
             if z:
                 peak_zone = max(peak_zone, z)
                 # The soak has to be unbroken: dropping back below the threshold
                 # means the cooling caught up, and that is the state that survived.
-                soak = soak + a.interval if z >= a.soak_zone else 0.0
+                soak = soak + step if z >= a.soak_zone else 0.0
                 longest_soak = max(longest_soak, soak)
                 if z >= a.zone_ceiling:
                     aborted = f"zone {z} C above the instantaneous ceiling {a.zone_ceiling} C"
