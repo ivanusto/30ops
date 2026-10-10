@@ -11,7 +11,7 @@
 <!-- INDEX:START -->
 | 編號 | 標題 | 狀態 | 風險 | 資產 | 窗 | 核准 |
 |---|---|---|---|---|---|---|
-| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `draft` | medium | qdevice/Debian | - | ivan (exception) |
+| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `approved` | medium | qdevice/Debian | - | ivan (exception) |
 <!-- INDEX:END -->
 
 `scripts/render.py` 產生這張表。
