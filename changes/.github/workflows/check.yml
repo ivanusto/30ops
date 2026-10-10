@@ -1,0 +1,24 @@
+name: check
+on:
+  push: {branches: [main]}
+  pull_request:
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with: {repository: ivanusto/onprem-metrics, path: .onprem-metrics}
+      - run: python3 scripts/check.py --assets .onprem-metrics/eol/assets.tsv
+      - run: python3 scripts/render.py --check
+      - run: shellcheck -s sh scripts/change-mark.sh tests/smoke-change-mark.sh
+      - run: sh tests/smoke-change-mark.sh
+      - run: python3 -m unittest discover -s tests -v
+      - name: promtool
+        run: |
+          curl -fsSL -o p.tgz https://github.com/prometheus/prometheus/releases/download/v3.5.0/prometheus-3.5.0.linux-amd64.tar.gz
+          tar xzf p.tgz && sudo install -m 0755 prometheus-3.5.0.linux-amd64/promtool /usr/local/bin/promtool
+          promtool check rules prometheus/changes.yml
+          cd tests && promtool test rules rules_changes_test.yml
