@@ -43,10 +43,12 @@ sudo install -d -o metrics -g metrics /opt/onprem-changes
 sudo -u metrics git clone https://github.com/ivanusto/onprem-changes /opt/onprem-changes   # 由 metrics pull，所以由 metrics 擁有
 sudo install -d -o metrics -g metrics /var/lib/onprem-changes
 sudo install -d -m 0755 /etc/onprem-changes && sudo install -m 0600 -o metrics grafana.token /etc/onprem-changes/grafana.token
+command -v amtool    # 要在主機上，不能只在 Alertmanager 容器裡
 sudo install -m 0644 collector.cron /etc/cron.d/onprem-changes       # 每 15 分鐘 git pull 與 textfile
 
 # 執行當天，在收集端
 sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh begin CR-2026-0002
+# 回到 repo，status 改成 in_progress 並 commit（收集端只看得到 commit 過的狀態）
 # ... 照單子的步驟做，在目標主機上也 logger -t change "CR-2026-0002 begin" ...
 sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh end CR-2026-0002
 ```

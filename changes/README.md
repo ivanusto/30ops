@@ -43,10 +43,12 @@ sudo install -d -o metrics -g metrics /opt/onprem-changes
 sudo -u metrics git clone https://github.com/ivanusto/onprem-changes /opt/onprem-changes   # metrics pulls it, so metrics owns it
 sudo install -d -o metrics -g metrics /var/lib/onprem-changes
 sudo install -d -m 0755 /etc/onprem-changes && sudo install -m 0600 -o metrics grafana.token /etc/onprem-changes/grafana.token
+command -v amtool    # on the host, not only inside the Alertmanager container
 sudo install -m 0644 collector.cron /etc/cron.d/onprem-changes       # git pull and the textfile every 15 minutes
 
 # on the day, on the collector
 sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh begin CR-2026-0002
+# back in the repo: status in_progress, commit (the collector only sees committed statuses)
 # ... follow the record; on the target host too: logger -t change "CR-2026-0002 begin" ...
 sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh end CR-2026-0002
 ```
