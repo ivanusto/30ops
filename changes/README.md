@@ -11,7 +11,7 @@ Written for Day 26 of [onprem-ops-30days](https://github.com/ivanusto/onprem-ops
 <!-- INDEX:START -->
 | Id | Title | Status | Risk | Assets | Window | Approver |
 |---|---|---|---|---|---|---|
-| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `draft` | medium | qdevice/Debian | - | ivan (exception) |
+| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `approved` | medium | qdevice/Debian | - | ivan (exception) |
 <!-- INDEX:END -->
 
 `scripts/render.py` generates this table.
