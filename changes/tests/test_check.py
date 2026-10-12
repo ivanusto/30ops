@@ -145,7 +145,9 @@ class Check(unittest.TestCase):
 
 class Textfile(unittest.TestCase):
     def test_metrics(self):
-        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "changes-textfile.py"), "--dir", str(FIX)], capture_output=True, text=True)
+        # an explicit missing drills file: the repo's own drills/drills.jsonl has real lines since Day 28
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "changes-textfile.py"), "--dir", str(FIX),
+                            "--drills", str(FIX / "no-such-drills.jsonl")], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn('change_record{id="CR-2026-0001",status="scheduled"', r.stdout)
         self.assertIn('change_records{status="cancelled"} 0', r.stdout)
