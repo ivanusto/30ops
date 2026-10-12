@@ -1,0 +1,4 @@
+{"t0":"2026-10-12T06:00:00Z","label":"qdevice-snapshot-revert","cr":"CR-2026-0011","rollback_of":"CR-2026-0001","result":"FAIL","rto_s":900,"checks":450,"note":"first try, wrong snapshot"}
+{"t0":"2026-10-12T06:20:00Z","label":"qdevice-snapshot-revert","cr":"CR-2026-0011","rollback_of":"CR-2026-0001","result":"OK","rto_s":47,"checks":24,"note":""}
+{"t0":"2026-10-12T07:00:00Z","label":"other-record","cr":"CR-2026-0011","rollback_of":"CR-2026-0099","result":"OK","rto_s":5,"checks":3,"note":"record not in the fixture dir"}
+not json

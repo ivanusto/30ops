@@ -6,12 +6,16 @@ the front matter of changes/*.md, between the INDEX markers.
     scripts/render.py --check    # exit 1 if either README is stale (CI)
 
 Newest id first. The table is the only thing people read day to day; the
-records themselves are the evidence.
+records themselves are the evidence. Day 28 adds a rollback-drill column
+from drills/drills.jsonl: the date and result of the last drill that ran
+this record's rollback section, "-" when none has.
 """
 import argparse
 import glob
+import json
 import os
 import sys
+from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from frontmatter import parse  # noqa: E402
@@ -30,16 +34,39 @@ def records():
     return out
 
 
-def table(rows, lang):
+def drills(path=os.path.join(ROOT, "drills", "drills.jsonl")):
+    """{rollback_of: (t0 datetime, result, drill cr)} for the latest drill per record."""
+    out = {}
+    try:
+        fh = open(path, encoding="utf-8")
+    except OSError:
+        return out
+    with fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+                t0 = datetime.strptime(r["t0"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+                of = str(r["rollback_of"])
+            except (ValueError, KeyError, TypeError):
+                continue
+            if of not in out or t0 >= out[of][0]:
+                out[of] = (t0, str(r.get("result", "")).upper(), str(r.get("cr", "")))
+    return out
+
+
+def table(rows, lang, drilled=None):
+    drilled = drilled if drilled is not None else drills()
     if lang == "zh":
-        h = ["| 編號 | 標題 | 狀態 | 風險 | 資產 | 窗 | 核准 |", "|---|---|---|---|---|---|---|"]
+        h = ["| 編號 | 標題 | 狀態 | 風險 | 資產 | 窗 | 核准 | 回退演練 |", "|---|---|---|---|---|---|---|---|"]
     else:
-        h = ["| Id | Title | Status | Risk | Assets | Window | Approver |", "|---|---|---|---|---|---|---|"]
+        h = ["| Id | Title | Status | Risk | Assets | Window | Approver | Rollback drill |", "|---|---|---|---|---|---|---|---|"]
     for m in rows:
         assets = ", ".join(m.get("assets", [])) if isinstance(m.get("assets"), list) else m.get("assets", "")
         win = f"{m.get('window_start', '')[:16]} to {m.get('window_end', '')[11:16]}" if m.get("window_start") else "-"
         appr = m.get("approver", "") + (" (exception)" if m.get("approval_exception") else "")
-        h.append(f"| [{m['id']}]({m['_file']}) | {m['title']} | `{m['status']}` | {m['risk']} | {assets} | {win} | {appr} |")
+        d = drilled.get(m["id"])
+        drill = f"{d[0].strftime('%Y-%m-%d')} {d[1]} ([{d[2]}](drills/drills.md))" if d else "-"
+        h.append(f"| [{m['id']}]({m['_file']}) | {m['title']} | `{m['status']}` | {m['risk']} | {assets} | {win} | {appr} | {drill} |")
     return "\n".join(h)
 
 
