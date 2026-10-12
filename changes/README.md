@@ -9,18 +9,19 @@ Written for Day 26 of [onprem-ops-30days](https://github.com/ivanusto/onprem-ops
 ## Records
 
 <!-- INDEX:START -->
-| Id | Title | Status | Risk | Assets | Window | Approver |
-|---|---|---|---|---|---|---|
-| [CR-2026-0010](changes/CR-2026-0010-spark02-journal-upload-and-ssh-password-off.md) | spark02 的 journal-upload 改成持續重試並補回停送的日誌，之後關閉 SSH 密碼登入 | `scheduled` | medium | spark02/DGX OS | 2026-10-12T22:00 to 23:00 | ivan (exception) |
-| [CR-2026-0009](changes/CR-2026-0009-spark01-ssh-password-off.md) | spark01 關閉 SSH 密碼登入，經 tailnet 的裝置改用金鑰 | `scheduled` | medium | spark01/DGX OS | 2026-10-12T21:00 to 22:00 | ivan (exception) |
-| [CR-2026-0008](changes/CR-2026-0008-audit-quiet-workstations.md) | 收集端部署 onprem-logs v0.5.1，稽核告警排除管理工作站，場域忽略清單的 HDP 規則改成只認金鑰 | `scheduled` | low | collector/Ubuntu | 2026-10-12T17:00 to 18:00 | ivan (exception) |
-| [CR-2026-0007](changes/CR-2026-0007-fortigate-event-log-audit-trail.md) | 60F 的事件日誌送到收集端 515，收集端加第二個監聽器與稽核報告、規則（Day 27） | `done` | low | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-11T16:30 to 18:30 | ivan (exception) |
-| [CR-2026-0006](changes/CR-2026-0006-qdevice-root-password-reset.md) | 為取得 sudo，重設 QDevice VM 的 root 密碼並裝 sudo（未經單子，事後補單） | `done` | medium | qdevice/Debian | 2026-10-10T22:20 to 22:40 | ivan (exception) |
-| [CR-2026-0005](changes/CR-2026-0005-accept-fortiguard-licence-risk.md) | 接受 60F 二十項 FortiGuard 授權過期的風險（Day 25） | `done` | high | fgt-edge/FortiGuard licences | 2026-10-09T19:59 to 20:01 | ivan (exception) |
-| [CR-2026-0004](changes/CR-2026-0004-fortigate-webfilter-aup.md) | 60F 的 policy 1 掛上 aup-monitor 網頁過濾（Day 24） | `done` | high | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-08T00:01 to 01:25 | ivan (exception) |
-| [CR-2026-0003](changes/CR-2026-0003-packet-capture-on-pve.md) | 在兩台 PVE 節點裝封包擷取，收集端加拉取與驗證（Day 23） | `done` | medium | pve1/Proxmox VE, pve2/Proxmox VE, collector/Ubuntu | 2026-10-07T01:41 to 09:55 | ivan (exception) |
-| [CR-2026-0002](changes/CR-2026-0002-fortigate-syslog-to-collector.md) | 讓 60F 把流量日誌送到收集端（Day 22） | `done` | medium | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-06T11:32 to 13:20 | ivan (exception) |
-| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `done` | medium | qdevice/Debian | 2026-10-10T22:45 to 23:45 | ivan (exception) |
+| Id | Title | Status | Risk | Assets | Window | Approver | Rollback drill |
+|---|---|---|---|---|---|---|---|
+| [CR-2026-0011](changes/CR-2026-0011-rollback-drills.md) | 回退演練，把三張已完成單子的回退段真的做一次（Day 28） | `scheduled` | medium | qdevice/Debian, fgt-edge/FortiOS, collector/Ubuntu | 2026-10-12T19:00 to 21:00 | ivan (exception) | - |
+| [CR-2026-0010](changes/CR-2026-0010-spark02-journal-upload-and-ssh-password-off.md) | spark02 的 journal-upload 改成持續重試並補回停送的日誌，之後關閉 SSH 密碼登入 | `scheduled` | medium | spark02/DGX OS | 2026-10-12T22:00 to 23:00 | ivan (exception) | - |
+| [CR-2026-0009](changes/CR-2026-0009-spark01-ssh-password-off.md) | spark01 關閉 SSH 密碼登入，經 tailnet 的裝置改用金鑰 | `scheduled` | medium | spark01/DGX OS | 2026-10-12T21:00 to 22:00 | ivan (exception) | - |
+| [CR-2026-0008](changes/CR-2026-0008-audit-quiet-workstations.md) | 收集端部署 onprem-logs v0.5.1，稽核告警排除管理工作站，場域忽略清單的 HDP 規則改成只認金鑰 | `scheduled` | low | collector/Ubuntu | 2026-10-12T17:00 to 18:00 | ivan (exception) | - |
+| [CR-2026-0007](changes/CR-2026-0007-fortigate-event-log-audit-trail.md) | 60F 的事件日誌送到收集端 515，收集端加第二個監聽器與稽核報告、規則（Day 27） | `done` | low | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-11T16:30 to 18:30 | ivan (exception) | - |
+| [CR-2026-0006](changes/CR-2026-0006-qdevice-root-password-reset.md) | 為取得 sudo，重設 QDevice VM 的 root 密碼並裝 sudo（未經單子，事後補單） | `done` | medium | qdevice/Debian | 2026-10-10T22:20 to 22:40 | ivan (exception) | - |
+| [CR-2026-0005](changes/CR-2026-0005-accept-fortiguard-licence-risk.md) | 接受 60F 二十項 FortiGuard 授權過期的風險（Day 25） | `done` | high | fgt-edge/FortiGuard licences | 2026-10-09T19:59 to 20:01 | ivan (exception) | - |
+| [CR-2026-0004](changes/CR-2026-0004-fortigate-webfilter-aup.md) | 60F 的 policy 1 掛上 aup-monitor 網頁過濾（Day 24） | `done` | high | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-08T00:01 to 01:25 | ivan (exception) | - |
+| [CR-2026-0003](changes/CR-2026-0003-packet-capture-on-pve.md) | 在兩台 PVE 節點裝封包擷取，收集端加拉取與驗證（Day 23） | `done` | medium | pve1/Proxmox VE, pve2/Proxmox VE, collector/Ubuntu | 2026-10-07T01:41 to 09:55 | ivan (exception) | - |
+| [CR-2026-0002](changes/CR-2026-0002-fortigate-syslog-to-collector.md) | 讓 60F 把流量日誌送到收集端（Day 22） | `done` | medium | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-06T11:32 to 13:20 | ivan (exception) | - |
+| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `done` | medium | qdevice/Debian | 2026-10-10T22:45 to 23:45 | ivan (exception) | - |
 <!-- INDEX:END -->
 
 `scripts/render.py` generates this table.
@@ -60,6 +61,11 @@ sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh begin CR-2026-0002
 # back in the repo: status in_progress, commit (the collector only sees committed statuses)
 # ... follow the record; on the target host too: logger -t change "CR-2026-0002 begin" ...
 sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh end CR-2026-0002
+
+# Rollback drill (Day 28): inside the drill record's window, start it as the rollback starts; it stops when the verification exits 0
+drills/drill.sh qdevice-snapshot-revert CR-2026-0011 CR-2026-0001 -t 600 -- \
+  sh -c 'ssh root@pve1 /root/pve-qdevice-on-qnap/check.sh && ssh qdevice test ! -e /var/tmp/CR-2026-0011-marker'
+# one more line in drills/drills.jsonl, committed with the drill record; the observations go into drills/drills.md by hand
 ```
 
 The Grafana token belongs to a service account of its own with the Editor role: Grafana OSS has only the Viewer, Editor and Admin basic roles, a Viewer is refused with `Access denied to save the annotation`, and narrower permissions need Enterprise RBAC. Keep it a token used for nothing else. Branch protection ("one review before merge, not by the author") is what gives `approver` its meaning; `check.py` only checks that it is written down.
@@ -70,13 +76,14 @@ The Grafana token belongs to a service account of its own with the Editor role: 
 |---|---|
 | `changes/CR-*.md` | the records; `TEMPLATE.md` is the blank form |
 | `scripts/check.py` | format and status rules, run by CI on every push; `--assets` checks the assets exist in onprem-metrics' `eol/assets.tsv` |
-| `scripts/render.py` | rebuilds the index table in both READMEs |
-| `scripts/changes-textfile.py` | `change_record`, `change_window_*`, `change_records{status}` for node_exporter |
+| `scripts/render.py` | rebuilds the index table in both READMEs; the 回退演練 column comes from `drills/drills.jsonl` |
+| `scripts/changes-textfile.py` | `change_record`, `change_window_*`, `change_records{status}` for node_exporter; from `drills/drills.jsonl`, `change_rollback_last_drill_timestamp`, `change_rollback_last_drill_result` and `change_rollback_drills_total` per record (Day 28) |
 | `scripts/change-mark.sh` | the three things at begin and end: journal, Grafana annotation, Alertmanager silence |
 | `scripts/frontmatter.py` | the small front matter reader, no YAML library |
-| `prometheus/changes.yml` | four rules, a copy; the one Prometheus loads lives in onprem-metrics. `ChangeWindowOverrun` is a window closed an hour ago with the record still open |
+| `prometheus/changes.yml` | six rules, a copy; the one Prometheus loads lives in onprem-metrics. `ChangeWindowOverrun` is a window closed an hour ago with the record still open; `ChangeRollbackUndrilled` is a done high-risk record whose rollback was never drilled, `ChangeRollbackDrillStale` a drill older than 90 days |
+| `drills/` | rollback drills (Day 28): `drill.sh` times one rollback and appends to `drills.jsonl`, `drills.md` is the table in Day 15's format. See [drills/README.md](drills/README.md) |
 | `collector.cron` | pull and textfile on the collector |
-| `tests/` | `unittest` and `promtool test rules` |
+| `tests/` | `unittest`, `promtool test rules`, `smoke-change-mark.sh`, `test_drill.sh` |
 
 ## License
 

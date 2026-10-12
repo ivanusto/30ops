@@ -9,18 +9,19 @@
 ## 變更單
 
 <!-- INDEX:START -->
-| 編號 | 標題 | 狀態 | 風險 | 資產 | 窗 | 核准 |
-|---|---|---|---|---|---|---|
-| [CR-2026-0010](changes/CR-2026-0010-spark02-journal-upload-and-ssh-password-off.md) | spark02 的 journal-upload 改成持續重試並補回停送的日誌，之後關閉 SSH 密碼登入 | `scheduled` | medium | spark02/DGX OS | 2026-10-12T22:00 to 23:00 | ivan (exception) |
-| [CR-2026-0009](changes/CR-2026-0009-spark01-ssh-password-off.md) | spark01 關閉 SSH 密碼登入，經 tailnet 的裝置改用金鑰 | `scheduled` | medium | spark01/DGX OS | 2026-10-12T21:00 to 22:00 | ivan (exception) |
-| [CR-2026-0008](changes/CR-2026-0008-audit-quiet-workstations.md) | 收集端部署 onprem-logs v0.5.1，稽核告警排除管理工作站，場域忽略清單的 HDP 規則改成只認金鑰 | `scheduled` | low | collector/Ubuntu | 2026-10-12T17:00 to 18:00 | ivan (exception) |
-| [CR-2026-0007](changes/CR-2026-0007-fortigate-event-log-audit-trail.md) | 60F 的事件日誌送到收集端 515，收集端加第二個監聽器與稽核報告、規則（Day 27） | `done` | low | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-11T16:30 to 18:30 | ivan (exception) |
-| [CR-2026-0006](changes/CR-2026-0006-qdevice-root-password-reset.md) | 為取得 sudo，重設 QDevice VM 的 root 密碼並裝 sudo（未經單子，事後補單） | `done` | medium | qdevice/Debian | 2026-10-10T22:20 to 22:40 | ivan (exception) |
-| [CR-2026-0005](changes/CR-2026-0005-accept-fortiguard-licence-risk.md) | 接受 60F 二十項 FortiGuard 授權過期的風險（Day 25） | `done` | high | fgt-edge/FortiGuard licences | 2026-10-09T19:59 to 20:01 | ivan (exception) |
-| [CR-2026-0004](changes/CR-2026-0004-fortigate-webfilter-aup.md) | 60F 的 policy 1 掛上 aup-monitor 網頁過濾（Day 24） | `done` | high | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-08T00:01 to 01:25 | ivan (exception) |
-| [CR-2026-0003](changes/CR-2026-0003-packet-capture-on-pve.md) | 在兩台 PVE 節點裝封包擷取，收集端加拉取與驗證（Day 23） | `done` | medium | pve1/Proxmox VE, pve2/Proxmox VE, collector/Ubuntu | 2026-10-07T01:41 to 09:55 | ivan (exception) |
-| [CR-2026-0002](changes/CR-2026-0002-fortigate-syslog-to-collector.md) | 讓 60F 把流量日誌送到收集端（Day 22） | `done` | medium | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-06T11:32 to 13:20 | ivan (exception) |
-| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `done` | medium | qdevice/Debian | 2026-10-10T22:45 to 23:45 | ivan (exception) |
+| 編號 | 標題 | 狀態 | 風險 | 資產 | 窗 | 核准 | 回退演練 |
+|---|---|---|---|---|---|---|---|
+| [CR-2026-0011](changes/CR-2026-0011-rollback-drills.md) | 回退演練，把三張已完成單子的回退段真的做一次（Day 28） | `scheduled` | medium | qdevice/Debian, fgt-edge/FortiOS, collector/Ubuntu | 2026-10-12T19:00 to 21:00 | ivan (exception) | - |
+| [CR-2026-0010](changes/CR-2026-0010-spark02-journal-upload-and-ssh-password-off.md) | spark02 的 journal-upload 改成持續重試並補回停送的日誌，之後關閉 SSH 密碼登入 | `scheduled` | medium | spark02/DGX OS | 2026-10-12T22:00 to 23:00 | ivan (exception) | - |
+| [CR-2026-0009](changes/CR-2026-0009-spark01-ssh-password-off.md) | spark01 關閉 SSH 密碼登入，經 tailnet 的裝置改用金鑰 | `scheduled` | medium | spark01/DGX OS | 2026-10-12T21:00 to 22:00 | ivan (exception) | - |
+| [CR-2026-0008](changes/CR-2026-0008-audit-quiet-workstations.md) | 收集端部署 onprem-logs v0.5.1，稽核告警排除管理工作站，場域忽略清單的 HDP 規則改成只認金鑰 | `scheduled` | low | collector/Ubuntu | 2026-10-12T17:00 to 18:00 | ivan (exception) | - |
+| [CR-2026-0007](changes/CR-2026-0007-fortigate-event-log-audit-trail.md) | 60F 的事件日誌送到收集端 515，收集端加第二個監聽器與稽核報告、規則（Day 27） | `done` | low | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-11T16:30 to 18:30 | ivan (exception) | - |
+| [CR-2026-0006](changes/CR-2026-0006-qdevice-root-password-reset.md) | 為取得 sudo，重設 QDevice VM 的 root 密碼並裝 sudo（未經單子，事後補單） | `done` | medium | qdevice/Debian | 2026-10-10T22:20 to 22:40 | ivan (exception) | - |
+| [CR-2026-0005](changes/CR-2026-0005-accept-fortiguard-licence-risk.md) | 接受 60F 二十項 FortiGuard 授權過期的風險（Day 25） | `done` | high | fgt-edge/FortiGuard licences | 2026-10-09T19:59 to 20:01 | ivan (exception) | - |
+| [CR-2026-0004](changes/CR-2026-0004-fortigate-webfilter-aup.md) | 60F 的 policy 1 掛上 aup-monitor 網頁過濾（Day 24） | `done` | high | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-08T00:01 to 01:25 | ivan (exception) | - |
+| [CR-2026-0003](changes/CR-2026-0003-packet-capture-on-pve.md) | 在兩台 PVE 節點裝封包擷取，收集端加拉取與驗證（Day 23） | `done` | medium | pve1/Proxmox VE, pve2/Proxmox VE, collector/Ubuntu | 2026-10-07T01:41 to 09:55 | ivan (exception) | - |
+| [CR-2026-0002](changes/CR-2026-0002-fortigate-syslog-to-collector.md) | 讓 60F 把流量日誌送到收集端（Day 22） | `done` | medium | fgt-edge/FortiOS, collector/Ubuntu | 2026-10-06T11:32 to 13:20 | ivan (exception) | - |
+| [CR-2026-0001](changes/CR-2026-0001-qdevice-debian-13.md) | 把 QDevice VM 從 Debian 12 升到 13 | `done` | medium | qdevice/Debian | 2026-10-10T22:45 to 23:45 | ivan (exception) | - |
 <!-- INDEX:END -->
 
 `scripts/render.py` 產生這張表。
@@ -60,6 +61,11 @@ sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh begin CR-2026-0002
 # 回到 repo，status 改成 in_progress 並 commit（收集端只看得到 commit 過的狀態）
 # ... 照單子的步驟做，在目標主機上也 logger -t change "CR-2026-0002 begin" ...
 sudo -u metrics /opt/onprem-changes/scripts/change-mark.sh end CR-2026-0002
+
+# 回退演練（Day 28）：在演練單的窗內，回退開始的那一刻啟動，驗證命令回 0 就停
+drills/drill.sh qdevice-snapshot-revert CR-2026-0011 CR-2026-0001 -t 600 -- \
+  sh -c 'ssh root@pve1 /root/pve-qdevice-on-qnap/check.sh && ssh qdevice test ! -e /var/tmp/CR-2026-0011-marker'
+# drills/drills.jsonl 多一行，與演練單的紀錄一起 commit，drills/drills.md 的觀察欄手寫
 ```
 
 Grafana 的 token 屬於一個專用的 service account，角色是 Editor。Grafana OSS 只有 Viewer、Editor、Admin 三個基本角色，Viewer 寫註記會被拒（`Access denied to save the annotation`），更細的權限要 Enterprise 的 RBAC。這把 token 不拿去做別的事。branch protection 設「合併前要一個 review，作者不能 review 自己」，`approver` 欄才有意義，`check.py` 只檢查它有沒有寫。
@@ -70,13 +76,14 @@ Grafana 的 token 屬於一個專用的 service account，角色是 Editor。Gra
 |---|---|
 | `changes/CR-*.md` | 變更單。`TEMPLATE.md` 是空白表 |
 | `scripts/check.py` | 格式與狀態規則，CI 每次 push 跑。`--assets` 對 onprem-metrics 的 `eol/assets.tsv` 檢查資產真的存在 |
-| `scripts/render.py` | 重建兩個 README 的索引表 |
-| `scripts/changes-textfile.py` | `change_record`、`change_window_*`、`change_records{status}` 給 node_exporter |
+| `scripts/render.py` | 重建兩個 README 的索引表，回退演練欄來自 `drills/drills.jsonl` |
+| `scripts/changes-textfile.py` | `change_record`、`change_window_*`、`change_records{status}` 給 node_exporter。從 `drills/drills.jsonl` 多出每張單的 `change_rollback_last_drill_timestamp`、`change_rollback_last_drill_result`、`change_rollback_drills_total`（Day 28） |
 | `scripts/change-mark.sh` | begin 與 end 的三件事，journal、Grafana 註記、Alertmanager silence |
 | `scripts/frontmatter.py` | front matter 的小讀取器，不用 YAML 程式庫 |
-| `prometheus/changes.yml` | 四條規則，複本，正本放 onprem-metrics。`ChangeWindowOverrun` 是窗關了一小時單子還沒結案 |
+| `prometheus/changes.yml` | 六條規則，複本，正本放 onprem-metrics。`ChangeWindowOverrun` 是窗關了一小時單子還沒結案。`ChangeRollbackUndrilled` 是 done 而且 high 的單子回退沒演練過，`ChangeRollbackDrillStale` 是演練超過 90 天 |
+| `drills/` | 回退演練（Day 28）。`drill.sh` 量一次回退並寫一行到 `drills.jsonl`，`drills.md` 是 Day 15 格式的表。見 [drills/README.md](drills/README.md) |
 | `collector.cron` | 收集端的 pull 與 textfile |
-| `tests/` | `unittest` 與 `promtool test rules` |
+| `tests/` | `unittest`、`promtool test rules`、`smoke-change-mark.sh`、`test_drill.sh` |
 
 ## 授權
 

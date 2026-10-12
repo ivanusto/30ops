@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import check  # noqa: E402
 import frontmatter  # noqa: E402
+import render  # noqa: E402
 
 # A frozen copy of the first record as it stood when scheduled. The live
 # record moves through its statuses; the tests must not move with it.
@@ -149,6 +150,23 @@ class Textfile(unittest.TestCase):
         self.assertIn('change_record{id="CR-2026-0001",status="scheduled"', r.stdout)
         self.assertIn('change_records{status="cancelled"} 0', r.stdout)
         self.assertIn('change_window_start_timestamp{id="CR-2026-0001",status="scheduled"} 1791727200', r.stdout)
+        # without a drills file: the families are declared, no rows
+        self.assertIn("# TYPE change_rollback_last_drill_timestamp gauge", r.stdout)
+        self.assertNotIn("change_rollback_last_drill_timestamp{", r.stdout)
+        if shutil.which("promtool"):
+            p = subprocess.run(["promtool", "check", "metrics"], input=r.stdout, capture_output=True, text=True)
+            self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+
+    def test_rollback_drills(self):
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "changes-textfile.py"), "--dir", str(FIX),
+                            "--drills", str(FIX / "drills.jsonl")], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        # the latest of two drills wins (OK at 06:20Z), both are counted
+        self.assertIn('change_rollback_last_drill_timestamp{id="CR-2026-0001"} 1791786000', r.stdout)
+        self.assertIn('change_rollback_last_drill_result{id="CR-2026-0001"} 1', r.stdout)
+        self.assertIn('change_rollback_drills_total{id="CR-2026-0001"} 2', r.stdout)
+        # a drill of a record that is not in changes/ is not exposed, junk lines are skipped
+        self.assertNotIn("CR-2026-0099", r.stdout)
         if shutil.which("promtool"):
             p = subprocess.run(["promtool", "check", "metrics"], input=r.stdout, capture_output=True, text=True)
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -156,3 +174,19 @@ class Textfile(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Index(unittest.TestCase):
+    def test_rollback_drill_column(self):
+        d = render.drills(str(FIX / "drills.jsonl"))
+        self.assertEqual(set(d), {"CR-2026-0001", "CR-2026-0099"})
+        self.assertEqual(d["CR-2026-0001"][1:], ("OK", "CR-2026-0011"))      # the later of the two drills
+        rows = [{"id": "CR-2026-0001", "_file": "x.md", "title": "t", "status": "done", "risk": "medium",
+                 "assets": ["a/b"], "window_start": "2026-10-10T22:45:00+08:00", "window_end": "2026-10-10T23:45:00+08:00",
+                 "approver": "x"},
+                {"id": "CR-2026-0002", "_file": "y.md", "title": "t", "status": "done", "risk": "low", "approver": "x"}]
+        t = render.table(rows, "en", d)
+        self.assertIn("| Rollback drill |", t)
+        self.assertIn("| 2026-10-12 OK ([CR-2026-0011](drills/drills.md)) |", t)
+        self.assertIn("| - | x | - |", t)        # no window, no drill
+        self.assertEqual(render.drills(str(FIX / "nope.jsonl")), {})
