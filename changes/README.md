@@ -13,6 +13,7 @@ Written for Day 26 of [onprem-ops-30days](https://github.com/ivanusto/onprem-ops
 |---|---|---|---|---|---|---|---|
 | [CR-2026-0014](changes/CR-2026-0014-collector-journal-upload-retry.md) | 收集端自己的 journal-upload 改成持續重試，開機時 VictoriaLogs 還沒起來也不會放棄 | `scheduled` | low | collector/Ubuntu | 2026-10-12T23:30 to 00:00 | ivan (exception) | - |
 | [CR-2026-0013](changes/CR-2026-0013-collector-allow-nas-second-address.md) | 收集端的允許清單加上主 NAS 的第二個位址 .30，恢復主 NAS 事件日誌的收集 | `scheduled` | low | collector/Ubuntu | 2026-10-12T23:00 to 23:30 | ivan (exception) | - |
+| [CR-2026-0012](changes/CR-2026-0012-restore-hermes-and-pbs-nas.md) | 恢復 hermes 的 Telegram 通知與封面生成、恢復 pbs-nas，並在每日摘要加入 hermes 監控（未經單子，事後補單） | `done` | medium | nas-primary/QuTS hero, pve1/Proxmox VE, pve2/Proxmox VE, spark01/DGX OS | 2026-10-12T14:29 to 17:16 | ivan (exception) | - |
 | [CR-2026-0011](changes/CR-2026-0011-rollback-drills.md) | 回退演練，把三張已完成單子的回退段真的做一次（Day 28） | `done` | medium | qdevice/Debian, fgt-edge/FortiOS, collector/Ubuntu | 2026-10-12T19:00 to 21:00 | ivan (exception) | - |
 | [CR-2026-0010](changes/CR-2026-0010-spark02-journal-upload-and-ssh-password-off.md) | spark02 的 journal-upload 改成持續重試並補回停送的日誌，之後關閉 SSH 密碼登入 | `scheduled` | medium | spark02/DGX OS | 2026-10-12T22:00 to 23:00 | ivan (exception) | - |
 | [CR-2026-0009](changes/CR-2026-0009-spark01-ssh-password-off.md) | spark01 關閉 SSH 密碼登入，經 tailnet 的裝置改用金鑰 | `scheduled` | medium | spark01/DGX OS | 2026-10-12T21:00 to 22:00 | ivan (exception) | - |
