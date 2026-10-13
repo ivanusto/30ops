@@ -94,6 +94,14 @@ class Check(unittest.TestCase):
         t = variant(self.text, approval_exception=None, approver="", status="draft", window_start="", window_end="")
         self.assertEqual(self.errs("CR-2026-0001-x.md", t), [])
 
+    def test_agent_field(self):
+        self.assertEqual(self.errs("CR-2026-0001-x.md", variant(self.text, agent="agent:ops")), [])
+        self.assertEqual(self.errs("CR-2026-0001-x.md", variant(self.text, agent="agent:ops, agent:patch-1")), [])
+        e = self.errs("CR-2026-0001-x.md", variant(self.text, agent="ops"))
+        self.assertTrue(any("is not agent:<name>" in x for x in e), e)
+        e = self.errs("CR-2026-0001-x.md", variant(self.text, agent="agent:Ops Bot"))
+        self.assertTrue(any("is not agent:<name>" in x for x in e), e)
+
     def test_window_rules(self):
         t = variant(self.text, window_end="2026-10-11T21:00:00+08:00")
         self.assertTrue(any("window_end is not after" in x for x in self.errs("CR-2026-0001-x.md", t)))

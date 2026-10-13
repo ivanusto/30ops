@@ -11,6 +11,7 @@ Written for Day 26 of [onprem-ops-30days](https://github.com/ivanusto/onprem-ops
 <!-- INDEX:START -->
 | Id | Title | Status | Risk | Assets | Window | Approver | Rollback drill |
 |---|---|---|---|---|---|---|---|
+| [CR-2026-0015](changes/CR-2026-0015-agent-gate-qdevice.md) | 裝 onprem-agent-gate，讓代理程式在本單的窗內檢查 QDevice 並重啟 qnetd，重開機要人核准（Day 29） | `scheduled` | medium | collector/Ubuntu, pve1/Proxmox VE, qdevice/Debian | 2026-10-13T21:00 to 22:30 | ivan (exception) | - |
 | [CR-2026-0014](changes/CR-2026-0014-collector-journal-upload-retry.md) | 收集端自己的 journal-upload 改成持續重試，開機時 VictoriaLogs 還沒起來也不會放棄 | `done` | low | collector/Ubuntu | 2026-10-12T23:30 to 00:00 | ivan (exception) | - |
 | [CR-2026-0013](changes/CR-2026-0013-collector-allow-nas-second-address.md) | 收集端的允許清單加上主 NAS 的第二個位址 .30，恢復主 NAS 事件日誌的收集 | `done` | low | collector/Ubuntu | 2026-10-12T23:00 to 23:30 | ivan (exception) | - |
 | [CR-2026-0012](changes/CR-2026-0012-restore-hermes-and-pbs-nas.md) | 恢復 hermes 的 Telegram 通知與封面生成、恢復 pbs-nas，並在每日摘要加入 hermes 監控（未經單子，事後補單） | `done` | medium | nas-primary/QuTS hero, pve1/Proxmox VE, pve2/Proxmox VE, spark01/DGX OS | 2026-10-12T14:29 to 17:16 | ivan (exception) | - |
@@ -78,7 +79,7 @@ The Grafana token belongs to a service account of its own with the Editor role: 
 | Path | What |
 |---|---|
 | `changes/CR-*.md` | the records; `TEMPLATE.md` is the blank form |
-| `scripts/check.py` | format and status rules, run by CI on every push; `--assets` checks the assets exist in onprem-metrics' `eol/assets.tsv` |
+| `scripts/check.py` | format and status rules, run by CI on every push; `--assets` checks the assets exist in onprem-metrics' `eol/assets.tsv`; `agent:` (Day 29) names the agents [onprem-agent-gate](https://github.com/ivanusto/onprem-agent-gate) may let work under the record |
 | `scripts/render.py` | rebuilds the index table in both READMEs; the 回退演練 column comes from `drills/drills.jsonl` |
 | `scripts/changes-textfile.py` | `change_record`, `change_window_*`, `change_records{status}` for node_exporter; from `drills/drills.jsonl`, `change_rollback_last_drill_timestamp`, `change_rollback_last_drill_result` and `change_rollback_drills_total` per record (Day 28) |
 | `scripts/change-mark.sh` | the three things at begin and end: journal, Grafana annotation, Alertmanager silence |

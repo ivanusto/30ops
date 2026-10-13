@@ -20,6 +20,9 @@ Rules, in the order they are reported
             a high-risk change with no rollback has to say 無 and why
   record    done and rolled_back carry begin:, end: and result: in 紀錄
   assets    with --assets, every asset/component is a row in that TSV
+  agent     optional (Day 29): the agents that may work under this record
+            through onprem-agent-gate, each `agent:<name>`; the gate denies
+            any call whose record does not name its principal here
 
 Exit 0 when every file passes, 1 otherwise. The CI runs it on every push;
 the GitHub branch protection (one review, not by the author) is what makes
@@ -43,6 +46,7 @@ NEEDS_RECORD = {"done", "rolled_back"}
 REQUIRED = ["id", "title", "status", "type", "risk", "requester", "implementer", "assets"]   # approver: from approved on
 SECTIONS = ["目的", "影響", "步驟", "驗證", "回退", "紀錄"]
 ID_RE = re.compile(r"^CR-(\d{4})-(\d{4})$")
+AGENT_RE = re.compile(r"^agent:[a-z0-9][a-z0-9_-]*$")
 FILE_RE = re.compile(r"^(CR-\d{4}-\d{4})-[a-z0-9][a-z0-9-]*\.md$")
 TEMPLATE_PLACEHOLDERS = ("CR-YYYY-NNNN",)
 
@@ -113,6 +117,11 @@ def check_file(path, assets=None):
             errs.append(f"{name}: status {status} needs window_start and window_end as RFC 3339 with an offset")
         elif we <= ws:
             errs.append(f"{name}: window_end is not after window_start")
+    agents = meta.get("agent", "")
+    agents = agents if isinstance(agents, list) else [a.strip() for a in str(agents).split(",") if a.strip()]
+    for a in agents:
+        if not AGENT_RE.match(a):
+            errs.append(f"{name}: agent {a!r} is not agent:<name> (lowercase, digits, - _)")
 
     sec = sections(body)
     for s in SECTIONS:

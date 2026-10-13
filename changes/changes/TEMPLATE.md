@@ -7,6 +7,7 @@ risk: low
 requester: 
 implementer: 
 approver: 
+agent: 
 assets:
   - <asset>/<component>
 window_start: 
@@ -20,6 +21,8 @@ tags:
 為什麼要改。引用觸發它的東西：哪一條告警、哪一列 `eol/assets.tsv`、哪一篇的待辦。
 
 ## 影響
+
+`agent:` 有寫的話（例如 `agent:ops`），那個代理程式在這張單的窗內可以透過 onprem-agent-gate 碰 `assets` 列的資產，唯讀的隨時可以，可逆的要窗內且 begin 之後，不可逆的還要人核准。沒寫就是沒有任何代理程式可以。這一段要寫代理程式預期做什麼、不能做什麼。
 
 改的期間誰會感覺到什麼。哪些告警預期會響（寫進上面的 `silence`），哪些服務會停多久，單點失效的窗在哪裡。
 
