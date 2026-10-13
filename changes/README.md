@@ -11,7 +11,7 @@ Written for Day 26 of [onprem-ops-30days](https://github.com/ivanusto/onprem-ops
 <!-- INDEX:START -->
 | Id | Title | Status | Risk | Assets | Window | Approver | Rollback drill |
 |---|---|---|---|---|---|---|---|
-| [CR-2026-0016](changes/CR-2026-0016-agent-gate-pending-follows-record.md) | 收集端的 onprem-agent-gate 換成 v0.1.0 tag 版，PENDING 跟著單子的窗與狀態，結案後的等待核准告警自己消失 | `scheduled` | low | collector/Ubuntu | 2026-10-13T21:30 to 22:00 | ivan (exception) | - |
+| [CR-2026-0016](changes/CR-2026-0016-agent-gate-pending-follows-record.md) | 收集端的 onprem-agent-gate 換成 v0.1.0 tag 版，PENDING 跟著單子的窗與狀態，結案後的等待核准告警自己消失 | `done` | low | collector/Ubuntu | 2026-10-13T21:30 to 22:00 | ivan (exception) | - |
 | [CR-2026-0015](changes/CR-2026-0015-agent-gate-qdevice.md) | 裝 onprem-agent-gate，讓代理程式在本單的窗內檢查 QDevice 並重啟 qnetd，重開機要人核准（Day 29） | `done` | medium | collector/Ubuntu, pve1/Proxmox VE, qdevice/Debian | 2026-10-13T18:00 to 20:05 | ivan (exception) | - |
 | [CR-2026-0014](changes/CR-2026-0014-collector-journal-upload-retry.md) | 收集端自己的 journal-upload 改成持續重試，開機時 VictoriaLogs 還沒起來也不會放棄 | `done` | low | collector/Ubuntu | 2026-10-12T23:30 to 00:00 | ivan (exception) | - |
 | [CR-2026-0013](changes/CR-2026-0013-collector-allow-nas-second-address.md) | 收集端的允許清單加上主 NAS 的第二個位址 .30，恢復主 NAS 事件日誌的收集 | `done` | low | collector/Ubuntu | 2026-10-12T23:00 to 23:30 | ivan (exception) | - |
