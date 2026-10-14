@@ -123,7 +123,7 @@ grep -q "$(printf 'custom-cut.pcap\t[0-9]*\t5\t.*\t1\t')" "$d2/MANIFEST.tsv" || 
 # 5. verify
 "$here/pcap/verify-pcap.sh" "testnode/$b" --against-index >/dev/null || { echo "verify failed on a good batch"; exit 1; }
 DRILLS="$tmp/drills.jsonl" "$here/pcap/verify-pcap.sh" --latest --against-index >/dev/null || { echo "verify --latest failed"; exit 1; }
-grep -q '"label":"pcap archive verify".*"result":"OK"' "$tmp/drills.jsonl" || { echo "drills.jsonl not written"; exit 1; }
+grep -q '^{"v":1,.*"kind":"logs-restore","label":"pcap archive verify",.*"result":"pass"' "$tmp/drills.jsonl" || { echo "drills.jsonl v1 record not written"; cat "$tmp/drills.jsonl"; exit 1; }
 chmod -R u+w "$d"
 f="$d/$(first "$d" "corosync-*.pcap")"
 truncate -s 24 "$f"                                          # tamper: header only

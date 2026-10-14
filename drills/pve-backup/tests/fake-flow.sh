@@ -7,6 +7,10 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+OPS30_SH=$ROOT/../../lib/sh/ops30.sh
+# shellcheck source=../../../lib/sh/ops30.sh
+. "$OPS30_SH"
+field() { ops30_last_field "$OUT" "$1"; }
 
 mkdir -p "$T/bin" "$T/canary"
 export CANARY_DIR="$T/canary"
@@ -51,22 +55,24 @@ printf '%s\n' "$out" | grep -q '^RPO (data lost)   : 600 s' || fail "wrong RPO"
 
 # 2. restore-drill on PVE
 "$ROOT/restore-drill.sh" 9001 192.0.2.10 --label pve --failed-at "$failed" --timeout 30 || fail "pve drill rc=$?"
-tail -n1 "$OUT" | grep -q '"t_exists":0,"t_running":0' || fail "pve json"
-tail -n1 "$OUT" | grep -q '"rpo_s":"600"' || fail "pve json rpo"
+case "$(field extra.t_exists),$(field extra.t_running)" in [01],[01]) ;; *) fail "pve json" ;; esac   # 1 when a second boundary passes
+[ "$(field rpo_s)" = 600 ] || fail "pve json rpo"
+[ "$(field kind),$(field result),$(field label)" = '"pve-backup","pass","pve"' ] || fail "pve json kind/result/label"
 
 # 2b. --name resolves the VMID the restore tool assigned
 "$ROOT/restore-drill.sh" auto 192.0.2.10 --name drill-recovered --label byname --timeout 30 || fail "name drill rc=$?"
-tail -n1 "$OUT" | grep -q '"vmid":"104"' || fail "name json vmid"
+[ "$(field extra.vmid)" = 104 ] || fail "name json vmid"
 
 # 3. --no-pve never calls qm (a qm that always fails would time out)
 QM=false "$ROOT/restore-drill.sh" 9002 192.0.2.10 --no-pve --label vs --timeout 30 || fail "no-pve drill rc=$?"
-tail -n1 "$OUT" | grep -q '"t_exists":null,"t_running":null' || fail "no-pve json"
-tail -n1 "$OUT" | grep -q '"result":"OK"' || fail "no-pve result"
+[ "$(field extra.t_exists),$(field extra.t_running)" = null,null ] || fail "no-pve json"
+[ "$(field result)" = '"pass"' ] || fail "no-pve result"
 
 # 4. corrupted payload ends the drill with rc 2
 printf 'x' >> "$CANARY_DIR/payload.bin"
 rc=0; "$ROOT/restore-drill.sh" 9003 192.0.2.10 --label bad --timeout 30 >/dev/null || rc=$?
 [ "$rc" -eq 2 ] || fail "mismatch rc=$rc, want 2"
+[ "$(field result)" = '"fail"' ] || fail "mismatch result"
 
 # 5. no gap yet: verify says so and exits 1
 sha256sum "$CANARY_DIR/payload.bin" | cut -d' ' -f1 > "$CANARY_DIR/payload.sha256"

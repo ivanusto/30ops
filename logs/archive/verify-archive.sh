@@ -8,10 +8,16 @@
 #
 #   verify-archive.sh YYYY-MM-DD [--against-live]
 #
-# DRILLS   optional path of a drills.jsonl; one line per run is appended so
-#          onprem-metrics' drills-textfile.py exposes the result (Day 20's
-#          DrillFailed alert then covers the archive too)
+# DRILLS   optional path of a drills.jsonl; one v1 record per run is appended
+#          (kind logs-restore) so collector/textfile/drills-textfile.py
+#          exposes the result (DrillFailed then covers the archive too)
 set -eu
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+OPS30_SH=${OPS30_SH:-$HERE/../../lib/sh/ops30.sh}
+# shellcheck source=../../lib/sh/ops30.sh
+. "$OPS30_SH"
+t0=$(ops30_now)
 
 VL=${VL:-http://127.0.0.1:9428}
 ARCHIVE=${ARCHIVE:-/mnt/worm/logs}
@@ -58,7 +64,8 @@ if [ "$rc" -eq 0 ]; then result=OK; else result=FAIL; fi
 echo "verify   : $result $day"
 if [ -n "${DRILLS:-}" ]; then
   if [ "$live" -eq 1 ]; then label="daily archive verify"; else label="archive spot check"; fi
-  printf '{"t0":"%s","label":"%s","day":"%s","live":%s,"result":"%s","code":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$label" "$day" "$live" "$result" "$rc" >> "$DRILLS"
+  ops30_drill --file "$DRILLS" --kind logs-restore --label "$label" --t0 "$(ops30_iso "$t0")" \
+    --result "$([ "$result" = OK ] && echo pass || echo fail)" --host "$(hostname)" \
+    --extra-str "day=$day" --extra "live=$live" --extra "code=$rc"
 fi
 exit "$rc"

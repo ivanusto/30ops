@@ -17,6 +17,10 @@ set -eu
 ARCHIVE=${ARCHIVE:-/mnt/worm/pcap}
 INDEX=${INDEX:-/var/lib/onprem-pcap/shipped.tsv}
 here=$(cd "$(dirname "$0")" && pwd)
+OPS30_SH=${OPS30_SH:-$here/../../lib/sh/ops30.sh}
+# shellcheck source=../../lib/sh/ops30.sh
+. "$OPS30_SH"
+t0=$(ops30_now)
 STAT=${PCAP_STAT:-$here/pcap-stat.py}
 
 sel=${1:-}; [ -n "$sel" ] || { sed -n '2,13p' "$0"; exit 64; }
@@ -65,7 +69,8 @@ fi
 if [ "$rc" -eq 0 ]; then result=OK; else result=FAIL; fi
 echo "verify   : $result"
 if [ -n "${DRILLS:-}" ]; then
-  printf '{"t0":"%s","label":"pcap archive verify","selection":"%s","index":%s,"result":"%s","code":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$sel" "$idx" "$result" "$rc" >> "$DRILLS"
+  ops30_drill --file "$DRILLS" --kind logs-restore --label "pcap archive verify" --t0 "$(ops30_iso "$t0")" \
+    --result "$([ "$result" = OK ] && echo pass || echo fail)" --host "$(hostname)" \
+    --extra-str "selection=$sel" --extra "index=$idx" --extra "code=$rc"
 fi
 exit "$rc"

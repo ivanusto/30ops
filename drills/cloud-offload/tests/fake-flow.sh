@@ -149,6 +149,8 @@ check "upload rate has one decimal" 'grep -q "\"rate\":\"[0-9]*\.[0-9] MiB/s\"" 
 check "cost model runs on datasets.json" 'python3 "$HERE/offload-cost.py" | grep -q "HDP_Business | coldline"'
 check "cost model one-off" 'python3 "$HERE/offload-cost.py" one --gib 100 --files 10 | grep -q "| dataset | archive |"'
 check "jsonl has one record per drill" '[ "$(wc -l < "$OUT")" -eq 13 ]'
+check "every record is drills.jsonl v1 and valid" '[ "$(grep -c "^{\"v\":1," "$OUT")" -eq 13 ] && "$HERE/../../bin/30ops" drill migrate "$OUT" >/dev/null'
+check "default NBD is drills/nas-backup" '[ -x "$HERE/../nas-backup/share-canary.sh" ] && grep -q "^NBD=\${NBD:-\$HERE/../nas-backup}" "$HERE/offload-drill.sh"'
 
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

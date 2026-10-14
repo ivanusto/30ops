@@ -1,6 +1,6 @@
 #!/bin/sh
 # offload-drill: times the four things an off-site copy has to prove,
-# and prints one drill-log row plus a JSONL record for each.
+# and prints one drill-log row plus a drills.jsonl v1 record for each.
 #
 #   offload-drill.sh upload    SRC_DIR REMOTE:BUCKET/PREFIX [--label TEXT] [--exclude PATTERN ...]
 #       rclone sync, measures bytes and seconds, prints MiB/s. --exclude
@@ -8,7 +8,7 @@
 #   offload-drill.sh restore   REMOTE:BUCKET/PREFIX DST_DIR --manifest FILE [--label TEXT] [--failed-at ISO]
 #       rclone copy back, then every file in the manifest is hashed; RTO
 #       is the end of the manifest check. If DST_DIR/canary/beats.log
-#       exists and nas-backup-drill is reachable, RPO comes from its
+#       exists and ../nas-backup is reachable, RPO comes from its
 #       share-canary.sh verify (CANARY_KIND=frozen).
 #   offload-drill.sh lock-test REMOTE:BUCKET/PREFIX/OBJECT [--label TEXT] [--gs gs://BUCKET/OBJECT | --s3 BUCKET/OBJECT]
 #       tries to delete one object with the remote's identity. PASS means
@@ -26,23 +26,23 @@
 #
 # Remotes are rclone remotes (rclone config): gcs: with the HMAC key on
 # the S3 backend, or the native backend; linode: on the S3 backend.
-# OUT=drills.jsonl, NBD=path to nas-backup-drill (default ../nas-backup-drill).
+# OUT=drills.jsonl (v1 records), NBD=path to drills/nas-backup (default ../nas-backup).
 set -eu
 
+HERE=$(cd "$(dirname "$0")" && pwd)
+OPS30_SH=${OPS30_SH:-$HERE/../../lib/sh/ops30.sh}
+# shellcheck source=../../lib/sh/ops30.sh
+. "$OPS30_SH"
+OPS30_PROG=offload-drill
+
 OUT=${OUT:-drills.jsonl}
-NBD=${NBD:-$(dirname "$0")/../nas-backup-drill}
+NBD=${NBD:-$HERE/../nas-backup}
 RCLONE=${RCLONE:-rclone}
 GCLOUD=${GCLOUD:-gcloud}
 AWS=${AWS:-aws}
 
-die() { printf 'offload-drill: %s\n' "$*" >&2; exit 1; }
-now() { date -u +%s; }
-iso_of() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
-
-hasher() {
-  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | cut -d' ' -f1
-  else openssl dgst -sha256 "$1" | awk '{print $NF}'; fi
-}
+die() { ops30_die "$@"; }
+now() { ops30_now; }
 
 remote_bytes() { "$RCLONE" size --json "$1" 2>/dev/null | sed -n 's/.*"bytes":\([0-9]*\).*/\1/p'; }
 mib() { echo $(( ${1:-0} / 1048576 )); }
@@ -71,9 +71,15 @@ row() {
   # row T0 label target bytes_mib seconds rate rpo result note
   # shellcheck disable=SC2016
   printf '| %s | %s | `%s` | %s MiB | %ss | %s | %s | %s | %s |\n' \
-    "$(iso_of "$1")" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"
-  printf '{"t0":"%s","label":"%s","target":"%s","mib":%s,"seconds":%s,"rate":"%s","rpo":"%s","result":"%s","note":"%s"}\n' \
-    "$(iso_of "$1")" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9" >> "$OUT"
+    "$(ops30_iso "$1")" "$2" "$3" "$4" "$5" "$6" "$7" "$8" "$9"
+  r_t0=$1 r_label=$2 r_mib=$4 r_s=$5 r_rpo=$7 r_res=$8
+  case "$r_res" in OK) r_result=pass ;; *) r_result=fail ;; esac
+  case "$6" in *" MiB/s") r_bps=$(awk -v m="${6% MiB/s}" 'BEGIN { printf "%.0f", m * 1048576 }') ;; *) r_bps=- ;; esac
+  set -- --extra-str "target=$3" --extra-str "rate=$6" --extra-str "note=$9"
+  case "$r_res" in OK|FAIL) ;; *) set -- "$@" --extra-str "result_raw=$r_res" ;; esac
+  ops30_drill --file "$OUT" --kind cloud-offload --label "$r_label" --t0 "$(ops30_iso "$r_t0")" \
+    --result "$r_result" --host "$(hostname)" --rto-s "$r_s" --rpo-s "$r_rpo" \
+    --bytes "$((r_mib * 1048576))" --rate-bps "$r_bps" "$@"
 }
 
 cmd_upload() {
@@ -110,7 +116,7 @@ cmd_restore() {
   while IFS= read -r line; do
     want=${line%% *}; f=${line#*  }
     if [ ! -f "$dst/$f" ]; then missing=$((missing + 1)); printf 'MISSING %s\n' "$f" >&2
-    elif [ "$(hasher "$dst/$f")" = "$want" ]; then ok=$((ok + 1))
+    elif [ "$(ops30_sha256 "$dst/$f")" = "$want" ]; then ok=$((ok + 1))
     else bad=$((bad + 1)); printf 'MISMATCH %s\n' "$f" >&2; fi
   done < "$manifest"
   t1=$(now); s=$((t1 - t0)); [ "$s" -gt 0 ] || s=1

@@ -1,6 +1,6 @@
 #!/bin/sh
 # restore-drill: times a shared-folder restore end to end and prints one
-# drill-log row plus a JSONL record.
+# drill-log row plus a drills.jsonl v1 record.
 #
 # Start it the moment you trigger the restore (snapshot revert, snapshot
 # file copy, HBS 3 restore from the secondary NAS, or a remount of the
@@ -28,6 +28,9 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
+OPS30_SH=${OPS30_SH:-$HERE/../../lib/sh/ops30.sh}
+# shellcheck source=../../lib/sh/ops30.sh
+. "$OPS30_SH"
 CANARY=${CANARY:-$HERE/share-canary.sh}
 VERIFY=${VERIFY:-$HERE/replica-verify.sh}
 OUT=${OUT:-drills.jsonl}
@@ -48,18 +51,9 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-to_epoch() {
-  case "$1" in
-    ''|*[!0-9]*) date -u -d "$1" +%s ;;
-    *) printf '%s' "$1" ;;
-  esac
-}
-iso_of() { date -u -d "@$1" +%Y-%m-%dT%H:%M:%SZ; }
-now() { date -u +%s; }
-
-if [ -n "$t0" ]; then t0=$(to_epoch "$t0"); else t0=$(now); fi
-since() { printf '%s' "$(( $(now) - t0 ))"; }
-expired() { [ "$(since)" -ge "$timeout" ]; }
+if [ -n "$t0" ]; then t0=$(ops30_to_epoch "$t0"); else t0=$(ops30_now); fi
+since() { ops30_since "$t0"; }
+expired() { ops30_expired "$t0" "$timeout"; }
 
 log() { printf '[+%ss] %s\n' "$(since)" "$*" >&2; }
 
@@ -156,13 +150,23 @@ s() { case "$1" in -) printf -- '-' ;; *) printf '%ss' "$1" ;; esac; }
 
 # shellcheck disable=SC2016
 printf '| %s | %s | `%s` | %s | %s | %s | %s | %s | %s | %s MB | %s | %s |  |\n' \
-  "$(iso_of "$t0")" "$label" "$path" "$restore_point" \
+  "$(ops30_iso "$t0")" "$label" "$path" "$restore_point" \
   "$(s "$t_appear")" "$(s "$t_canary")" "$(s "$t_manifest")" "$(s "$rto")" \
   "$( [ "$rpo" = "?" ] && printf '?' || printf '%ss' "$rpo" )" \
   "$mb" "$( [ "$rate" = - ] && printf -- '-' || printf '%s MB/s' "$rate" )" "$result"
 
-printf '{"t0":"%s","label":"%s","path":"%s","kind":"%s","restore_point":"%s","appear":"%s","canary":"%s","manifest":"%s","rto":"%s","rpo":"%s","payload":"%s","size_mb":%s,"rate_mbs":"%s","result":"%s","code":%s}\n' \
-  "$(iso_of "$t0")" "$label" "$path" "$kind" "$restore_point" \
-  "$t_appear" "$t_canary" "$t_manifest" "$rto" "$rpo" "$payload" "$mb" "$rate" "$result" "$code" >> "$OUT"
+st() { case "$1" in -) echo fail ;; *) echo pass ;; esac; }
+set -- --check "appear=$(st "$t_appear"):$(s "$t_appear")" --check "canary=$(st "$t_canary"):$(s "$t_canary") payload=$payload"
+if [ -n "$manifest" ]; then
+  if [ "$t_manifest" != - ] && [ "$code" -ne 4 ]; then m=pass; else m=fail; fi
+  set -- "$@" --check "manifest=$m:$(s "$t_manifest")"
+fi
+[ "$rate" = - ] || set -- "$@" --rate-bps "$((rate * 1048576))"
+ops30_drill --file "$OUT" --kind nas-backup --label "$label" \
+  --t0 "$(ops30_iso "$t0")" --result "$([ "$result" = OK ] && echo pass || echo fail)" --host "$(hostname)" \
+  --rto-s "$rto" --rpo-s "$( [ "$rpo" = "?" ] && echo - || echo "$rpo")" --bytes "$(( ${kb:-0} * 1024 ))" "$@" \
+  --extra-str "path=$path" --extra-str "restore_kind=$kind" --extra-str "restore_point=$restore_point" \
+  --extra "appear=$t_appear" --extra "canary=$t_canary" --extra "manifest=$t_manifest" \
+  --extra-str "payload=$payload" --extra "size_mb=$mb" --extra "code=$code"
 
 exit "$code"

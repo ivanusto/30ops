@@ -168,14 +168,15 @@ class Cli(Tmp):
         r = self.run30("drill", "record", "--file", p, "--kind", "nas-backup", "--label", 'say "hi"\nthere',
                        "--t0", "2026-10-01T13:30:25Z", "--result", "pass", "--rto-s", "1198", "--rpo-s", "-",
                        "--rate-bps", "17825792", "--check", "canary=pass:99s", "--check", "manifest=fail",
-                       "--extra", "code=0", "--extra", "path=/mnt/x", "--extra", "appear=-")
+                       "--extra", "code=0", "--extra", "path=/mnt/x", "--extra", "appear=-",
+                       "--extra-str", "note=5", "--extra-str", "flag=true")
         self.assertEqual(r.returncode, 0, r.stderr)
         rec = json.loads(Path(p).read_text())
         self.assertEqual(rec["label"], 'say "hi"\nthere')
         self.assertEqual((rec["rto_s"], rec["rpo_s"], rec["rate_bps"]), (1198, None, 17825792.0))
         self.assertEqual(rec["checks"], [{"name": "canary", "result": "pass", "detail": "99s"},
                                          {"name": "manifest", "result": "fail"}])
-        self.assertEqual(rec["extra"], {"code": 0, "path": "/mnt/x", "appear": "-"})
+        self.assertEqual(rec["extra"], {"code": 0, "path": "/mnt/x", "appear": "-", "note": "5", "flag": "true"})
         self.assertTrue(rec["tool"].startswith("30ops "))
         self.assertEqual(rec["t1"][-1], "Z")
         bad = self.run30("drill", "record", "--file", p, "--kind", "nas-backup", "--label", "x",

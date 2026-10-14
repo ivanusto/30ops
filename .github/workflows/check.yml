@@ -32,7 +32,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - run: python3 -W error -m unittest discover -s tests/unit -v
       - run: python3 -m unittest tests/test_golden.py -v
-      - run: shellcheck -s sh bin/30ops
+      - run: shellcheck -s sh bin/30ops lib/sh/ops30.sh tests/sh/test_ops30_sh.sh
+      - run: sh tests/sh/test_ops30_sh.sh
 
   collector:
     runs-on: ubuntu-latest

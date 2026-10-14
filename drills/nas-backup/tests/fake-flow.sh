@@ -7,6 +7,9 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")/.." && pwd)
+OPS30_SH=$HERE/../../lib/sh/ops30.sh
+# shellcheck source=../../../lib/sh/ops30.sh
+. "$OPS30_SH"
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 cd "$T"
@@ -91,7 +94,7 @@ rm -rf restored
 row=$("$DRILL" "$T/restored/canary" --label "fake restore" --failed-at "$now" --manifest "$T/m.sha256" --timeout 20 2>/dev/null)
 check "drill passes with manifest and prints an OK row" 'printf "%s" "$row" | grep -q "| OK |"'
 check "drill row carries RPO 300s" 'printf "%s" "$row" | grep -q "| 300s |"'
-check "drill appends JSONL" 'grep -q "\"label\":\"fake restore\"" "$OUT" && grep -q "\"code\":0" "$OUT"'
+check "drill appends a v1 record" '[ "$(ops30_last_field "$OUT" label),$(ops30_last_field "$OUT" result),$(ops30_last_field "$OUT" extra.code),$(ops30_last_field "$OUT" rpo_s)" = "\"fake restore\",\"pass\",0,300" ]'
 wait
 
 # --- restore-drill: the canary lands first and the rest 4 s later, as an

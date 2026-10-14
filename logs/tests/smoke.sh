@@ -26,7 +26,7 @@ n=$(curl -sf http://127.0.0.1:19428/select/logsql/query -d 'query=* | stats coun
 export VL=http://127.0.0.1:19428 ARCHIVE="$tmp/arch" STAGE="$tmp/stage"
 "$here/archive/archive-day.sh" "$day"
 DRILLS="$tmp/drills.jsonl" "$here/archive/verify-archive.sh" "$day" --against-live
-grep -q '"result":"OK"' "$tmp/drills.jsonl" || { echo "drills.jsonl not written"; exit 1; }
+grep -q '^{"v":1,.*"kind":"logs-restore","label":"daily archive verify",.*"result":"pass"' "$tmp/drills.jsonl" || { echo "drills.jsonl v1 record not written"; cat "$tmp/drills.jsonl"; exit 1; }
 
 # WORM stand-in: lock the day like the share does, a rerun must refuse
 # without leaving anything behind

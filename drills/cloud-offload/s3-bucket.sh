@@ -22,9 +22,13 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
+OPS30_SH=${OPS30_SH:-$HERE/../../lib/sh/ops30.sh}
+# shellcheck source=../../lib/sh/ops30.sh
+. "$OPS30_SH"
+OPS30_PROG=s3-bucket
 EP=${S3_ENDPOINT:-https://jp-tyo-1.linodeobjects.com}
-die() { printf 's3-bucket: %s\n' "$*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found"; }
+die() { ops30_die "$@"; }
+need() { ops30_need "$@"; }
 s3() { aws --endpoint-url "$EP" s3api "$@"; }
 
 cmd_create() {

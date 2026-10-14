@@ -1,0 +1,3 @@
+# lib/sh/ops30.sh is sourced with a "# shellcheck source=" path relative to the script
+external-sources=true
+source-path=SCRIPTDIR

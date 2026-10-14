@@ -33,7 +33,7 @@ def cmd_drill_record(a):
     rec = drills.new(a.kind, a.label, a.t0, a.result,
                      t1=a.t1, site=a.site, host=a.host, rto_s=a.rto_s, rpo_s=a.rpo_s, bytes=a.bytes,
                      rate_bps=a.rate_bps, cr=a.cr, rollback_of=a.rollback_of, operator=a.operator,
-                     checks=checks, extra={k: _value(v) for k, v in a.extra})
+                     checks=checks, extra={**{k: _value(v) for k, v in a.extra}, **dict(a.extra_str)})
     try:
         drills.append(a.file, rec)
     except drills.DrillError as e:
@@ -92,7 +92,10 @@ def parser():
     for k in ("--site", "--host", "--cr", "--rollback-of", "--operator"):
         r.add_argument(k, default=None)
     r.add_argument("--check", type=_pair, action="append", default=[], metavar="NAME=RESULT[:DETAIL]")
-    r.add_argument("--extra", type=_pair, action="append", default=[], metavar="KEY=VALUE")
+    r.add_argument("--extra", type=_pair, action="append", default=[], metavar="KEY=VALUE",
+                   help="extra field; numbers, true, false and null keep their JSON type")
+    r.add_argument("--extra-str", type=_pair, action="append", default=[], metavar="KEY=TEXT",
+                   help="extra field that is always a string (paths, notes, error texts)")
     r.set_defaults(f=cmd_drill_record)
 
     m = d.add_parser("migrate", help="print a v1 copy of an old drills.jsonl; the file is not changed")

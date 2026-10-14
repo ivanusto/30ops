@@ -24,8 +24,12 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-die() { printf 'gcs-bucket: %s\n' "$*" >&2; exit 1; }
-need() { command -v "$1" >/dev/null 2>&1 || die "$1 not found"; }
+OPS30_SH=${OPS30_SH:-$HERE/../../lib/sh/ops30.sh}
+# shellcheck source=../../lib/sh/ops30.sh
+. "$OPS30_SH"
+OPS30_PROG=gcs-bucket
+die() { ops30_die "$@"; }
+need() { ops30_need "$@"; }
 
 cmd_create() {
   project=$1; bucket=$2; region=${3:-asia-east1}; retention=${4:-7d}
