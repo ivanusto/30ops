@@ -1,0 +1,56 @@
+# Day 26: the change records as alerts. changes-textfile.py (cron on the
+# collector, from a clone of onprem-changes) writes one change_record per
+# file and the window timestamps. Copy into onprem-metrics prometheus/rules/
+# (that copy is the one Prometheus loads; change both together).
+groups:
+  - name: changes
+    rules:
+      - alert: ChangesTextfileStale
+        expr: time() - changes_textfile_last_run_timestamp > 3600
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "changes-textfile has not run for an hour, change metrics are stale"}
+      # A record whose window has closed but whose status still says the
+      # work is pending or under way: either the record was not updated
+      # (finish it: begin, end, result) or the change ran over its window,
+      # which is exactly what a change window is there to make visible.
+      - alert: ChangeWindowOverrun
+        expr: |
+          (time() - change_window_end_timestamp{status=~"scheduled|in_progress"}) / 60 > 60
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.id }}: window closed {{ $value | printf \"%.0f\" }} minutes ago and the record is still {{ $labels.status }}"}
+      # A change is in progress right now. info, so it lands in the daily
+      # digest next to whatever fired during the window; the record's own
+      # silence handles the alerts it expected.
+      - alert: ChangeInProgress
+        expr: change_record{status="in_progress"} == 1
+        labels: {severity: info}
+        annotations: {summary: "{{ $labels.id }} is in progress ({{ $labels.implementer }}, approved by {{ $labels.approver }})"}
+      # Scheduled with a window that starts within a day: a heads-up in the
+      # digest, so the window is not a surprise to whoever is on call.
+      - alert: ChangeStartsSoon
+        expr: |
+          0 < (change_window_start_timestamp{status="scheduled"} - time()) / 3600 <= 24
+        labels: {severity: info}
+        annotations: {summary: "{{ $labels.id }} starts in {{ $value | printf \"%.0f\" }} hours"}
+      # Day 28: rollback drills. changes-textfile.py reads drills/drills.jsonl
+      # (what drills/drill.sh appends) and writes, per record whose rollback
+      # a drill ran, the last drill's time and result. A done high-risk
+      # record with no drill on file means its rollback section has only
+      # ever been read; info, so it sits in the digest until a drill record
+      # takes it. Low and medium stay out on purpose: the list has to be
+      # short enough that somebody drills it.
+      - alert: ChangeRollbackUndrilled
+        expr: |
+          change_record{status="done",risk="high"} unless on(id) change_rollback_last_drill_timestamp
+        labels: {severity: info}
+        annotations: {summary: "{{ $labels.id }} is done at risk high and its rollback has never been drilled"}
+      # Drilled once is not drilled: the snapshot tool, the compose file or
+      # the API behind a rollback section changes. Quarterly, like Day 18's
+      # cloud drills; only for records that are still done (a rolled_back
+      # or cancelled record has nothing left to roll back).
+      - alert: ChangeRollbackDrillStale
+        expr: |
+          (time() - change_rollback_last_drill_timestamp and on(id) change_record{status="done"}) > 90 * 86400
+        labels: {severity: info}
+        annotations: {summary: "{{ $labels.id }}: rollback last drilled {{ $value | humanizeDuration }} ago, policy is quarterly"}
