@@ -1,0 +1,26 @@
+# The e2e fake NAS and PVE nodes: one sshd in the netns, listening on their
+# addresses. Each address forces the command its host would run, so the
+# collector's ssh client, host key pinning and authorized key are real and
+# the far end is a fake. netns.sh fills in @STATE@ and @REPO@.
+ListenAddress 192.0.2.2:22
+ListenAddress 192.0.2.9:22
+ListenAddress 192.0.2.5:22
+HostKey @STATE@/ssh_host_ed25519_key
+PidFile @STATE@/sshd.pid
+AuthorizedKeysFile @STATE@/authorized_keys/%u
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin prohibit-password
+# with PAM the account check ignores a locked password ("!"), as a real
+# host with key-only logins does; without it sshd refuses locked accounts
+UsePAM yes
+StrictModes no
+LogLevel VERBOSE
+
+# nas-primary: QuTS hero's zpool, zfs and getcfg; adapters/nas/qnap/remote.sh
+# arrives on stdin as `sh -s`
+Match LocalAddress 192.0.2.2
+    ForceCommand env PATH=@REPO@/tests/fakes/qnap/bin:/usr/bin:/bin FAKE_NAS_STATE=@STATE@/nas sh -c "$SSH_ORIGINAL_COMMAND"
+# pve1, pve2: the quorum key may only run pvecm status
+Match LocalAddress 192.0.2.9,192.0.2.5
+    ForceCommand cat @REPO@/tests/fixtures/adapters/pve/quorum/all-votes/001.out

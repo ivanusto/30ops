@@ -1,0 +1,9 @@
+# snmpd for the e2e fake NAS (netns.sh fills in the @...@ values). SNMPv3
+# only, the user and protocols of the e2e site's nas_v3 auth; the QNAP
+# enterprise tree comes from pass-persist.py, IF-MIB and sysName from
+# snmpd itself.
+agentAddress udp:192.0.2.2:161
+createUser @USER@ SHA "@AUTH@" AES "@PRIV@"
+rouser @USER@ priv
+sysName nas-primary
+pass_persist .1.3.6.1.4.1.55062 /usr/bin/python3 @REPO@/tests/e2e/fakes/snmp/pass-persist.py @STATE@/qnap.data
