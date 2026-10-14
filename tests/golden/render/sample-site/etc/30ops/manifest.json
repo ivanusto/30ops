@@ -32,6 +32,13 @@
       "secret": false
     },
     {
+      "path": "etc/30ops/grafana/dashboards/onprem-overview.json",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "etc/30ops/grafana/datasources/prometheus.yml",
       "mode": "0644",
       "owner": "root:root",

@@ -46,7 +46,6 @@ COPIES = {
     "opt/onprem-metrics/prometheus/snmp-auth.yml": ["collector/prometheus/snmp-auth.yml.example"],
     "opt/onprem-metrics/alertmanager/alertmanager.yml": ["collector/alertmanager/alertmanager.yml.example"],
     "opt/onprem-metrics/grafana/provisioning/datasources/prometheus.yml": ["collector/grafana/provisioning/datasources/prometheus.yml"],
-    "opt/onprem-metrics/grafana/provisioning/datasources/victorialogs.yml": ["logs/grafana/datasource-victorialogs.yml"],
     "etc/cron.d/onprem-metrics": ["collector/systemd/collector.cron"],
     "etc/cron.d/onprem-logs": ["logs/collector.cron", "logs/firewall/collector.cron", "logs/audit/collector.cron",
                                "logs/pcap/collector.cron"],

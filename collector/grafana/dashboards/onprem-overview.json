@@ -339,7 +339,7 @@
    "id": 6,
    "type": "stat",
    "title": "熱 soak 秒數",
-   "description": "最熱 thermal zone 連續 ≥ 88 °C 的秒數。守護在 240 s 動手，告警在 180 s，差額涵蓋 textfile 最多 10 s 的舊值、抓取 10 或 20 s 的跳階、規則評估最多 15 s（Day 20 實測）",
+   "description": "最熱 thermal zone 連續 ≥ 88 °C 的秒數。守護在 240 s 動手，告警在 180 s，差額涵蓋 textfile 最多 10 s 的舊值、抓取 10 或 20 s 的跳階、規則評估最多 15 s",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -687,7 +687,7 @@
    "id": 11,
    "type": "timeseries",
    "title": "soak 累積",
-   "description": "Day 19 第六節的曲線。15 s 抓取下一次升溫約 15 個點，守護動手時歸零",
+   "description": "15 s 抓取下一次升溫約 15 個點，守護動手時歸零",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -883,7 +883,7 @@
    "id": 15,
    "type": "bargauge",
    "title": "儲存池使用率",
-   "description": "zpool list 的 CAP。80 % 是 ZFS 碎片化的線（Day 14），90 % 以上寫入會明顯變慢",
+   "description": "zpool list 的 CAP。80 % 轉橘、90 % 轉紅，ZFS 超過八成後碎片增加，九成以上寫入會明顯變慢",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -1341,7 +1341,7 @@
    "id": 19,
    "type": "table",
    "title": "快照",
-   "description": "每個資料集的快照數、最新快照距今天數、快照佔用。:init: 不計。Day 17 的政策是每日快照，超過 2 天 NasSnapshotStale 會響",
+   "description": "每個資料集的快照數、最新快照距今天數、快照佔用。:init: 不計。快照應每日一次，過舊時 NasSnapshotStale 會響",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -1494,7 +1494,7 @@
    "id": 20,
    "type": "timeseries",
    "title": "NAS 溫度",
-   "description": "SNMP 的 CPU 與系統溫度，有快取，看趨勢不看絕對值（Day 19）",
+   "description": "SNMP 的 CPU 與系統溫度，有快取，看趨勢不看絕對值",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -1556,7 +1556,7 @@
    "id": 21,
    "type": "timeseries",
    "title": "NAS 網路",
-   "description": "IF-MIB 計數，只看實體埠與 bond。Day 14 量到的碟組上限約 666 MB/s，網路不是瓶頸時應低於它",
+   "description": "IF-MIB 計數，只看實體埠與 bond",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -1790,7 +1790,7 @@
    "id": 26,
    "type": "stat",
    "title": "法定人數",
-   "description": "pvecm status 的 Quorate 旗標。0 時有 HA 資源的節點約 60 秒後自己 fence（Day 15）",
+   "description": "pvecm status 的 Quorate 旗標。0 時有 HA 資源的節點約 60 秒後自己 fence",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -1855,7 +1855,7 @@
    "id": 27,
    "type": "stat",
    "title": "在場票數",
-   "description": "Total votes。3 正常，2 是 Day 15 check.sh 的 rc=1，再掉任何一個就失去法定人數",
+   "description": "Total votes。3 正常，2 是 checks/qdevice/check.sh 的 rc=1，再掉任何一個就失去法定人數",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -2257,7 +2257,7 @@
    "id": 32,
    "type": "table",
    "title": "儲存",
-   "description": "各節點看到的資料存放區。NFS 在 NAS 重開時會變不可用，約 8 分鐘（Day 15 演練 1）",
+   "description": "各節點看到的資料存放區。NFS 在 NAS 重開時會變不可用，實驗場域演練時約 8 分鐘",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -2604,7 +2604,7 @@
   {
    "id": 37,
    "type": "row",
-   "title": "還原演練（Day 16 至 18）",
+   "title": "還原演練",
    "collapsed": false,
    "gridPos": {
     "x": 0,
@@ -2693,7 +2693,7 @@
    "id": 39,
    "type": "table",
    "title": "最近一次演練",
-   "description": "結果、RTO、RPO、速率。RTO 目標 900 s 只對 pve 演練（Day 16 量到 569 s），nas 與 cloud 的標籤含上傳與整個資料夾回復，量級不同",
+   "description": "結果、RTO、RPO、速率。RTO 目標 900 s 只對 pve 演練，nas 與 cloud 的標籤含上傳與整個資料夾回復，量級不同",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -3016,7 +3016,7 @@
   {
    "id": 41,
    "type": "row",
-   "title": "資產生命週期（Day 25）",
+   "title": "資產生命週期",
    "collapsed": false,
    "gridPos": {
     "x": 0,
@@ -3886,7 +3886,7 @@
    "id": 52,
    "type": "bargauge",
    "title": "textfile 距上次執行",
-   "description": "Day 19 第四節。舊的 .prom 檔會讓數字看起來正常，這一格變橘就是靜默失效。drills 與 changes 每 15 分鐘一次，其他每分鐘或更快",
+   "description": "舊的 .prom 檔會讓數字看起來正常，這一格變橘就是靜默失效。drills 與 changes 每 15 分鐘一次，其他每分鐘或更快",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"

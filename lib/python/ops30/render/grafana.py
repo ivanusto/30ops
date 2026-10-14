@@ -1,17 +1,28 @@
-"""Grafana datasource provisioning: Prometheus and Alertmanager always,
-VictoriaLogs when the site collects logs (it used to be dropped in by hand
-from logs/grafana/)."""
+"""Grafana: datasource provisioning (Prometheus and Alertmanager always,
+VictoriaLogs when the site collects logs) and the dashboard, drawn by
+collector/grafana/build-dashboard.py with the site's thresholds. The
+dashboard provider (collector/grafana/provisioning/dashboards/) is product
+and is mounted from the checkout."""
+import os
+
 from .. import site as S, yamlio
 from . import Output, header
 from .prometheus import logs_enabled
 
-D = "etc/30ops/grafana/datasources"
+G = "etc/30ops/grafana"
+SRC = os.path.join(S.REPO, "collector", "grafana")
+
+
+def dashboard(site):
+    mod = S._load_script(os.path.join(SRC, "build-dashboard.py"), "_ops30_dashboard")
+    return mod.render(S.thresholds(site))
 
 
 def render(site, sha):
-    out = {f"{D}/prometheus.yml": Output(header(sha) + yamlio.dumps(
-        yamlio.load(f"{S.REPO}/collector/grafana/provisioning/datasources/prometheus.yml")))}
+    ds = os.path.join(SRC, "provisioning", "datasources")
+    out = {f"{G}/datasources/prometheus.yml": Output(header(sha) + yamlio.dumps(yamlio.load(f"{ds}/prometheus.yml")))}
     if logs_enabled(site):
-        out[f"{D}/victorialogs.yml"] = Output(header(sha) + yamlio.dumps(
-            yamlio.load(f"{S.REPO}/logs/grafana/datasource-victorialogs.yml")))
+        out[f"{G}/datasources/victorialogs.yml"] = Output(
+            header(sha) + yamlio.dumps(yamlio.load(f"{ds}/victorialogs.yml")))
+    out[f"{G}/dashboards/onprem-overview.json"] = Output(dashboard(site))
     return out

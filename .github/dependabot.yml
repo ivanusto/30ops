@@ -7,5 +7,5 @@ updates:
     directories: [/collector, /logs]
     schedule: {interval: weekly}
   - package-ecosystem: docker
-    directory: /logs/grafana
+    directory: /collector/grafana
     schedule: {interval: weekly}

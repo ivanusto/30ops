@@ -1,6 +1,5 @@
-# Drop into onprem-metrics/grafana/provisioning/datasources/. The plugin
-# comes with the image built by grafana/build.sh (pinned base digest and
-# plugin sha256), not from GF_INSTALL_PLUGINS at container start.
+# The plugin is baked into the 30ops Grafana image (collector/grafana/Dockerfile).
+# 30ops render installs this file only when the site collects logs.
 apiVersion: 1
 datasources:
   - name: VictoriaLogs

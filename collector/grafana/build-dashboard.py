@@ -2,26 +2,42 @@
 """Build grafana/dashboards/onprem-overview.json.
 
 One dashboard, seven rows, each row answers one question an operator asks
-when paged at 03:00. The JSON is generated so thresholds stay in one place
-and match prometheus/rules/thresholds.yml: edit this file, run it, commit
-both. Grafana loads the JSON through provisioning with allowUiUpdates=false.
+when paged at 03:00. The JSON is generated so the threshold lines come
+from the same place as the alert rules: collector/prometheus/thresholds.yml.
+The committed JSON uses the defaults; `30ops render` calls render() with a
+site's alerting.thresholds and writes /etc/30ops/grafana/dashboards/.
+Grafana loads the JSON through provisioning with allowUiUpdates=false.
 
     ./build-dashboard.py            # writes dashboards/onprem-overview.json
     ./build-dashboard.py --check    # exit 1 if the JSON on disk is stale
 """
 import json, os, sys
 
-DS = {"type": "prometheus", "uid": "prometheus"}
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboards", "onprem-overview.json")
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "lib", "python"))
+from ops30 import site as ops30_site  # noqa: E402  (reads thresholds.yml, needs PyYAML)
 
-# Thresholds shared with prometheus/rules/thresholds.yml
-SOAK_WARN, SOAK_BUDGET = 180, 240
-MEM_WARN, MEM_CRIT = 6 * 1024 ** 3, 3 * 1024 ** 3
-POOL_WARN, POOL_CRIT = 80, 90
-DISK_TEMP_WARN = 50
-DRILL_STALE_DAYS, CLOUD_DRILL_STALE_DAYS = 30, 90
-EOL_WARN_DAYS, EOL_CRIT_DAYS = 90, 30   # prometheus/rules/eol.yml (Day 25)
-RTO_TARGET = 900
+DS = {"type": "prometheus", "uid": "prometheus"}
+OUT = os.path.join(HERE, "dashboards", "onprem-overview.json")
+
+SOAK_BUDGET = 240   # the gb10-ops guard acts here; not a site setting
+
+
+def use(th):
+    """Set the thresholds build() draws: key -> value, as in thresholds.yml."""
+    global SOAK_WARN, MEM_WARN, MEM_CRIT, POOL_WARN, POOL_CRIT, DISK_TEMP_WARN
+    global DRILL_STALE_DAYS, CLOUD_DRILL_STALE_DAYS, EOL_WARN_DAYS, EOL_CRIT_DAYS, RTO_TARGET
+    SOAK_WARN = th["gb10_soak_warn_s"]
+    MEM_WARN, MEM_CRIT = th["gb10_mem_warn_gib"] * 1024 ** 3, th["gb10_mem_crit_gib"] * 1024 ** 3
+    POOL_WARN, POOL_CRIT = th["nas_pool_warn_pct"], th["nas_pool_crit_pct"]
+    DISK_TEMP_WARN = th["nas_disk_temp_c"]
+    DRILL_STALE_DAYS, CLOUD_DRILL_STALE_DAYS = th["drill_max_age_days"], th["cloud_drill_max_age_days"]
+    EOL_WARN_DAYS, EOL_CRIT_DAYS = th["eol_warn_days"], th["eol_crit_days"]
+    RTO_TARGET = th["drill_rto_target_s"]
+
+
+DEFAULTS = {k: v["default"] for k, v in ops30_site.threshold_catalogue().items()}
+use(DEFAULTS)
 
 # Labels no table needs to show
 NOISE = ("Time", "__name__", "job", "instance", "site", "role", "hw")
@@ -179,6 +195,7 @@ UPDOWN = vmap((1, "UP", "green"), (0, "DOWN", "red"))
 
 
 def build():
+    _id[0] = 0
     P = []
     y = 0
 
@@ -203,7 +220,7 @@ def build():
     P.append(row("GPU 節點（DGX Spark）", y)); y += 1
     P.append(stat("熱 soak 秒數", 0, y, 6, 5, "gb10_soak_seconds", "{{node}}", unit="s",
                   thresholds=steps((None, "green"), (SOAK_WARN, "orange"), (SOAK_BUDGET, "red")),
-                  desc=f"最熱 thermal zone 連續 ≥ 88 °C 的秒數。守護在 {SOAK_BUDGET} s 動手，告警在 {SOAK_WARN} s，差額涵蓋 textfile 最多 10 s 的舊值、抓取 10 或 20 s 的跳階、規則評估最多 15 s（Day 20 實測）"))
+                  desc=f"最熱 thermal zone 連續 ≥ 88 °C 的秒數。守護在 {SOAK_BUDGET} s 動手，告警在 {SOAK_WARN} s，差額涵蓋 textfile 最多 10 s 的舊值、抓取 10 或 20 s 的跳階、規則評估最多 15 s"))
     P.append(stat("可用記憶體", 6, y, 6, 5, "gb10_mem_available_bytes", "{{node}}", unit="bytes",
                   thresholds=steps((None, "red"), (MEM_CRIT, "orange"), (MEM_WARN, "green")),
                   desc="MemAvailable。統一記憶體看不到 GPU 配置，這個數掉到 6 GiB 以下 hw-sample 會警告，3 GiB 以下動手（gb10-ops）"))
@@ -221,7 +238,7 @@ def build():
     P.append(ts("soak 累積", 12, y, 12, 8,
                 [target("gb10_soak_seconds", "{{node}}")],
                 unit="s", lines=((SOAK_WARN, "orange"), (SOAK_BUDGET, "red")), minv=0, maxv=300,
-                desc="Day 19 第六節的曲線。15 s 抓取下一次升溫約 15 個點，守護動手時歸零"))
+                desc="15 s 抓取下一次升溫約 15 個點，守護動手時歸零"))
     y += 8
     P.append(ts("GPU 功耗", 0, y, 12, 6, [target("gb10_gpu_power_watts", "{{node}}")], unit="watt"))
     P.append(ts("GPU 使用率", 12, y, 12, 6, [target("gb10_gpu_utilization_percent", "{{node}}")], unit="percent", minv=0, maxv=100))
@@ -232,7 +249,7 @@ def build():
     P.append(panel("bargauge", "儲存池使用率", 0, y, 8, 7,
                    [target("nas_zpool_capacity_percent", "{{nas}} {{pool}}", instant=True)], unit="percent",
                    thresholds=steps((None, "green"), (POOL_WARN, "orange"), (POOL_CRIT, "red")),
-                   desc="zpool list 的 CAP。80 % 是 ZFS 碎片化的線（Day 14），90 % 以上寫入會明顯變慢",
+                   desc=f"zpool list 的 CAP。{POOL_WARN} % 轉橘、{POOL_CRIT} % 轉紅，ZFS 超過八成後碎片增加，九成以上寫入會明顯變慢",
                    options={"displayMode": "lcd", "orientation": "horizontal", "showUnfilled": True,
                             "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
                             "minVizHeight": 16, "maxVizHeight": 32}, fieldConfig={"min": 0, "max": 100}))
@@ -262,21 +279,21 @@ def build():
                    [target("nas_zfs_snapshots", instant=True, fmt="table"),
                     target("(time() - nas_zfs_snapshot_newest_timestamp) / 86400", instant=True, fmt="table"),
                     target("nas_zfs_snapshot_used_bytes", instant=True, fmt="table")],
-                   desc="每個資料集的快照數、最新快照距今天數、快照佔用。:init: 不計。Day 17 的政策是每日快照，超過 2 天 NasSnapshotStale 會響",
+                   desc="每個資料集的快照數、最新快照距今天數、快照佔用。:init: 不計。快照應每日一次，過舊時 NasSnapshotStale 會響",
                    rename={"nas": "NAS", "dataset": "資料集", "Value #A": "快照數", "Value #B": "最新距今", "Value #C": "佔用"},
                    overrides=[cell("最新距今", steps((None, "green"), (2, "orange"), (7, "red")), "d"),
                               col("佔用", unit="bytes")]))
     y += 8
     P.append(ts("NAS 溫度", 0, y, 8, 6,
                 [target("qnap_cpu_temperature_celsius", "cpu {{nas}}"), target("qnap_system_temperature_celsius", "system {{nas}}")],
-                unit="celsius", desc="SNMP 的 CPU 與系統溫度，有快取，看趨勢不看絕對值（Day 19）"))
+                unit="celsius", desc="SNMP 的 CPU 與系統溫度，有快取，看趨勢不看絕對值"))
     # Physical ports and bonds only: QuTS hero also lists every docker veth,
     # bridge and VM tap, 50+ series on a busy NAS.
     nics = 'ifName=~"eth[0-9]+|bond[0-9]+"'
     P.append(ts("NAS 網路", 8, y, 8, 6,
                 [target(f'rate(ifHCInOctets{{{nics}}}[5m]) * 8', "in {{nas}} {{ifName}}"),
                  target(f'rate(ifHCOutOctets{{{nics}}}[5m]) * 8', "out {{nas}} {{ifName}}")],
-                unit="bps", desc="IF-MIB 計數，只看實體埠與 bond。Day 14 量到的碟組上限約 666 MB/s，網路不是瓶頸時應低於它"))
+                unit="bps", desc="IF-MIB 計數，只看實體埠與 bond"))
     P.append(ts("風扇", 16, y, 8, 6, [target("qnap_fan_speed_rpm", "{{nas}} fan {{sysFanIndex}}")], unit="rotrpm"))
     y += 6
     P.append(ts("記憶體碎裂（Normal zone 512 KiB 以上的空閒區塊數）", 0, y, 16, 7,
@@ -291,17 +308,17 @@ def build():
     P.append(row("虛擬化（Proxmox VE）", y)); y += 1
     P.append(stat("法定人數", 0, y, 4, 5, "pve_quorum_quorate", "{{cluster}}",
                   thresholds=steps((None, "red"), (1, "green")), decimals=0,
-                  desc="pvecm status 的 Quorate 旗標。0 時有 HA 資源的節點約 60 秒後自己 fence（Day 15）"))
+                  desc="pvecm status 的 Quorate 旗標。0 時有 HA 資源的節點約 60 秒後自己 fence"))
     P.append(stat("在場票數", 4, y, 4, 5, "pve_quorum_total_votes", "{{cluster}}",
                   thresholds=steps((None, "red"), (2, "orange"), (3, "green")), decimals=0,
-                  desc="Total votes。3 正常，2 是 Day 15 check.sh 的 rc=1，再掉任何一個就失去法定人數"))
+                  desc="Total votes。3 正常，2 是 checks/qdevice/check.sh 的 rc=1，再掉任何一個就失去法定人數"))
     P.append(stat("QDevice 票", 8, y, 4, 5, "pve_quorum_qdevice_votes", "{{cluster}}",
                   thresholds=steps((None, "orange"), (1, "green")), decimals=0,
                   desc="0 多半是 NAS 重開中，Virtualization Station 上的 qnetd 還沒回來，或節點上的 corosync-qdevice 停了"))
     P.append(stat("節點", 12, y, 12, 5, pve('pve_up{id=~"node/.*"}'), "{{id}}",
                   thresholds=steps((None, "red"), (1, "green")), decimals=0))
     y += 5
-    # The stats above say "now"; this says "when". Change windows (Day 26)
+    # The stats above say "now"; this says "when". Change windows
     # are drawn on it as shaded spans, so a QDevice dip inside a window
     # reads as planned and one outside it does not.
     P.append(ts("票數", 0, y, 24, 6,
@@ -319,7 +336,7 @@ def build():
                                                          other=(None, "orange")))]))
     P.append(table("儲存", 8, y, 8, 8,
                    [target(pve('pve_up{id=~"storage/.*"}'), instant=True, fmt="table")],
-                   desc="各節點看到的資料存放區。NFS 在 NAS 重開時會變不可用，約 8 分鐘（Day 15 演練 1）",
+                   desc="各節點看到的資料存放區。NFS 在 NAS 重開時會變不可用，實驗場域演練時約 8 分鐘",
                    rename={"id": "儲存", "Value": "狀態"},
                    overrides=[cell("狀態", mappings=vmap((1, "可用", "green"), (0, "不可用", "red")), width=90)]))
     P.append(ts("執行中的 VM 數", 16, y, 8, 8,
@@ -339,7 +356,7 @@ def build():
     y += 6
 
     # ---- Row 4: drills ---------------------------------------------------
-    P.append(row("還原演練（Day 16 至 18）", y)); y += 1
+    P.append(row("還原演練", y)); y += 1
     P.append(bars("距上次成功（天）", 0, y, 10, 10,
                   "(time() - drill_last_success_timestamp) / 86400", "{{source}} {{label}}", unit="d", decimals=1,
                   thresholds=steps((None, "green"), (DRILL_STALE_DAYS, "orange"), (CLOUD_DRILL_STALE_DAYS, "red")),
@@ -350,7 +367,7 @@ def build():
                     target("drill_last_rto_seconds", instant=True, fmt="table"),
                     target("drill_last_rpo_seconds", instant=True, fmt="table"),
                     target("drill_last_rate_mib_per_second", instant=True, fmt="table")],
-                   desc=f"結果、RTO、RPO、速率。RTO 目標 {RTO_TARGET} s 只對 pve 演練（Day 16 量到 569 s），nas 與 cloud 的標籤含上傳與整個資料夾回復，量級不同",
+                   desc=f"結果、RTO、RPO、速率。RTO 目標 {RTO_TARGET} s 只對 pve 演練，nas 與 cloud 的標籤含上傳與整個資料夾回復，量級不同",
                    rename={"source": "來源", "label": "演練", "Value #A": "結果", "Value #B": "RTO", "Value #C": "RPO", "Value #D": "速率"},
                    order=("來源", "演練", "結果", "RTO", "RPO", "速率"),
                    overrides=[col("來源", width=70),
@@ -363,8 +380,8 @@ def build():
                 desc="每次演練寫入 drills.jsonl 後 15 分鐘內更新。走勢往上就是還原在變慢"))
     y += 7
 
-    # ---- Row 5: asset lifecycle (Day 25) ----------------------------------
-    P.append(row("資產生命週期（Day 25）", y)); y += 1
+    # ---- Row 5: asset lifecycle ----------------------------------------
+    P.append(row("資產生命週期", y)); y += 1
     P.append(stat("沒有日期的資產", 0, y, 4, 4, "count(asset_eol_unknown == 1) or vector(0)", "",
                   thresholds=steps((None, "green"), (1, "orange")),
                   desc="eol/assets.tsv 裡日期是 ? 的列。廠商沒公布或還沒查。每一列都是一個 AssetEolUnknown",
@@ -419,7 +436,7 @@ def build():
                   thresholds=steps((None, "green"), (120, "orange"), (600, "red")),
                   overrides=[{"matcher": {"id": "byRegexp", "options": "(drills|changes).*"},
                               "properties": [{"id": "thresholds", "value": steps((None, "green"), (1800, "orange"), (7200, "red"))}]}],
-                  desc="Day 19 第四節。舊的 .prom 檔會讓數字看起來正常，這一格變橘就是靜默失效。drills 與 changes 每 15 分鐘一次，其他每分鐘或更快"))
+                  desc="舊的 .prom 檔會讓數字看起來正常，這一格變橘就是靜默失效。drills 與 changes 每 15 分鐘一次，其他每分鐘或更快"))
     y += 8
 
     return {
@@ -433,7 +450,7 @@ def build():
             {"name": "critical 告警", "datasource": DS, "enable": False, "iconColor": "red",
              "expr": 'ALERTS{alertstate="firing",severity="critical"}', "step": "60s",
              "titleFormat": "{{alertname}}", "textFormat": "{{summary}}"},
-            # Day 26: change-mark.sh posts org annotations tagged "change";
+            # change-mark.sh posts org annotations tagged "change";
             # without a tag query no panel would show them.
             {"name": "變更單", "datasource": {"type": "grafana", "uid": "-- Grafana --"}, "enable": True,
              "iconColor": "rgba(150, 150, 150, 0.6)",
@@ -467,12 +484,25 @@ def lint(dash):
     return errs
 
 
-def main():
-    dash = build()
-    doc = json.dumps(dash, ensure_ascii=False, indent=1) + "\n"
+def render(th=None):
+    """The dashboard JSON (text) drawn with thresholds th (default: the
+    defaults); ValueError if the layout does not lint."""
+    use(th or DEFAULTS)
+    try:
+        dash = build()
+    finally:
+        use(DEFAULTS)
     errs = lint(dash)
     if errs:
-        sys.exit("\n".join(errs))
+        raise ValueError("\n".join(errs))
+    return json.dumps(dash, ensure_ascii=False, indent=1) + "\n"
+
+
+def main():
+    try:
+        doc = render()
+    except ValueError as e:
+        sys.exit(str(e))
     if "--check" in sys.argv:
         cur = open(OUT, encoding="utf-8").read() if os.path.exists(OUT) else ""
         if cur != doc:
@@ -482,7 +512,7 @@ def main():
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     with open(OUT, "w", encoding="utf-8") as f:
         f.write(doc)
-    print(f"wrote {OUT} ({len(dash['panels'])} panels)")
+    print(f"wrote {OUT} ({len(json.loads(doc)['panels'])} panels)")
 
 
 if __name__ == "__main__":
