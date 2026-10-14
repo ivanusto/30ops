@@ -36,6 +36,7 @@ fill() { sed -e "s|@STATE@|$STATE|g" -e "s|@REPO@|$REPO|g" "$@"; }
 up() {
   [ "$(id -u)" = 0 ] || die "run as root"
   ip netns list | grep -qw "$NS" && die "$NS exists; run down first"
+  rm -rf "$STATE"
   mkdir -p "$STATE/nas" "$STATE/authorized_keys" "$STATE/snmp"
   chmod 755 "$STATE" "$STATE/authorized_keys"
 
