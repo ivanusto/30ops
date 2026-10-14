@@ -1,0 +1,51 @@
+# /etc/cron.d/onprem-logs on the collector host. cron uses the host's local
+# time and the collector runs Asia/Taipei, so 08:10 is 00:10 UTC: the UTC day
+# being archived closed ten minutes earlier. The verify result is appended to
+# drills.jsonl, which onprem-metrics' drills-textfile.py turns into metrics.
+# ARCHIVE_SKIP keeps the edge FortiGate's traffic log out of the WORM share
+# (Day 22): it stays 90 days in the hot tier, and the manifest records the
+# day's hit count as a "# skipped" line. Use the FortiGate's devname.
+10 8 * * * metrics VL=http://127.0.0.1:9428 ARCHIVE=/mnt/worm/logs ARCHIVE_SKIP=syslog-fgt-edge /opt/onprem-logs/archive/archive-day.sh >> /var/log/onprem-logs/archive.log 2>&1
+20 8 * * * metrics VL=http://127.0.0.1:9428 ARCHIVE=/mnt/worm/logs DRILLS=/srv/drills/onprem-logs/drills.jsonl /opt/onprem-logs/archive/verify-archive.sh "$(date -u -d yesterday +\%Y-\%m-\%d)" --against-live >> /var/log/onprem-logs/verify.log 2>&1
+# add to /etc/cron.d/onprem-logs on the collector
+# FW_EXPECT: walls that must drop something every hour, as source:host
+# (FwSilent). host is the name VictoriaLogs shows for the device; for the
+# FortiGate that is its devname. The collector's own DOCKER-USER chain
+# normally drops nothing, so it is not listed.
+# The FortiGate's traffic log is kept out of the WORM archive with
+# ARCHIVE_SKIP on the archive line in ../collector.cron (see retention.md).
+FW_EXPECT=fortigate:fgt-edge
+*/10 * * * * metrics VL=http://127.0.0.1:9428 /opt/onprem-logs/firewall/fw-report.py --window 1h --baseline 7d --textfile /var/lib/node_exporter/textfile/fw.prom --out /dev/null >> /var/log/onprem-logs/fw-report.log 2>&1
+15 8 * * 1  metrics VL=http://127.0.0.1:9428 /opt/onprem-logs/firewall/fw-report.py --window 7d --baseline 30d --out /srv/reports/fw-$(date +\%F).md >> /var/log/onprem-logs/fw-report.log 2>&1
+
+# Day 24: acceptable-use review of the edge FortiGate's web-filter log.
+# AUP_EXPECT names the FortiGate(s) that must log web-filter lines; written
+# as 0 when silent (AupSilent). AUP_URGENT overrides the paging categories.
+AUP_EXPECT=fgt-edge
+*/10 * * * * metrics VL=http://127.0.0.1:9428 /opt/onprem-logs/firewall/aup-report.py --window 1h --textfile /var/lib/node_exporter/textfile/aup.prom --out /dev/null >> /var/log/onprem-logs/aup-report.log 2>&1
+25 8 * * 1  metrics VL=http://127.0.0.1:9428 /opt/onprem-logs/firewall/aup-report.py --window 7d --out /srv/reports/aup-$(date +\%F).md >> /var/log/onprem-logs/aup-report.log 2>&1
+# add to /etc/cron.d/onprem-logs on the collector (Day 27). The clone of
+# onprem-changes that Day 26's cron keeps in /opt/onprem-changes supplies the
+# change windows; CHANGES_DIR overrides the path. AUDIT_QUIET_FROM lists the
+# admin workstations (space separated addresses): their SSH logins, the sudo
+# in those login sessions and their FortiGate GUI logins stay in the reports,
+# marked, and are left out of audit_unattributed, so AuditUnattributedActions
+# does not stay on for every working hour. Use the addresses as the nodes see
+# them, and do not list an address that also stands for other people (a
+# subnet router that SNATs).
+AUDIT_QUIET_FROM="192.0.2.10 192.0.2.11"
+*/10 * * * * metrics VL=http://127.0.0.1:9428 CHANGES_DIR=/opt/onprem-changes/changes /opt/onprem-logs/audit/audit-report.py --window 1h --textfile /var/lib/node_exporter/textfile/audit.prom --out /dev/null >> /var/log/onprem-logs/audit-report.log 2>&1
+45 8 * * 1  metrics VL=http://127.0.0.1:9428 CHANGES_DIR=/opt/onprem-changes/changes /opt/onprem-logs/audit/audit-report.py --window 7d --out /srv/reports/audit-$(date +\%F).md >> /var/log/onprem-logs/audit-report.log 2>&1
+# add to /etc/cron.d/onprem-logs on the collector (Day 23). Captures are
+# pulled hourly at :40 from every node's done/ and published to the WORM
+# share in one batch per node; the batch is verified at :55 with
+# --against-index, result into drills.jsonl like the log archive. :55 and
+# not :50 because the share locks a file only after its ten-minute lock delay,
+# and until then rm and >> still succeed; the verify that counts is the one
+# that reads the batch after it is locked.
+# PCAP_NODES: <name>=<rsync source>; the node side forces rrsync -ro on
+# /var/lib/pcap/done, so the path after the colon is "/". Use addresses
+# when the collector cannot resolve the node names. SSH_KEY is under the
+# metrics account's home (getent passwd metrics; /var/lib/metrics here).
+40 * * * * metrics PCAP_NODES="spark01=pcap@192.0.2.131:/ spark02=pcap@192.0.2.141:/ pve1=pcap@192.0.2.9:/ pve2=pcap@192.0.2.5:/" SSH_KEY=/var/lib/metrics/.ssh/id_pcap ARCHIVE=/mnt/worm/pcap /opt/onprem-logs/pcap/pcap-pull.sh >> /var/log/onprem-logs/pcap-pull.log 2>&1
+55 * * * * metrics ARCHIVE=/mnt/worm/pcap DRILLS=/srv/drills/onprem-logs/drills.jsonl /opt/onprem-logs/pcap/verify-pcap.sh --latest --against-index >> /var/log/onprem-logs/pcap-verify.log 2>&1

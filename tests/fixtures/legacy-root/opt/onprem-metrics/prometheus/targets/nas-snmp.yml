@@ -1,0 +1,4 @@
+- targets: ["192.0.2.2"]
+  labels: {nas: primary}
+- targets: ["192.0.2.22"]
+  labels: {nas: secondary}

@@ -1,7 +1,10 @@
-"""The 30ops command. v0.2 has `drill record` and `drill migrate`; validate,
-render and the rest arrive with site.yaml in v0.3."""
+"""The 30ops command: validate, render, import-legacy (v0.3) and drill
+record / migrate (v0.2). install, doctor and readiness arrive later."""
 import argparse
+import difflib
 import json
+import os
+import shutil
 import sys
 
 from . import drills, jsonl, rfc3339, version
@@ -55,6 +58,120 @@ def cmd_drill_migrate(a):
     return 0
 
 
+def _site(a):
+    """(resolved site, sha256, errors printed): None when site.yaml is unusable."""
+    from . import site
+    from .render import site_sha
+    try:
+        doc = site.load(a.site)
+    except site.SiteError as e:
+        print(f"30ops: {e}", file=sys.stderr)
+        return None
+    base = os.path.dirname(os.path.abspath(a.site))
+    errs, warns = site.validate(doc, base, strict=getattr(a, "strict", False), secrets=getattr(a, "secrets", False))
+    for w in warns:
+        print(f"{a.site}: warning: {w}", file=sys.stderr)
+    for e in errs:
+        print(f"{a.site}: error: {e}", file=sys.stderr)
+    if errs:
+        return None
+    return site.resolve(doc, base), site_sha(a.site)
+
+
+def cmd_validate(a):
+    r = _site(a)
+    if r is None:
+        return 1
+    print(f"{a.site}: ok ({len(r[0]['hosts'])} hosts)")
+    return 0
+
+
+def _installed_diff(tree, root):
+    from .legacy import _mask
+    from . import yamlio
+    n = 0
+    for p, o in tree.items():
+        dst = os.path.join(root, p)
+        try:
+            with open(dst, encoding="utf-8") as f:
+                old = f.read()
+        except OSError:
+            print(f"30ops render --diff: {dst} is not installed")
+            n += 1
+            continue
+        if o.secret:
+            same = _mask(yamlio.loads(old, dst)) == _mask(yamlio.loads(o.text, p))
+            if not same:
+                print(f"30ops render --diff: {dst} differs (secret values not shown)")
+                n += 1
+            continue
+        if old != o.text:
+            sys.stdout.writelines(difflib.unified_diff(old.splitlines(True), o.text.splitlines(True),
+                                                       f"installed/{p}", f"rendered/{p}"))
+            n += 1
+    return n
+
+
+def cmd_render(a):
+    from . import render
+    r = _site(a)
+    if r is None:
+        return 1
+    tree = render.render(*r)
+    rc = 0
+    if a.out:
+        render.write(tree, a.out)
+        print(f"30ops render: {len(tree)} files under {a.out}", file=sys.stderr)
+    if a.diff:
+        n = _installed_diff(tree, a.root)
+        if n:
+            print(f"30ops render --diff: {n} file(s) differ from {a.root}", file=sys.stderr)
+            rc = 1
+    if a.compare_legacy:
+        from . import legacy
+        diffs = legacy.compare(tree, a.compare_legacy, r[0])
+        for d in diffs:
+            print(d)
+        print(f"30ops render --compare-legacy: {len(diffs)} difference(s) from {a.compare_legacy}", file=sys.stderr)
+        rc = rc or (1 if diffs else 0)
+    if not (a.out or a.diff or a.compare_legacy):
+        for p, o in tree.items():
+            print(f"{o.mode:04o} {o.owner:<16} {p}")
+    return rc
+
+
+def cmd_import_legacy(a):
+    from . import legacy_import, site
+    if not os.path.isdir(a.src):
+        print(f"30ops import-legacy: {a.src} is not a directory", file=sys.stderr)
+        return 2
+    doc, todo, assets = legacy_import.draft(a.src)
+    text = legacy_import.dumps(doc, todo, a.src)
+    if not a.output:
+        sys.stdout.write(text)
+        base = None
+    else:
+        if os.path.exists(a.output) and not a.force:
+            print(f"30ops import-legacy: {a.output} exists (--force to overwrite)", file=sys.stderr)
+            return 2
+        base = os.path.dirname(os.path.abspath(a.output))
+        os.makedirs(base, exist_ok=True)
+        with open(a.output, "w", encoding="utf-8") as f:
+            f.write(text)
+        if assets:
+            dst = os.path.join(base, "assets.tsv")
+            if os.path.exists(dst) and not a.force:
+                print(f"30ops import-legacy: kept the existing {dst}", file=sys.stderr)
+            else:
+                shutil.copyfile(os.path.join(a.src, assets), dst)
+    print(f"30ops import-legacy: {len(doc['hosts'])} hosts, {len(todo)} TODO line(s)", file=sys.stderr)
+    if base:
+        errs, warns = site.validate(site.load(a.output), base)
+        for e in errs + warns:
+            print(f"{a.output}: {e}", file=sys.stderr)
+    return 0
+
+
 def _nonneg_int(s):
     if s in ("", "-", "null"):
         return None
@@ -77,6 +194,28 @@ def parser():
     ap = argparse.ArgumentParser(prog="30ops", description="30ops on-prem operations platform")
     ap.add_argument("--version", action="version", version=f"30ops {version()}")
     sub = ap.add_subparsers(dest="cmd", required=True)
+    site_default = os.environ.get("OPS30_SITE", "site.yaml")
+
+    v = sub.add_parser("validate", help="check site.yaml")
+    v.add_argument("--site", default=site_default, help="default ./site.yaml or $OPS30_SITE")
+    v.add_argument("--strict", action="store_true", help="warnings are errors")
+    v.add_argument("--secrets", action="store_true", help="also check the credentials files (on the collector)")
+    v.set_defaults(f=cmd_validate)
+
+    r = sub.add_parser("render", help="generate the configuration from site.yaml")
+    r.add_argument("--site", default=site_default, help="default ./site.yaml or $OPS30_SITE")
+    r.add_argument("--out", help="write the files under this directory")
+    r.add_argument("--diff", action="store_true", help="compare with the installed files; 1 if any differs")
+    r.add_argument("--root", default="/", help="where --diff looks for the installed files (default /)")
+    r.add_argument("--compare-legacy", metavar="DIR",
+                   help="compare with an old collector's files (a fetch-legacy.sh snapshot); 1 if any differs")
+    r.set_defaults(f=cmd_render)
+
+    i = sub.add_parser("import-legacy", help="draft a site.yaml from an old collector's files")
+    i.add_argument("--from", dest="src", required=True, metavar="DIR", help="snapshot from scripts/fetch-legacy.sh")
+    i.add_argument("-o", "--output", help="write here (and assets.tsv next to it); default stdout")
+    i.add_argument("--force", action="store_true", help="overwrite existing files")
+    i.set_defaults(f=cmd_import_legacy)
 
     d = sub.add_parser("drill", help="drill records (drills.jsonl v1)").add_subparsers(dest="sub", required=True)
     r = d.add_parser("record", help="append one v1 record")

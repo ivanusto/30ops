@@ -1,0 +1,287 @@
+{
+  "version": 1,
+  "tool": "30ops X.Y.Z",
+  "site_sha256": "919434bd9368be3c4c7a295072654da933f684cdaf09b57658282ccf642dc7d5",
+  "files": [
+    {
+      "path": "etc/30ops/alertmanager/alertmanager.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/assets.tsv",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/gate/config.json",
+      "mode": "0640",
+      "owner": "root:agent-gate",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/gate/tools.json",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/grafana/datasources/prometheus.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/grafana/datasources/victorialogs.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/prometheus.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/pve.yml",
+      "mode": "0640",
+      "owner": "root:101",
+      "sha256": "X",
+      "secret": true
+    },
+    {
+      "path": "etc/30ops/prometheus/snmp-auth.yml",
+      "mode": "0640",
+      "owner": "root:65534",
+      "sha256": "X",
+      "secret": true
+    },
+    {
+      "path": "etc/30ops/prometheus/targets/collector.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/targets/gb10.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/targets/nas-snmp.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/targets/pve.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/cron.d/30ops",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/default/30ops-allowlist",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/systemd/system/30ops-allowlist.service",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/systemd/system/mnt-worm.mount",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/collector/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve1/etc/pcap/corosync.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve1/etc/pcap/custom.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve1/etc/pcap/nfs.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve1/etc/pcap/syslog.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve1/etc/sudoers.d/pcap",
+      "mode": "0440",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve1/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve2/etc/pcap/corosync.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve2/etc/pcap/custom.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve2/etc/pcap/nfs.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve2/etc/pcap/syslog.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve2/etc/sudoers.d/pcap",
+      "mode": "0440",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/pve2/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark01/etc/pcap/custom.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark01/etc/pcap/nfs.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark01/etc/pcap/syslog.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark01/etc/sudoers.d/pcap",
+      "mode": "0440",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark01/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark02/etc/pcap/custom.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark02/etc/pcap/nfs.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark02/etc/pcap/syslog.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark02/etc/sudoers.d/pcap",
+      "mode": "0440",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/spark02/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    }
+  ]
+}

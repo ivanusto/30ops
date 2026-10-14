@@ -31,10 +31,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: sudo apt-get install -y -qq python3-yaml
       - run: python3 -W error -m unittest discover -s tests/unit -v
       - run: python3 -m unittest tests/test_golden.py -v
-      - run: shellcheck -s sh bin/30ops lib/sh/ops30.sh tests/sh/test_ops30_sh.sh
+      - run: python3 -W error -m unittest tests/test_render.py -v
+      - name: render the sample site and check the units and sudoers it writes
+        run: |
+          bin/30ops validate --site examples/sample-site/site.yaml --strict
+          bin/30ops render --site examples/sample-site/site.yaml --out build
+          bin/30ops render --site examples/sample-site/site.yaml --compare-legacy tests/fixtures/legacy-root
+          systemd-analyze verify build/etc/systemd/system/mnt-worm.mount
+          for f in build/nodes/*/etc/sudoers.d/pcap; do sudo visudo -cf "$f"; done
+      - run: shellcheck -s sh bin/30ops lib/sh/ops30.sh tests/sh/test_ops30_sh.sh scripts/fetch-legacy.sh tests/sh/test_fetch_legacy.sh
       - run: sh tests/sh/test_ops30_sh.sh
+      - run: sh tests/sh/test_fetch_legacy.sh
 
   collector:
     runs-on: ubuntu-latest
@@ -50,6 +60,12 @@ jobs:
           tar xzf p.tgz && sudo install -m 0755 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
       - run: shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh tests/fake-nas.sh
       - run: promtool check config prometheus/prometheus.yml
+      - name: render the sample site
+        run: |
+          sudo apt-get install -y -qq python3-yaml
+          ../bin/30ops render --site ../examples/sample-site/site.yaml --out ../build
+          cp -r prometheus/rules ../build/etc/30ops/prometheus/
+      - run: promtool check config ../build/etc/30ops/prometheus/prometheus.yml
       - run: promtool check rules prometheus/rules/*.yml
       - run: cd tests && promtool test rules rules_test.yml rules_aup_test.yml rules_eol_test.yml rules_changes_test.yml rules_audit_test.yml rules_agent_test.yml
       - name: amtool check-config
@@ -57,6 +73,7 @@ jobs:
           curl -fsSL -o a.tgz "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz"
           echo "${ALERTMANAGER_SHA256}  a.tgz" | sha256sum -c
           tar xzf a.tgz && "./alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool" check-config alertmanager/alertmanager.yml.example
+          "./alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool" check-config ../build/etc/30ops/alertmanager/alertmanager.yml
       - run: python3 grafana/build-dashboard.py --check
       - name: snmp_exporter dry-run
         run: |
@@ -65,6 +82,7 @@ jobs:
           tar xzf s.tgz
           cp prometheus/snmp-auth.yml.example prometheus/snmp-auth.yml
           "./snmp_exporter-${SNMP_EXPORTER_VERSION}.linux-amd64/snmp_exporter" --config.file=prometheus/snmp.yml --config.file=prometheus/snmp-auth.yml --dry-run
+          "./snmp_exporter-${SNMP_EXPORTER_VERSION}.linux-amd64/snmp_exporter" --config.file=prometheus/snmp.yml --config.file=../build/etc/30ops/prometheus/snmp-auth.yml --dry-run
       - run: python3 -m unittest discover -s tests -v
       - run: sh tests/fake-nas.sh
       - run: docker compose config -q
