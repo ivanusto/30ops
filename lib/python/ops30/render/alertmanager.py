@@ -1,12 +1,12 @@
 """alertmanager.yml: the route tree and inhibit rules of the repo's
-collector/alertmanager/alertmanager.yml.example, with the site's SMTP
+collector/alertmanager/alertmanager.base.yml, with the site's SMTP
 settings and receivers. The SMTP password is read by Alertmanager from the
 credentials file, which collector/compose.yml mounts as the secret
 /run/secrets/smtp (smtp_auth_password_file); render never sees it."""
 from .. import site as S, yamlio
 from . import Output, header
 
-BASE = f"{S.REPO}/collector/alertmanager/alertmanager.yml.example"
+BASE = f"{S.REPO}/collector/alertmanager/alertmanager.base.yml"
 SMTP_SECRET = "/run/secrets/smtp"
 
 

@@ -4,7 +4,7 @@
 # it polls a verification command every 2 s until that command exits 0,
 # then appends one drills.jsonl v1 record (docs/drills-jsonl.md, kind
 # change-rollback). The line is committed with the drill record;
-# the collector's clone (collector.cron) is what onprem-metrics'
+# the collector's clone (pulled by the cron file 30ops render writes) is what
 # drills-textfile.py reads as source "changes", so Day 20's DrillFailed /
 # DrillStale rules cover rollbacks too, and changes-textfile.py turns
 # rollback_of into change_rollback_last_drill_* per record.

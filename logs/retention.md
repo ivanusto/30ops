@@ -27,7 +27,7 @@
 | 鎖定設定 | 在這段時間後自動鎖定：0 小時 10 分鐘 | 另一個選項是「手動鎖定 (設定檔案權限為唯讀)」。延遲最短 1 分鐘、最長 168 小時 59 分，誤差 ±1 分鐘，期間內再修改會重新計時，建立後不能改 |
 | 設定保留期間 | 啟用，180 天 | 不啟用時檔案鎖定後沒有到期日 |
 
-NFS 主機存取只給收集端，讀取/寫入，Squash 所有使用者，匿名 UID/GID 對到 NAS 上一個對此資料夾有寫入權的帳號，收集端以哪個 uid 寫都一樣。收集端以 `collector/mnt-worm.mount` 掛到 `/mnt/worm`（`noexec,nosuid,nodev`）。
+NFS 主機存取只給收集端，讀取/寫入，Squash 所有使用者，匿名 UID/GID 對到 NAS 上一個對此資料夾有寫入權的帳號，收集端以哪個 uid 寫都一樣。收集端以 `30ops render` 依 `site.yaml` 的 `worm` 產生的 mount unit 掛到 `/mnt/worm`（`noexec,nosuid,nodev`）。
 
 ### 鎖定延遲與封存腳本
 

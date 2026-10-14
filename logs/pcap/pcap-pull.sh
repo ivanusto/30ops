@@ -3,7 +3,7 @@
 # publish them to the WORM share, one batch per node per run, with a
 # manifest that lets Day 27 prove each file is the one the node sealed.
 #
-#   pcap-pull.sh                      cron, hourly (see collector.cron)
+#   pcap-pull.sh                      cron, hourly (the cron file 30ops render writes)
 #
 # Environment
 #   PCAP_NODES  space separated list of <name>=<source>. The source is an

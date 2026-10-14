@@ -1,2 +1,0 @@
-- targets: ["192.0.2.49:9100"]
-  labels: {role: collector}

@@ -1,2 +1,0 @@
-- targets: ["192.0.2.9", "192.0.2.5"]
-  labels: {role: pve}

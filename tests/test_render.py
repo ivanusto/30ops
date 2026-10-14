@@ -36,24 +36,11 @@ GOLDEN = ROOT / "tests" / "golden" / "render" / "sample-site"
 LEGACY = ROOT / "tests" / "fixtures" / "legacy-root"
 MASK = [(re.compile(r"30ops \d+\.\d+\.\d+"), "30ops X.Y.Z"),
         (re.compile(r'"sha256": "[0-9a-f]{64}"'), '"sha256": "X"')]
-# fixture file -> the repo file(s) it is a copy of
+# fixture file -> the repo file it is a copy of. The rest of the fixture is
+# the frozen pre-30ops layout (the repo's hand-written site files went in
+# v0.4, when render replaced them).
 COPIES = {
-    "opt/onprem-metrics/prometheus/targets/collector.yml": ["collector/prometheus/targets/collector.yml.example"],
-    "opt/onprem-metrics/prometheus/targets/gb10.yml": ["collector/prometheus/targets/gb10.yml.example"],
-    "opt/onprem-metrics/prometheus/targets/nas-snmp.yml": ["collector/prometheus/targets/nas-snmp.yml.example"],
-    "opt/onprem-metrics/prometheus/targets/pve.yml": ["collector/prometheus/targets/pve.yml.example"],
-    "opt/onprem-metrics/prometheus/pve.yml": ["collector/prometheus/pve.yml.example"],
-    "opt/onprem-metrics/prometheus/snmp-auth.yml": ["collector/prometheus/snmp-auth.yml.example"],
-    "opt/onprem-metrics/alertmanager/alertmanager.yml": ["collector/alertmanager/alertmanager.yml.example"],
     "opt/onprem-metrics/grafana/provisioning/datasources/prometheus.yml": ["collector/grafana/provisioning/datasources/prometheus.yml"],
-    "etc/cron.d/onprem-metrics": ["collector/systemd/collector.cron"],
-    "etc/cron.d/onprem-logs": ["logs/collector.cron", "logs/firewall/collector.cron", "logs/audit/collector.cron",
-                               "logs/pcap/collector.cron"],
-    "etc/cron.d/onprem-changes": ["changes/collector.cron"],
-    "etc/cron.d/onprem-agent-gate": ["gate/collector.cron"],
-    "etc/default/onprem-logs-allowlist": ["logs/collector/onprem-logs-allowlist.default"],
-    "etc/systemd/system/onprem-logs-allowlist.service": ["logs/collector/onprem-logs-allowlist.service"],
-    "etc/systemd/system/mnt-worm.mount": ["logs/collector/mnt-worm.mount"],
     "etc/onprem-agent-gate/config.json": ["gate/config.json.example"],
     "etc/onprem-agent-gate/tools.json": ["gate/tools.json"],
     "etc/30ops/assets.tsv": ["examples/sample-site/assets.tsv"],
@@ -98,10 +85,7 @@ class Render(unittest.TestCase):
     def test_fixture_copies_match_repo(self):
         for fx, srcs in COPIES.items():
             got = (LEGACY / fx).read_text()
-            if fx == "etc/cron.d/onprem-logs":
-                want = "".join((ROOT / s).read_text() for s in srcs)
-            else:
-                want = (ROOT / srcs[0]).read_text()
+            want = (ROOT / srcs[0]).read_text()
             self.assertEqual(got, want, f"{fx} is no longer a copy of {', '.join(srcs)}")
 
     def test_import_round_trip(self):

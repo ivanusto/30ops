@@ -7,11 +7,18 @@ parsing, front matter, the sh epoch-to-ISO helper, drill records built
 with printf) may appear in lib/ and nowhere else.
 
 Site files (v0.3): targets, Alertmanager config, cron files, allowlists,
-mount units and the like come from site.yaml through `30ops render`. The
-hand-written ones that predate it are listed in LEGACY_SITE and go with
-the compose merge in v0.4; a new one anywhere else is a finding.
+mount units, compose.env and the like come from site.yaml through
+`30ops render`; a hand-written one in the repo is a finding.
 
-Rules, dashboards and compose drift join in v0.4.
+One source (v0.4):
+- alert rules live in collector/prometheus/rules/ only, every threshold
+  placeholder there is a key of collector/prometheus/thresholds.yml and
+  every key is used, and the rules cite docs/rules.md, not the series;
+- every datasource uid a dashboard uses is provisioned, and every job the
+  rules and dashboards name is a scrape job;
+- no instruction to copy a file by hand is left ("merge by hand",
+  "change both together", "Copy into", "Drop into", "Append under");
+- every compose image is pinned by digest (as scripts/check-ci-pins.sh).
 
 Exempt: node-side scripts that are copied to another host and run there on
 their own (docs/lib.md), source-specific parsers, tests and documentation.
@@ -19,6 +26,7 @@ their own (docs/lib.md), source-specific parsers, tests and documentation.
     python3 scripts/check-drift.py      # exit 1 on any finding
 """
 import fnmatch
+import json
 import os
 import re
 import subprocess
@@ -42,12 +50,19 @@ SOURCE_SPECIFIC = [
 EXEMPT = ["lib/*", "tests/*", "*/tests/*", "docs/*", "*.md", "scripts/check-drift.py"] + NODE_SIDE + SOURCE_SPECIFIC
 
 SITE_GLOBS = ["*/targets/*.yml", "*alertmanager.yml", "*.mount", "*allowlist.default", "*.cron",
-              "*/pve.yml", "*/snmp-auth.yml", "*/config.json", "*/cron.d/*"]
-LEGACY_SITE = [
-    "collector/systemd/collector.cron", "logs/collector.cron", "logs/audit/collector.cron",
-    "logs/firewall/collector.cron", "logs/pcap/collector.cron", "changes/collector.cron", "gate/collector.cron",
-    "logs/collector/onprem-logs-allowlist.default", "logs/collector/mnt-worm.mount",
-]
+              "*/pve.yml", "*/snmp-auth.yml", "*/config.json", "*/cron.d/*", "*compose.env",
+              "*docker-compose*.yml"]
+
+RULES_DIR = "collector/prometheus/rules/"
+THRESHOLDS = "collector/prometheus/thresholds.yml"
+PROMETHEUS = "collector/prometheus/prometheus.yml"
+DATASOURCES = "collector/grafana/provisioning/datasources/"
+DASHBOARDS = "collector/grafana/dashboards/"
+RENDER_JOBS = {"node"}                      # added by render/prometheus.py
+BUILTIN_UIDS = {"-- Grafana --"}            # Grafana's own annotation source
+HAND_COPY = re.compile(r"merge by hand|change both together|Copy into|Drop into|Append under")
+PLACEHOLDER = re.compile(r"\$\{([a-z0-9_]+)\}")
+JOB = re.compile(r'\bjob(=~?)\\?"([^"\\]+)\\?"')
 
 PY_RULES = [
     (re.compile(r"^\s*def esc\("), "label escaping: use ops30.textfile.esc"),
@@ -85,15 +100,78 @@ def kind(path):
     return None
 
 
+def read(path):
+    with open(os.path.join(ROOT, path), encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def one_source(files):
+    """The v0.4 checks: rules, thresholds, dashboards, jobs, hand copies, images."""
+    errors = []
+    rules = [f for f in files if f.startswith(RULES_DIR) and f.endswith(".yml")]
+    for path in files:
+        if path.endswith((".yml", ".yaml")) and not path.startswith(RULES_DIR) and not exempt(path):
+            text = read(path)
+            if re.search(r"^groups:", text, re.M) and re.search(r"^\s*-?\s*alert:", text, re.M):
+                errors.append(f"{path}: alert rules outside {RULES_DIR}")
+        if not exempt(path) and (kind(path) or path.endswith((".yml", ".yaml", ".json", ".service", ".mount"))):
+            for n, line in enumerate(read(path).splitlines(), 1):
+                if HAND_COPY.search(line):
+                    errors.append(f"{path}:{n}: an instruction to copy by hand; render or a single source does it")
+        if fnmatch.fnmatch(os.path.basename(path), "*compose*.yml"):
+            for n, line in enumerate(read(path).splitlines(), 1):
+                if re.match(r"\s*image:", line) and not re.search(r"@sha256:[0-9a-f]{64}", line):
+                    errors.append(f"{path}:{n}: image not pinned by digest")
+
+    keys = set(re.findall(r"^([a-z0-9_]+):\s*$", read(THRESHOLDS), re.M))
+    used = set()
+    for path in rules:
+        text = read(path)
+        for n, line in enumerate(text.splitlines(), 1):
+            for k in PLACEHOLDER.findall(line):
+                used.add(k)
+                if k not in keys:
+                    errors.append(f"{path}:{n}: ${{{k}}} is not a key of {THRESHOLDS}")
+            if re.search(r"\bDay \d+", line):
+                errors.append(f"{path}:{n}: cite docs/rules.md, not the series")
+    for k in sorted(keys - used):
+        errors.append(f"{THRESHOLDS}: {k} is not used by any rule")
+
+    jobs = set(re.findall(r"job_name:\s*(\S+)", read(PROMETHEUS))) | RENDER_JOBS
+    uids = {u.strip("\"'") for f in files if f.startswith(DATASOURCES)
+            for u in re.findall(r"^\s*uid:\s*(\S+)", read(f), re.M)} | BUILTIN_UIDS
+    dashboards = [f for f in files if f.startswith(DASHBOARDS) and f.endswith(".json")]
+    for path in dashboards:
+        def walk(v):
+            if isinstance(v, dict):
+                ds = v.get("datasource")
+                if isinstance(ds, dict) and ds.get("uid") and ds["uid"] not in uids:
+                    errors.append(f"{path}: datasource uid {ds['uid']} is not provisioned in {DATASOURCES}")
+                for x in v.values():
+                    walk(x)
+            elif isinstance(v, list):
+                for x in v:
+                    walk(x)
+        walk(json.loads(read(path)))
+    for path in rules + dashboards:
+        for op, val in JOB.findall(read(path)):
+            names = val.split("|") if op == "=~" else [val]
+            for name in names:
+                if re.fullmatch(r"[A-Za-z0-9_-]+", name) and name not in jobs:
+                    errors.append(f"{path}: job \"{name}\" is not a scrape job in {PROMETHEUS}")
+    return errors
+
+
 def main():
     files = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
-    errors = []
+    files = [f for f in files if os.path.isfile(os.path.join(ROOT, f))]
+    errors = one_source(files)
     for path in files:
         if os.path.basename(path) == "frontmatter.py" and not path.startswith("lib/"):
             errors.append(f"{path}: a second front matter reader; use lib/python/ops30/frontmatter.py")
         if exempt(path):
             continue
-        if any(fnmatch.fnmatch(path, g) for g in SITE_GLOBS) and path not in LEGACY_SITE:
+        if any(fnmatch.fnmatch(path, g) for g in SITE_GLOBS):
             errors.append(f"{path}: a site-specific file outside site.yaml; 30ops render writes it (docs/render.md)")
             continue
         k = kind(path)

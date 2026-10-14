@@ -70,7 +70,7 @@ jobs:
         run: |
           curl -fsSL -o a.tgz "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz"
           echo "${ALERTMANAGER_SHA256}  a.tgz" | sha256sum -c
-          tar xzf a.tgz && "./alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool" check-config alertmanager/alertmanager.yml.example
+          tar xzf a.tgz && "./alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool" check-config alertmanager/alertmanager.base.yml
           "./alertmanager-${ALERTMANAGER_VERSION}.linux-amd64/amtool" check-config ../build/etc/30ops/alertmanager/alertmanager.yml
       - run: python3 grafana/build-dashboard.py --check
       - name: snmp_exporter dry-run
@@ -78,8 +78,6 @@ jobs:
           curl -fsSL -o s.tgz "https://github.com/prometheus/snmp_exporter/releases/download/v${SNMP_EXPORTER_VERSION}/snmp_exporter-${SNMP_EXPORTER_VERSION}.linux-amd64.tar.gz"
           echo "${SNMP_EXPORTER_SHA256}  s.tgz" | sha256sum -c
           tar xzf s.tgz
-          cp prometheus/snmp-auth.yml.example prometheus/snmp-auth.yml
-          "./snmp_exporter-${SNMP_EXPORTER_VERSION}.linux-amd64/snmp_exporter" --config.file=prometheus/snmp.yml --config.file=prometheus/snmp-auth.yml --dry-run
           "./snmp_exporter-${SNMP_EXPORTER_VERSION}.linux-amd64/snmp_exporter" --config.file=prometheus/snmp.yml --config.file=../build/etc/30ops/prometheus/snmp-auth.yml --dry-run
       - run: python3 -m unittest discover -s tests -v
       - run: sh tests/fake-nas.sh

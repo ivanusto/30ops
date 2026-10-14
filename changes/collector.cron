@@ -1,7 +1,0 @@
-# /etc/cron.d/onprem-changes on the collector. The clone in /opt/onprem-changes
-# is pulled every 15 minutes (fast-forward only; a record is never edited
-# there) and turned into changes.prom for node_exporter. The clone belongs
-# to metrics (a root-owned clone fails `git pull` as dubious ownership) and
-# the log goes where metrics can write; a redirect that cannot open its file
-# makes cron skip the whole line without a word.
-*/15 * * * * metrics cd /opt/onprem-changes && git pull -q --ff-only && ./scripts/changes-textfile.py --out /var/lib/node_exporter/textfile/changes.prom >> /var/log/onprem-metrics/changes.log 2>&1

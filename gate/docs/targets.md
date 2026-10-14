@@ -58,7 +58,7 @@ Run as `sudo -u agent-gate gatectl approve 12`. `who()` in gatectl takes
 `SUDO_USER` first, so the approval record says `ivan`, and the gate checks
 that name against the record's `implementer` and `approver`.
 
-Cron, every 5 minutes, the textfile (see collector.cron):
+Cron, every 5 minutes, the textfile (the line is in the cron file `30ops render` writes):
 
 ```
 */5 * * * * agent-gate /opt/onprem-agent-gate/bin/gatectl textfile --out /var/lib/node_exporter/textfile/agent-gate.prom

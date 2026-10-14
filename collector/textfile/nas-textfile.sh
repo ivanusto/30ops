@@ -14,7 +14,7 @@
 #
 # Use the same LABEL as the nas: label in targets/nas-snmp.yml so the SNMP
 # and ssh series of one NAS join on nas="LABEL". Output goes to stdout;
-# cron writes it through a temp file and mv (see systemd/collector.cron).
+# cron writes it through a temp file and mv (the cron file 30ops render writes).
 # Samples of every host are regrouped per metric family, because the text
 # format wants one contiguous block per metric name.
 #

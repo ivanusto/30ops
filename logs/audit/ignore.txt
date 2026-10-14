@@ -21,7 +21,7 @@ pve-task	^root@pam aptupdate \(pveupdate\)$
 # ssh-login	^root login publickey from \S+ key ED25519 SHA256:<fingerprint>$
 #
 # People at the admin workstations are not routine and do not belong here:
-# list those addresses in AUDIT_QUIET_FROM instead (audit/collector.cron),
+# list those hosts in site.yaml logs.admin_from instead (AUDIT_QUIET_FROM),
 # which keeps their actions in the report and only out of the alert.
 #
 # The HA manager starting or stopping guests on its own (pve-ha-lrm): a

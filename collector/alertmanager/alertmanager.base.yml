@@ -1,5 +1,7 @@
-# Alertmanager for the collector VM. Copy to alertmanager.yml (gitignored)
-# and fill the SMTP block. One route tree, three ideas:
+# Alertmanager for the collector. This is the template `30ops render`
+# starts from: the route tree and the inhibit rules are product; the SMTP
+# settings and the receivers' addresses below are examples that render
+# replaces with site.yaml alerting. One route tree, three ideas:
 #   critical pages now, warning batches for 30 seconds, info goes to a
 #   daily digest; and an inhibit tree so a dead pipeline does not also
 #   page for every number it stopped reporting.

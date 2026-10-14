@@ -5,8 +5,8 @@ window closed an hour ago and nobody marked the record done".
 
     scripts/changes-textfile.py --out /var/lib/node_exporter/textfile/changes.prom
 
-The collector keeps a clone of this repository (cron pulls it, see
-collector.cron); the metrics are read from that clone's changes/*.md.
+The collector keeps a clone of this repository (cron pulls it; the line is
+in the cron file 30ops render writes); the metrics are read from that clone's changes/*.md.
 
 Day 28 adds drills/drills.jsonl (what drills/drill.sh appends, committed
 with the drill record): for every record that a drill rolled back
