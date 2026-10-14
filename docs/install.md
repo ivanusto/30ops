@@ -2,6 +2,23 @@
 
 `30ops install` 把 render 的結果裝到主機上。每一步都先檢查主機現況，只在有差異時才動手，所以第二次執行不會有任何變更。v0.5 的驗收就是在拋棄式 VM 上連裝兩次，比對結果相同，再讓 `30ops doctor` 通過。
 
+## 取得與驗證
+
+從 GitHub Release 下載原始碼 tarball，核對 sha256 與 build provenance attestation，再解到 `collector.root`（預設 `/opt/30ops`）：
+
+```sh
+gh release download vX.Y.Z --repo ivanusto/30ops
+sha256sum -c SHA256SUMS
+gh attestation verify 30ops-X.Y.Z.tar.gz --repo ivanusto/30ops
+sudo mkdir -p /opt/30ops
+sudo tar xzf 30ops-X.Y.Z.tar.gz -C /opt/30ops --strip-components=1
+/opt/30ops/bin/30ops --version
+```
+
+`images.txt` 列出 compose 釘住的映像與 digest，`install collector` 依這些 digest 拉取。發行流程與驗證方式見 [release.md](release.md)。git clone 也可以，只要 checkout 的路徑等於 `collector.root`。
+
+Release 不附節點 bundle：bundle 依場域與主機產生，在收集端裝好之後以 `30ops install node <host> --bundle` 建立（下文）。
+
 ## 收集端：`30ops install collector`
 
 ```sh
