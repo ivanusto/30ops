@@ -1,5 +1,5 @@
-# Day 29: copy of onprem-agent-gate prometheus/agent.yml. This is the copy
-# Prometheus loads; change both together.
+# The agent gate (gate/): metrics from gatectl textfile. docs/rules.md
+# explains each alert.
 groups:
   - name: agent
     rules:
@@ -32,6 +32,6 @@ groups:
       # Many in an hour means the agent keeps asking for things its record
       # does not cover: read the reasons (gatectl tail) before the window ends.
       - alert: AgentGateDenials
-        expr: sum(increase(agent_gate_decisions_total{decision="DENY"}[1h])) > 5
+        expr: sum(increase(agent_gate_decisions_total{decision="DENY"}[1h])) > ${gate_denials_per_h}
         labels: {severity: info}
         annotations: {summary: "{{ $value | printf \"%.0f\" }} agent gate denials in the last hour"}

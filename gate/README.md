@@ -39,7 +39,7 @@ with the reason in the audit and in the reply the model reads.
 | `gate/textfile.py` | `agent-gate.prom` for node_exporter |
 | `tools.json` | the tools of this site: id, level, asset, argv with `{param}` placeholders, one regex per param |
 | `config.json.example` | principal, paths (records clone, change-mark state dir, audit, approvals, STOP), ssh command, asset to target map |
-| `prometheus/agent.yml`, `tests/rules_agent_test.yml` | five rules, a copy; the one Prometheus loads is in onprem-metrics |
+| `../collector/prometheus/rules/agent.yml` | five rules (the single copy, tested in `collector/tests/rules_agent_test.yml`) |
 | `collector.cron` | the textfile every 5 minutes |
 | `docs/targets.md` | the `gate` user on each target: `restrict,from=` key line, sudoers for exactly the argv |
 | `docs/mcp-clients.md` | one key per agent with a forced command; Claude Code and other clients |

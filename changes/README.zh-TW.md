@@ -69,7 +69,7 @@ Grafana 的 token 屬於一個專用的 service account，角色是 Editor。Gra
 | `scripts/changes-textfile.py` | `change_record`、`change_window_*`、`change_records{status}` 給 node_exporter。從 `drills/drills.jsonl` 多出每張單的 `change_rollback_last_drill_timestamp`、`change_rollback_last_drill_result`、`change_rollback_drills_total`（Day 28） |
 | `scripts/change-mark.sh` | begin 與 end 的三件事，journal、Grafana 註記、Alertmanager silence |
 | `../lib/python/ops30/frontmatter.py` | front matter 的小讀取器，不用 YAML 程式庫（30ops v0.2 起與 gate/ 共用） |
-| `prometheus/changes.yml` | 六條規則，複本，正本放 onprem-metrics。`ChangeWindowOverrun` 是窗關了一小時單子還沒結案。`ChangeRollbackUndrilled` 是 done 而且 high 的單子回退沒演練過，`ChangeRollbackDrillStale` 是演練超過 90 天 |
+| `../collector/prometheus/rules/changes.yml` | 六條規則（唯一一份，render 時套入場域門檻）。`ChangeWindowOverrun` 是窗關了一小時單子還沒結案。`ChangeRollbackUndrilled` 是 done 而且 high 的單子回退沒演練過，`ChangeRollbackDrillStale` 是演練超過 90 天 |
 | `drills/` | 回退演練（Day 28）。`drill.sh` 量一次回退並寫一行到 `drills.jsonl`，`drills.md` 是 Day 15 格式的表。見 [drills/README.md](drills/README.md) |
 | `collector.cron` | 收集端的 pull 與 textfile |
 | `tests/` | `unittest`、`promtool test rules`、`smoke-change-mark.sh`、`test_drill.sh` |

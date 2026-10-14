@@ -64,10 +64,9 @@ jobs:
         run: |
           sudo apt-get install -y -qq python3-yaml
           ../bin/30ops render --site ../examples/sample-site/site.yaml --out ../build
-          cp -r prometheus/rules ../build/etc/30ops/prometheus/
       - run: promtool check config ../build/etc/30ops/prometheus/prometheus.yml
-      - run: promtool check rules prometheus/rules/*.yml
-      - run: cd tests && promtool test rules rules_test.yml rules_aup_test.yml rules_eol_test.yml rules_changes_test.yml rules_audit_test.yml rules_agent_test.yml
+      - name: promtool check and test the rendered rules
+        run: sh ../scripts/test-rules.sh
       - name: amtool check-config
         run: |
           curl -fsSL -o a.tgz "https://github.com/prometheus/alertmanager/releases/download/v${ALERTMANAGER_VERSION}/alertmanager-${ALERTMANAGER_VERSION}.linux-amd64.tar.gz"
@@ -117,19 +116,12 @@ jobs:
         working-directory: changes
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: promtool
-        run: |
-          curl -fsSL -o p.tgz "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
-          echo "${PROMETHEUS_SHA256}  p.tgz" | sha256sum -c
-          tar xzf p.tgz && sudo install -m 0755 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
       - run: python3 scripts/check.py --assets ../examples/sample-site/assets.tsv
       - run: python3 scripts/render.py --check
       - run: shellcheck -s sh scripts/change-mark.sh drills/drill.sh tests/smoke-change-mark.sh tests/test_drill.sh
       - run: sh tests/smoke-change-mark.sh
       - run: sh tests/test_drill.sh
       - run: python3 -m unittest discover -s tests -v
-      - run: promtool check rules prometheus/changes.yml
-      - run: cd tests && promtool test rules rules_changes_test.yml
 
   gate:
     runs-on: ubuntu-latest
@@ -138,18 +130,11 @@ jobs:
         working-directory: gate
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: promtool
-        run: |
-          curl -fsSL -o p.tgz "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
-          echo "${PROMETHEUS_SHA256}  p.tgz" | sha256sum -c
-          tar xzf p.tgz && sudo install -m 0755 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
       - run: python3 -W error -m unittest discover -s tests -v
       - run: shellcheck -s sh tests/smoke-gatectl.sh tests/smoke-mcp.sh tests/fixtures/fake-ssh tests/fixtures/fake-logger
       - run: sh tests/smoke-gatectl.sh
       - run: sh tests/smoke-mcp.sh
       - run: python3 -c "import json; json.load(open('tools.json')); json.load(open('config.json.example'))"
-      - run: promtool check rules prometheus/agent.yml
-      - run: cd tests && promtool test rules rules_agent_test.yml
 
   drills:
     runs-on: ubuntu-latest

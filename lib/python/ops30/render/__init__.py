@@ -8,9 +8,7 @@ carry one, so manifest.json lists every file with its mode, owner and
 sha256. Secrets are never read: a config that has no *_file form gets an
 @secret:<name> placeholder that install fills in (v0.5).
 
-v0.3 covers everything outside docker compose and the alert rules; those
-two arrive with the single compose project and threshold placeholders in
-v0.4. docs/render.md lists the outputs.
+docs/render.md lists the outputs.
 """
 import hashlib
 import json
@@ -43,9 +41,9 @@ def manifest(tree, sha):
 
 
 def render(site, sha):
-    from . import alertmanager, cron, gate, grafana, logs, nodes, prometheus
+    from . import alertmanager, cron, gate, grafana, logs, nodes, prometheus, rules
     tree = {}
-    for mod in (prometheus, alertmanager, grafana, cron, logs, gate, nodes):
+    for mod in (prometheus, rules, alertmanager, grafana, cron, logs, gate, nodes):
         for path, out in mod.render(site, sha).items():
             if path in tree:
                 raise AssertionError(f"two renderers write {path}")

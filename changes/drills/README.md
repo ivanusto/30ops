@@ -36,7 +36,7 @@ same PR that fills the record's 紀錄. Through the collector's clone
   `change_rollback_last_drill_result{id}` and
   `change_rollback_drills_total{id}` per record. `ChangeRollbackUndrilled`
   (done, `risk: high`, no drill on file) and `ChangeRollbackDrillStale`
-  (last drill over 90 days ago) are in `prometheus/changes.yml`.
+  (last drill over 90 days ago) are in `collector/prometheus/rules/changes.yml`.
 
 The index in the READMEs gets a 回退演練 column from the same file.
 

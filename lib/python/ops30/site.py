@@ -222,6 +222,25 @@ def _load_script(path, name):
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
 
 
+THRESHOLDS = os.path.join(REPO, "collector", "prometheus", "thresholds.yml")
+# pairs that must stay in order: (lower, higher)
+THRESHOLD_ORDER = (("nas_pool_warn_pct", "nas_pool_crit_pct"), ("eol_crit_days", "eol_warn_days"),
+                   ("gb10_mem_crit_gib", "gb10_mem_warn_gib"),
+                   ("nas_login_failures_warn", "nas_login_failures_crit"))
+
+
+def threshold_catalogue():
+    """collector/prometheus/thresholds.yml: key -> {default, unit, alerts, help}."""
+    return yamlio.load(THRESHOLDS)
+
+
+def thresholds(site):
+    """Every threshold key -> the site's value or the default."""
+    vals = {k: v["default"] for k, v in threshold_catalogue().items()}
+    vals.update((site.get("alerting") or {}).get("thresholds") or {})
+    return vals
+
+
 def read_assets(path):
     """The rows of an assets.tsv, parsed exactly as eol-textfile.py does."""
     mod = _load_script(os.path.join(REPO, "collector", "textfile", "eol-textfile.py"), "_ops30_eol")
@@ -372,8 +391,19 @@ def _cross(doc, base, secrets, errs, warns):
                 warns.append(f"alerting.receivers.{r} has no email and no webhook: its alerts go nowhere")
         if any(isinstance(v, dict) and v.get("email") for v in rec.values()) and not al.get("smtp"):
             errs.append("alerting.smtp is required when a receiver has email")
-    if isinstance(al, dict) and al.get("thresholds"):
-        warns.append("alerting.thresholds is accepted but not applied to the rules before v0.4")
+    th = al.get("thresholds") if isinstance(al, dict) else None
+    if isinstance(th, dict):
+        cat = threshold_catalogue()
+        for k, v in th.items():
+            if k not in cat:
+                errs.append(f"alerting.thresholds.{k} is not a threshold (see collector/prometheus/thresholds.yml)")
+            elif _type_ok(N, v) and v <= 0:
+                errs.append(f"alerting.thresholds.{k} must be above 0")
+        vals = {k: v["default"] for k, v in cat.items()}
+        vals.update((k, v) for k, v in th.items() if _type_ok(N, v))
+        for lo, hi in THRESHOLD_ORDER:
+            if (lo in th or hi in th) and not vals[lo] < vals[hi]:
+                errs.append(f"alerting.thresholds: {lo} ({vals[lo]}) must be below {hi} ({vals[hi]})")
 
     for i, t in enumerate((doc.get("gate") or {}).get("targets") or []):
         if isinstance(t, dict) and isinstance(t.get("asset"), str) and "/" not in t["asset"]:

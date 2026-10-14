@@ -129,12 +129,11 @@ class Validate(unittest.TestCase):
 
     def test_warnings_and_strict(self):
         d = sample()
-        d["alerting"]["thresholds"] = {"nas_pool_warn": 85}
+        d["alerting"]["thresholds"] = {"nas_pool_warn_pct": 85}
         d["credentials"]["spare"] = {"file": "/etc/30ops/secrets/spare"}
         errs, warns = check(d)
         self.assertEqual(errs, [])
         self.assertIn("credentials.spare is not used", warns)
-        self.assertIn("alerting.thresholds is accepted but not applied to the rules before v0.4", warns)
         errs, warns = check(d, strict=True)
         self.assertEqual(warns, [])
         self.assertIn("credentials.spare is not used (--strict)", errs)

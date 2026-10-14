@@ -31,7 +31,7 @@ AI 代理程式碰這個場域的唯一一道門。代理程式拿到的是一�
 | `gate/textfile.py` | 給 node_exporter 的 `agent-gate.prom` |
 | `tools.json` | 這個場域的工具：id、等級、資產、帶 `{參數}` 的 argv、每個參數一條正規表達式 |
 | `config.json.example` | principal、路徑（單子的 clone、change-mark 的狀態目錄、稽核檔、核准目錄、STOP）、ssh 命令、資產到目標的對應 |
-| `prometheus/agent.yml`、`tests/rules_agent_test.yml` | 五條規則，複本，正本在 onprem-metrics |
+| `../collector/prometheus/rules/agent.yml` | 五條規則（唯一一份，測試在 `collector/tests/rules_agent_test.yml`） |
 | `collector.cron` | 每 5 分鐘的 textfile |
 | `docs/targets.md` | 每台目標上的 `gate` 使用者：`restrict,from=` 的金鑰行，只涵蓋那幾條 argv 的 sudoers |
 | `docs/mcp-clients.md` | 每個代理程式一把金鑰、一條強制命令，Claude Code 與其他用戶端的接法 |

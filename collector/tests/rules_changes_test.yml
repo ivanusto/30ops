@@ -1,6 +1,6 @@
-# promtool test rules tests/rules_changes_test.yml  (clock starts at 0)
+# scripts/test-rules.sh runs this against the rendered rules (rules/*.yml)
 rule_files:
-  - ../prometheus/rules/changes.yml
+  - rules/changes.yml
 
 evaluation_interval: 1m
 
@@ -102,4 +102,4 @@ tests:
         alertname: ChangeRollbackDrillStale
         exp_alerts:
           - exp_labels: {severity: info, id: CR-2026-0005}
-            exp_annotations: {summary: "CR-2026-0005: rollback last drilled 91d 0h 0m 0s ago, policy is quarterly"}
+            exp_annotations: {summary: "CR-2026-0005: rollback last drilled 91d 0h 0m 0s ago, policy is 90 days"}

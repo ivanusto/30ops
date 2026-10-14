@@ -1,6 +1,6 @@
-# promtool test rules tests/rules_agent_test.yml  (clock starts at 0)
+# scripts/test-rules.sh runs this against the rendered rules (rules/*.yml)
 rule_files:
-  - ../prometheus/rules/agent.yml
+  - rules/agent.yml
 
 evaluation_interval: 1m
 

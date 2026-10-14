@@ -60,6 +60,62 @@
       "secret": true
     },
     {
+      "path": "etc/30ops/prometheus/rules/agent.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/audit.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/aup.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/changes.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/eol.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/firewall.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/staleness.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/rules/thresholds.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "etc/30ops/prometheus/snmp-auth.yml",
       "mode": "0640",
       "owner": "root:65534",

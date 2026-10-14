@@ -1,5 +1,5 @@
-# Day 24: alerts on the acceptable-use metrics that onprem-logs'
-# firewall/aup-report.py writes to the collector's textfile directory
+# Alerts on the acceptable-use metrics that
+# logs/firewall/aup-report.py writes to the collector's textfile directory
 # (--window 1h, every 10 minutes, from the edge FortiGate's web-filter log).
 # Only the urgent categories page; everything else is for the weekly report.
 groups:
@@ -22,7 +22,7 @@ groups:
       # workstation is software (an extension, malware, a misconfigured
       # app) retrying. Threshold to be revisited after the first weekly report.
       - alert: AupBlockedBurst
-        expr: aup_webfilter_blocked_top_source >= 20
+        expr: aup_webfilter_blocked_top_source >= ${aup_blocked_burst}
         for: 10m
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.fgt }}: {{ $labels.who }} was blocked {{ $value }} times in the last hour"}

@@ -1,6 +1,6 @@
-# promtool test rules tests/rules_audit_test.yml
+# scripts/test-rules.sh runs this against the rendered rules (rules/*.yml)
 rule_files:
-  - ../prometheus/rules/audit.yml
+  - rules/audit.yml
 
 evaluation_interval: 1m
 

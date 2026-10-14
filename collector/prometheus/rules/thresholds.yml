@@ -1,15 +1,19 @@
-# Day 20: alerts on the numbers themselves. Day 19's staleness.yml says
-# whether the pipeline is alive; these say whether the site is.
+# Alerts on the numbers themselves. staleness.yml says whether the pipeline
+# is alive; these say whether the site is. docs/rules.md explains each
+# alert and where its threshold came from.
 #
-# Every threshold has a source. The soak budget is 240 s (gb10-ops, Day 12).
+# A threshold the site may change is written as a dollar sign and its key
+# in braces: 30ops render fills it in from site.yaml alerting.thresholds or
+# the default in ../thresholds.yml.
+#
+# The soak budget is 240 s (the gb10-ops guard).
 # What Prometheus sees lags the guard: the textfile is up to 10 s old, the
 # scrape sees it in 10 or 20 s steps (10 s writes, 15 s scrapes), and the
-# rule is evaluated up to 15 s after the scrape. Day 20 measured it: with
+# rule is evaluated up to 15 s after the scrape. Measured on the lab: with
 # "> 200" the series sat at exactly 200, the next sample was 220, and the
 # alert fired 10.1 s before the guard. Worst case that threshold fires 5 s
 # after the guard, so the alert is ">= 180": 15 to 60 s ahead of it.
 # Memory lines are gb10-ops warn 6 GiB / act 3 GiB.
-# The ZFS 80 % line is Day 14. Drill ages are the policy.md of each repo.
 #
 # Rule groups inherit the global evaluation_interval (60 s in
 # prometheus.yml). The gb10 group evaluates every 15 s instead: with 60 s
@@ -23,25 +27,25 @@ groups:
     interval: 15s
     rules:
       - alert: Gb10SoakNearBudget
-        expr: gb10_soak_seconds >= 180
+        expr: gb10_soak_seconds >= ${gb10_soak_warn_s}
         labels: {severity: warning}
         annotations:
           summary: "{{ $labels.node }} hottest zone above threshold for {{ $value }} s, guard trips at 240"
-          runbook: "Day 12: the guard will kill the hottest process; move or pause the workload first"
+          runbook: "the gb10-ops guard will kill the hottest process; move or pause the workload first"
       - alert: Gb10HotFlag
         expr: gb10_hot == 1
         for: 2m
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.node }} HOT flag set by hw-sample for 2m"}
       - alert: Gb10MemAvailableLow
-        expr: gb10_mem_available_bytes < 6 * 1024 * 1024 * 1024
+        expr: gb10_mem_available_bytes < ${gb10_mem_warn_gib} * 1024 * 1024 * 1024
         for: 1m
         labels: {severity: warning}
-        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, guard warns at 6 GiB"}
+        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, below ${gb10_mem_warn_gib} GiB"}
       - alert: Gb10MemAvailableCritical
-        expr: gb10_mem_available_bytes < 3 * 1024 * 1024 * 1024
+        expr: gb10_mem_available_bytes < ${gb10_mem_crit_gib} * 1024 * 1024 * 1024
         labels: {severity: critical}
-        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, guard acts at 3 GiB"}
+        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, below ${gb10_mem_crit_gib} GiB"}
       - alert: Gb10NvErrNoMemory
         expr: increase(gb10_nv_err_no_memory_total[10m]) > 0
         labels: {severity: critical}
@@ -55,12 +59,12 @@ groups:
   - name: nas
     rules:
       - alert: NasPoolAbove80
-        expr: nas_zpool_capacity_percent > 80
+        expr: nas_zpool_capacity_percent > ${nas_pool_warn_pct}
         for: 30m
         labels: {severity: warning}
-        annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} at {{ $value }} %, ZFS fragmentation line is 80 (Day 14)"}
+        annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} at {{ $value }} %, warning line ${nas_pool_warn_pct} %"}
       - alert: NasPoolAbove90
-        expr: nas_zpool_capacity_percent > 90
+        expr: nas_zpool_capacity_percent > ${nas_pool_crit_pct}
         for: 10m
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} at {{ $value }} %"}
@@ -87,12 +91,12 @@ groups:
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} pool {{ $labels.storagepoolID }} is {{ $labels.qnap_pool_status }}"}
       - alert: NasDiskHot
-        expr: qnap_disk_temperature_celsius > 50
+        expr: qnap_disk_temperature_celsius > ${nas_disk_temp_c}
         for: 15m
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.nas }} disk {{ $labels.diskIndex }} at {{ $value }} °C for 15m"}
       - alert: NasSnapshotStale
-        expr: (time() - nas_zfs_snapshot_newest_timestamp) > 2 * 86400 and nas_zfs_snapshots > 0
+        expr: (time() - nas_zfs_snapshot_newest_timestamp) > ${nas_snapshot_max_age_days} * 86400 and nas_zfs_snapshots > 0
         for: 1h
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.nas }} {{ $labels.dataset }} newest snapshot is {{ $value | humanizeDuration }} old"}
@@ -109,7 +113,7 @@ groups:
         expr: qnap_service_telnet_enabled_info{qnap_service_telnet_enabled="yes"} == 1
         for: 10m
         labels: {severity: warning}
-        annotations: {summary: "{{ $labels.nas }} has Telnet enabled (Day 11 hardening regression)"}
+        annotations: {summary: "{{ $labels.nas }} has Telnet enabled (a hardening regression)"}
       # Host memory fragmentation on a NAS with a GPU. The NVIDIA driver
       # needs physically contiguous blocks; when the Normal zone runs out
       # of high orders, restarting a GPU container fails with
@@ -149,19 +153,19 @@ groups:
       - alert: PveQuorumLost
         expr: min without (instance) (pve_up{id=~"cluster/.*"}) == 0
         labels: {severity: critical}
-        annotations: {summary: "cluster {{ $labels.id }} not quorate, HA nodes will self-fence (Day 15 drill 3)"}
+        annotations: {summary: "cluster {{ $labels.id }} not quorate, HA nodes will self-fence"}
       - alert: PveNodeOffline
         expr: max without (instance) (pve_up{id=~"node/.*"}) == 0
         for: 2m
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.id }} offline"}
-      # From textfile/pve-quorum-textfile.sh, the metric form of Day 15
-      # check.sh exit 1: quorate, but one more loss ends it.
+      # From textfile/pve-quorum-textfile.sh, the metric form of
+      # checks/qdevice/check.sh exit 1: quorate, but one more loss ends it.
       - alert: PveVoteMissing
         expr: pve_quorum_expected_votes - pve_quorum_total_votes > 0
         for: 2m
         labels: {severity: warning}
-        annotations: {summary: "{{ $labels.cluster }} is missing {{ $value }} vote(s) but still quorate, nothing else may fail now (Day 15 check.sh rc=1)"}
+        annotations: {summary: "{{ $labels.cluster }} is missing {{ $value }} vote(s) but still quorate, nothing else may fail now (qdevice check.sh rc=1)"}
       - alert: PveQdeviceAbsent
         expr: pve_quorum_qdevice_votes == 0
         for: 2m
@@ -199,17 +203,17 @@ groups:
         labels: {severity: warning}
         annotations: {summary: "last {{ $labels.source }} drill {{ $labels.label }} failed"}
       - alert: DrillStale
-        expr: (time() - drill_last_success_timestamp{source=~"pve|nas"}) > 30 * 86400
+        expr: (time() - drill_last_success_timestamp{source=~"pve|nas"}) > ${drill_max_age_days} * 86400
         labels: {severity: warning}
-        annotations: {summary: "{{ $labels.source }} drill {{ $labels.label }} last passed {{ $value | humanizeDuration }} ago, policy is monthly"}
+        annotations: {summary: "{{ $labels.source }} drill {{ $labels.label }} last passed {{ $value | humanizeDuration }} ago, policy is ${drill_max_age_days} days"}
       - alert: CloudDrillStale
-        expr: (time() - drill_last_success_timestamp{source="cloud"}) > 90 * 86400
+        expr: (time() - drill_last_success_timestamp{source="cloud"}) > ${cloud_drill_max_age_days} * 86400
         labels: {severity: warning}
-        annotations: {summary: "cloud drill {{ $labels.label }} last passed {{ $value | humanizeDuration }} ago, policy is quarterly"}
-      # The 900 s target is a PVE restore (Day 16 measured 569 s). NAS and
+        annotations: {summary: "cloud drill {{ $labels.label }} last passed {{ $value | humanizeDuration }} ago, policy is ${cloud_drill_max_age_days} days"}
+      # The 900 s target is a PVE restore (the lab's first took 569 s). NAS and
       # cloud drill labels include uploads and whole-folder rollbacks with
       # their own scale, so the target applies to source="pve" only.
       - alert: DrillRtoOverTarget
-        expr: drill_last_rto_seconds{source="pve"} > 900
+        expr: drill_last_rto_seconds{source="pve"} > ${drill_rto_target_s}
         labels: {severity: info}
-        annotations: {summary: "{{ $labels.source }} drill {{ $labels.label }} RTO {{ $value }} s, target 900 s"}
+        annotations: {summary: "{{ $labels.source }} drill {{ $labels.label }} RTO {{ $value }} s, target ${drill_rto_target_s} s"}

@@ -1,13 +1,13 @@
-# promtool test rules tests/rules_test.yml
+# scripts/test-rules.sh runs this against the rendered rules (rules/*.yml)
 # Each case feeds a synthetic series and asserts which alert fires when.
 # Scrape interval below matches gb10 (15 s); NAS/PVE/drill cases use 60 s.
 # promtool steps every group at this evaluation_interval and ignores the
 # group's own interval, so it cannot see that prometheus.yml evaluates at
 # 60 s. tests/test_rules_config.py checks the gb10 group's 15 s instead.
 rule_files:
-  - ../prometheus/rules/thresholds.yml
-  - ../prometheus/rules/staleness.yml
-  - ../prometheus/rules/firewall.yml
+  - rules/thresholds.yml
+  - rules/staleness.yml
+  - rules/firewall.yml
 
 evaluation_interval: 15s
 
@@ -29,7 +29,7 @@ tests:
           - exp_labels: {severity: warning, job: gb10, node: "192.0.2.131", instance: "192.0.2.131:9100"}
             exp_annotations:
               summary: "192.0.2.131 hottest zone above threshold for 186 s, guard trips at 240"
-              runbook: "Day 12: the guard will kill the hottest process; move or pause the workload first"
+              runbook: "the gb10-ops guard will kill the hottest process; move or pause the workload first"
       - eval_time: 4m             # back to 0 after the guard
         alertname: Gb10SoakNearBudget
         exp_alerts: []
@@ -47,12 +47,12 @@ tests:
         alertname: Gb10MemAvailableLow
         exp_alerts:
           - exp_labels: {severity: warning, job: gb10, node: n1, instance: "n1:9100"}
-            exp_annotations: {summary: "n1 MemAvailable 4.657GiB, guard warns at 6 GiB"}
+            exp_annotations: {summary: "n1 MemAvailable 4.657GiB, below 6 GiB"}
       - eval_time: 1m30s
         alertname: Gb10MemAvailableCritical
         exp_alerts:
           - exp_labels: {severity: critical, job: gb10, node: n1, instance: "n1:9100"}
-            exp_annotations: {summary: "n1 MemAvailable 1.863GiB, guard acts at 3 GiB"}
+            exp_annotations: {summary: "n1 MemAvailable 1.863GiB, below 3 GiB"}
 
   # NV_ERR_NO_MEMORY counter moves once.
   - interval: 15s
@@ -82,7 +82,7 @@ tests:
         alertname: NasPoolAbove80
         exp_alerts:
           - exp_labels: {severity: warning, job: collector-host, nas: primary, pool: zpool1}
-            exp_annotations: {summary: "primary pool zpool1 at 81 %, ZFS fragmentation line is 80 (Day 14)"}
+            exp_annotations: {summary: "primary pool zpool1 at 81 %, warning line 80 %"}
       - eval_time: 32m
         alertname: NasPoolAbove90
         exp_alerts: []
@@ -163,7 +163,7 @@ tests:
         alertname: PveVoteMissing
         exp_alerts:
           - exp_labels: {severity: warning, job: collector-host, cluster: lab}
-            exp_annotations: {summary: "lab is missing 1 vote(s) but still quorate, nothing else may fail now (Day 15 check.sh rc=1)"}
+            exp_annotations: {summary: "lab is missing 1 vote(s) but still quorate, nothing else may fail now (qdevice check.sh rc=1)"}
       - eval_time: 3m
         alertname: PveQdeviceAbsent
         exp_alerts:
@@ -183,7 +183,7 @@ tests:
         alertname: PveQuorumLost
         exp_alerts:
           - exp_labels: {severity: critical, job: pve, id: "cluster/lab"}
-            exp_annotations: {summary: "cluster cluster/lab not quorate, HA nodes will self-fence (Day 15 drill 3)"}
+            exp_annotations: {summary: "cluster cluster/lab not quorate, HA nodes will self-fence"}
 
   # Drill freshness: a pve drill that last passed 31 days ago.
   - interval: 1m
@@ -197,7 +197,7 @@ tests:
         alertname: DrillStale
         exp_alerts:
           - exp_labels: {severity: warning, job: collector-host, source: pve, label: d3-full}
-            exp_annotations: {summary: "pve drill d3-full last passed 30d 0h 2m 0s ago, policy is monthly"}
+            exp_annotations: {summary: "pve drill d3-full last passed 30d 0h 2m 0s ago, policy is 30 days"}
       - eval_time: 2m
         alertname: DrillFailed
         exp_alerts:
@@ -237,7 +237,7 @@ tests:
         alertname: NasTelnetEnabled
         exp_alerts:
           - exp_labels: {severity: warning, job: nas-snmp, instance: "192.0.2.22", nas: secondary, qnap_service_telnet_enabled: "yes"}
-            exp_annotations: {summary: "secondary has Telnet enabled (Day 11 hardening regression)"}
+            exp_annotations: {summary: "secondary has Telnet enabled (a hardening regression)"}
 
   # pve-exporter is scraped through both nodes; one storage down is one
   # alert, not two.
@@ -351,3 +351,75 @@ tests:
         exp_alerts:
           - exp_labels: {severity: warning, job: collector-host}
             exp_annotations: {summary: "fw-report has not run for 30 minutes, firewall metrics are stale"}
+
+  # Thresholds a site may override (collector/prometheus/thresholds.yml),
+  # at their defaults: disk temperature 50 °C held for 15 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'qnap_disk_temperature_celsius{job="nas-snmp",nas="primary",diskIndex="3"}'
+        values: "48 52x20"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: NasDiskHot
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: NasDiskHot
+        exp_alerts:
+          - exp_labels: {severity: warning, job: nas-snmp, nas: primary, diskIndex: "3"}
+            exp_annotations: {summary: "primary disk 3 at 52 °C for 15m"}
+
+  # Newest snapshot older than 2 days, held for an hour; a dataset with no
+  # snapshots at all is not this alert's business.
+  - interval: 1m
+    input_series:
+      - series: 'nas_zfs_snapshot_newest_timestamp{job="collector-host",nas="primary",dataset="zpool1/share"}'
+        values: "-172800x80"
+      - series: 'nas_zfs_snapshots{job="collector-host",nas="primary",dataset="zpool1/share"}'
+        values: "5x80"
+      - series: 'nas_zfs_snapshot_newest_timestamp{job="collector-host",nas="primary",dataset="zpool1/scratch"}'
+        values: "-172800x80"
+      - series: 'nas_zfs_snapshots{job="collector-host",nas="primary",dataset="zpool1/scratch"}'
+        values: "0x80"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: NasSnapshotStale
+        exp_alerts: []
+      - eval_time: 65m
+        alertname: NasSnapshotStale
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, nas: primary, dataset: "zpool1/share"}
+            exp_annotations: {summary: "primary zpool1/share newest snapshot is 2d 1h 5m 0s old"}
+
+  # Cloud drills are quarterly: 90 days.
+  - interval: 1m
+    input_series:
+      - series: 'drill_last_success_timestamp{job="collector-host",source="cloud",label="offload"}'
+        values: "-7776000x3"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: CloudDrillStale
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, source: cloud, label: offload}
+            exp_annotations: {summary: "cloud drill offload last passed 90d 0h 2m 0s ago, policy is 90 days"}
+
+  # The other three walls just over their line.
+  - interval: 1m
+    input_series:
+      - series: 'fw_top_source_blocked{job="collector-host",source="fortigate",host="fgt-edge",src="192.0.2.126"}'
+        values: "1300x20"
+      - series: 'fw_top_source_blocked{job="collector-host",source="pvefw",host="pve1",src="192.0.2.51"}'
+        values: "700x20"
+      - series: 'fw_top_source_blocked{job="collector-host",source="docker-user",host="collector",src="192.0.2.52"}'
+        values: "40x20"
+      - series: 'fw_top_source_blocked{job="collector-host",source="docker-user",host="spark01",src="192.0.2.53"}'
+        values: "30x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: FwSourceBurst
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, source: fortigate, host: fgt-edge, src: "192.0.2.126"}
+            exp_annotations: {summary: "fgt-edge dropped 1300 packets from 192.0.2.126 in the last hour (fortigate)"}
+          - exp_labels: {severity: warning, job: collector-host, source: pvefw, host: pve1, src: "192.0.2.51"}
+            exp_annotations: {summary: "pve1 dropped 700 packets from 192.0.2.51 in the last hour (pvefw)"}
+          - exp_labels: {severity: warning, job: collector-host, source: docker-user, host: collector, src: "192.0.2.52"}
+            exp_annotations: {summary: "collector dropped 40 packets from 192.0.2.52 in the last hour (docker-user)"}

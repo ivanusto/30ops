@@ -23,9 +23,10 @@ three of them can be compared on one file; aup-compare.sh does that.
 
 Four tables: sites per workstation, categories, blocked per workstation,
 and hits on the urgent categories (default: Malicious Websites, Phishing,
-Spam URLs). --textfile writes the counts for onprem-metrics'
-rules-aup.yml; --expect names the FortiGates that must log something in
-every window, written as 0 when they log nothing (AupSilent).
+Spam URLs). --textfile writes the counts for
+collector/prometheus/rules/aup.yml; --expect names the FortiGates that
+must log something in every window, written as 0 when they log nothing
+(AupSilent).
 
 Standard library only. Exit 0 unless the source cannot be read.
 """

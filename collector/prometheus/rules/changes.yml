@@ -1,5 +1,5 @@
-# Day 26: copy of onprem-changes prometheus/changes.yml. This is the copy
-# Prometheus loads; change both together.
+# Change records (changes/): metrics from changes-textfile.py.
+# docs/rules.md explains each alert.
 groups:
   - name: changes
     rules:
@@ -14,7 +14,7 @@ groups:
       # which is exactly what a change window is there to make visible.
       - alert: ChangeWindowOverrun
         expr: |
-          (time() - change_window_end_timestamp{status=~"scheduled|in_progress"}) / 60 > 60
+          (time() - change_window_end_timestamp{status=~"scheduled|in_progress"}) / 60 > ${change_overrun_min}
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.id }}: window closed {{ $value | printf \"%.0f\" }} minutes ago and the record is still {{ $labels.status }}"}
       # A change is in progress right now. info, so it lands in the daily
@@ -28,10 +28,10 @@ groups:
       # digest, so the window is not a surprise to whoever is on call.
       - alert: ChangeStartsSoon
         expr: |
-          0 < (change_window_start_timestamp{status="scheduled"} - time()) / 3600 <= 24
+          0 < (change_window_start_timestamp{status="scheduled"} - time()) / 3600 <= ${change_soon_h}
         labels: {severity: info}
         annotations: {summary: "{{ $labels.id }} starts in {{ $value | printf \"%.0f\" }} hours"}
-      # Day 28: rollback drills. changes-textfile.py reads drills/drills.jsonl
+      # Rollback drills. changes-textfile.py reads drills/drills.jsonl
       # (what drills/drill.sh appends) and writes, per record whose rollback
       # a drill ran, the last drill's time and result. A done high-risk
       # record with no drill on file means its rollback section has only
@@ -44,11 +44,11 @@ groups:
         labels: {severity: info}
         annotations: {summary: "{{ $labels.id }} is done at risk high and its rollback has never been drilled"}
       # Drilled once is not drilled: the snapshot tool, the compose file or
-      # the API behind a rollback section changes. Quarterly, like Day 18's
+      # the API behind a rollback section changes. Quarterly, like the
       # cloud drills; only for records that are still done (a rolled_back
       # or cancelled record has nothing left to roll back).
       - alert: ChangeRollbackDrillStale
         expr: |
-          (time() - change_rollback_last_drill_timestamp and on(id) change_record{status="done"}) > 90 * 86400
+          (time() - change_rollback_last_drill_timestamp and on(id) change_record{status="done"}) > ${rollback_drill_max_age_days} * 86400
         labels: {severity: info}
-        annotations: {summary: "{{ $labels.id }}: rollback last drilled {{ $value | humanizeDuration }} ago, policy is quarterly"}
+        annotations: {summary: "{{ $labels.id }}: rollback last drilled {{ $value | humanizeDuration }} ago, policy is ${rollback_drill_max_age_days} days"}

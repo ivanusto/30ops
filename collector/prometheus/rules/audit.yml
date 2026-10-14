@@ -1,7 +1,7 @@
-# Day 27: the audit trail against the change records. onprem-logs'
-# audit/audit-report.py (cron every 10 minutes, 1 h window) counts the
-# administrative actions the pipeline already holds and marks the ones that
-# fall outside every change window in onprem-changes.
+# The audit trail against the change records. logs/audit/audit-report.py
+# (cron every 10 minutes, 1 h window) counts the administrative actions the
+# pipeline already holds and marks the ones that fall outside every change
+# window in the change records.
 groups:
   - name: audit
     rules:
@@ -11,7 +11,7 @@ groups:
         labels: {severity: warning}
         annotations: {summary: "audit-report has not run for 30 minutes, audit metrics are stale"}
       # A FortiGate configuration change with no change record open: either
-      # someone is working without a record (the thing Day 26 forbids) or an
+      # someone is working without a record (what the change process forbids) or an
       # emergency change that still has to be written up within 24 hours.
       # Warning on the first one; it is the edge firewall.
       - alert: AuditUnattributedFortigateChange

@@ -103,7 +103,7 @@ _time:7d hostname:=fgt-edge "subtype=\"webfilter\"" | stats by (_time:1h) count(
 
 ## 報告與告警
 
-`aup-report.py` 把上面的查詢做成四張表（依工作站列網站、依類別、被擋的依工作站、緊急類別命中），每週一 08:25 一份 Markdown 到 `/srv/reports/`，每 10 分鐘一次 1 小時視窗寫 `aup.prom`。規則在 onprem-metrics 的 `prometheus/rules/aup.yml`（本目錄有一份複本 `rules-aup.yml`）：緊急類別一筆就 critical，單一工作站一小時被擋 20 次 warning，預期有紀錄的 FortiGate 6 小時零筆 info，報告過期 warning 並抑制其餘。Gambling 這類不響，進週報。
+`aup-report.py` 把上面的查詢做成四張表（依工作站列網站、依類別、被擋的依工作站、緊急類別命中），每週一 08:25 一份 Markdown 到 `/srv/reports/`，每 10 分鐘一次 1 小時視窗寫 `aup.prom`。規則在 `collector/prometheus/rules/aup.yml`：緊急類別一筆就 critical，單一工作站一小時被擋 20 次 warning，預期有紀錄的 FortiGate 6 小時零筆 info，報告過期 warning 並抑制其餘。Gambling 這類不響，進週報。
 
 ## 同一份檔案兩邊跑
 

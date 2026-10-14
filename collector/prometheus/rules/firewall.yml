@@ -1,7 +1,7 @@
-# Day 22: alerts on the firewall review metrics that onprem-logs'
-# firewall/fw-report.py writes to the collector's textfile directory
-# (--window 1h, every 10 minutes). Each threshold says where it came from;
-# all of them get a second look after the first weekly report.
+# Alerts on the firewall review metrics that
+# logs/firewall/fw-report.py writes to the collector's textfile directory
+# (--window 1h, every 10 minutes). Each threshold says where its default
+# came from; all of them get a second look after the first weekly report.
 groups:
   - name: firewall
     rules:
@@ -22,10 +22,10 @@ groups:
       #                sender retrying for several minutes
       - alert: FwSourceBurst
         expr: |
-          fw_top_source_blocked{source="fortigate"} > 1200
-          or fw_top_source_blocked{source="ufw"} > 120
-          or fw_top_source_blocked{source="pvefw"} > 600
-          or fw_top_source_blocked{source="docker-user"} > 30
+          fw_top_source_blocked{source="fortigate"} > ${fw_burst_fortigate}
+          or fw_top_source_blocked{source="ufw"} > ${fw_burst_ufw}
+          or fw_top_source_blocked{source="pvefw"} > ${fw_burst_pvefw}
+          or fw_top_source_blocked{source="docker-user"} > ${fw_burst_docker_user}
         for: 10m
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.host }} dropped {{ $value }} packets from {{ $labels.src }} in the last hour ({{ $labels.source }})"}
@@ -38,11 +38,11 @@ groups:
       # in uLinux.conf). 4 a minute never trips it, so 10 in an hour is
       # someone failing slowly enough to stay under the ban.
       - alert: NasLoginFailures
-        expr: nas_login_failed_top_source >= 10
+        expr: nas_login_failed_top_source >= ${nas_login_failures_warn}
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.nas }}: {{ $value }} failed logins from {{ $labels.src }} in the last hour"}
       - alert: NasLoginFailuresCritical
-        expr: nas_login_failed_top_source >= 50
+        expr: nas_login_failed_top_source >= ${nas_login_failures_crit}
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }}: {{ $value }} failed logins from {{ $labels.src }} in the last hour, the ban is not holding; block the source upstream"}
       # fw-report writes 0 for every host in FW_EXPECT that dropped nothing

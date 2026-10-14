@@ -2,7 +2,7 @@
 # promtool's clock starts at 0 (1970-01-01), so the fixtures put the dates
 # relative to that: 100 days = 8640000 s.
 rule_files:
-  - ../prometheus/rules/eol.yml
+  - rules/eol.yml
 
 evaluation_interval: 1h
 
@@ -94,7 +94,7 @@ tests:
         exp_alerts:
           - exp_labels: {severity: info, asset: nas-secondary, component: TS-464, kind: hardware, version: TS-464, milestone: end_of_support, basis: unknown}
             exp_annotations:
-              summary: "nas-secondary TS-464 TS-464: no end_of_support date on record, see the note in eol/assets.tsv"
+              summary: "nas-secondary TS-464 TS-464: no end_of_support date on record, see the note in assets.tsv"
       - eval_time: 49h
         alertname: AssetEolSourceMismatch
         exp_alerts: []
@@ -103,7 +103,7 @@ tests:
         exp_alerts:
           - exp_labels: {severity: info, asset: qdevice, component: Debian, kind: os, version: "12", milestone: lts_end, basis: vendor}
             exp_annotations:
-              summary: "qdevice Debian 12: endoflife.date gives a different lts_end than eol/assets.tsv, see eol-textfile's log"
+              summary: "qdevice Debian 12: endoflife.date gives a different lts_end than assets.tsv, see eol-textfile's log"
       - eval_time: 47h
         alertname: EolTextfileStale
         exp_alerts: []
