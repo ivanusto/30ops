@@ -148,8 +148,10 @@ PYEOF
 }
 job nas.prom
 job pve-quorum.prom
+job eol.prom
 grep -q '^nas_up{nas="primary"} 1$' /var/lib/node_exporter/textfile/nas.prom || fail "nas_up is not 1 after authorizing the key"
 grep -q '^pve_quorum_up{cluster="lab"} 1$' /var/lib/node_exporter/textfile/pve-quorum.prom || fail "pve_quorum_up is not 1"
+grep -q '^asset_licence_status{' /var/lib/node_exporter/textfile/eol.prom || fail "eol.prom has no licence from the fake FortiGate"
 
 step "install collector, second run"
 ops30 install collector --site "$SITE" | tee "$OUT/install-2.log"
