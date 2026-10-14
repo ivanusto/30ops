@@ -84,7 +84,7 @@ cp "$R/tests/e2e/site.yaml" "$R/tests/e2e/assets.tsv" /opt/30ops-site/
 install -d -m 0750 /etc/30ops /etc/30ops/secrets
 rnd() { head -c 18 /dev/urandom | base64 | tr -d '/+='; }
 for s in pve-exporter.token snmp-auth.pass snmp-priv.pass fortigate-api.token; do
-  [ -s "/etc/30ops/secrets/$s" ] || { umask 077; rnd > "/etc/30ops/secrets/$s"; }
+  [ -s "/etc/30ops/secrets/$s" ] || (umask 077; rnd > "/etc/30ops/secrets/$s")
 done
 sh "$R/tests/fakes/changes-repo.sh"
 "$R/tests/e2e/fakes/netns.sh" down >/dev/null 2>&1 || true
