@@ -1,0 +1,7 @@
+{
+ "targets": [
+  "primary=ops30@192.0.2.2"
+ ],
+ "now": 1791892800,
+ "source": "synthetic, from collector/tests/fake-nas.sh inputs"
+}

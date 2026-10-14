@@ -1,0 +1,2 @@
+{"op": "run", "dest": "root@192.0.2.9", "argv": ["pvecm", "status"], "rc": 255}
+{"op": "run", "dest": "root@192.0.2.5", "argv": ["pvecm", "status"], "rc": 0, "out": "002.out"}

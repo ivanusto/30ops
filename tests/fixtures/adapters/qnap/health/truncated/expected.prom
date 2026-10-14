@@ -1,0 +1,3 @@
+# HELP nas_up 1 when ssh and zfs answered
+# TYPE nas_up gauge
+nas_up{nas="primary"} 0

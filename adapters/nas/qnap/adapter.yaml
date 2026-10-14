@@ -11,12 +11,12 @@ capabilities:
     metrics: [qnap_firmware_info, qnap_model_info]
   health:
     face: collect
-    status: planned
+    status: implemented
     textfile: nas.prom
     note: pools, datasets, HBS and memory over one ssh session; disks, fans and UPS come from snmp_module
   snapshots:
     face: collect
-    status: planned
+    status: implemented
     textfile: nas.prom
     via: health
   share_canary:

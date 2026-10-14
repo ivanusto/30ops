@@ -1,0 +1,22 @@
+@@now 1791892800
+@@ok 1
+@@pagesize 4096
+@@buddyinfo
+Node 0, zone      DMA      0      0      0      0      0      0      0      0      1      1      3
+Node 0, zone    DMA32    313    255    172    113     55   2180    611    207     50      1      0
+Node 0, zone   Normal 425257  74031  93543  77921  12561  30507    259      0      0      0      0
+@@stat
+btime 1791196320
+@@zpool
+zpool1	24855000000000	6500000000000	26%	ONLINE
+@@zfs
+zpool1/zfs263	3640000000000
+zpool1/zfs264	24000000000
+@@snapshots
+zpool1/zfs263@snapshot:init:	1783252800	0
+zpool1/zfs263@GMT-2026.10.01-01.00.00	1791885600	123456789
+zpool1/zfs263@GMT-2026.10.01-02.00.00	1791889200	2345678
+zpool1/zfs264@snapshot:init:	1783252800	0
+@@hbs
+26.4.4.788
+@@end

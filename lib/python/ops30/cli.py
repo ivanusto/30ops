@@ -1,5 +1,6 @@
-"""The 30ops command: validate, render, import-legacy (v0.3) and drill
-record / migrate (v0.2). install, doctor and readiness arrive later."""
+"""The 30ops command: validate, render, import-legacy (v0.3), drill
+record / migrate (v0.2), textfile (v0.5). install, doctor and readiness
+arrive later."""
 import argparse
 import difflib
 import json
@@ -190,6 +191,12 @@ def _nonneg_float(s):
     return n
 
 
+def cmd_textfile(a):
+    from . import collect
+    return collect.run(a.name, a.targets, out=a.out, local=a.local,
+                       stdin=sys.stdin if a.name == "pve-quorum" and not a.targets else None)
+
+
 def parser():
     ap = argparse.ArgumentParser(prog="30ops", description="30ops on-prem operations platform")
     ap.add_argument("--version", action="version", version=f"30ops {version()}")
@@ -216,6 +223,14 @@ def parser():
     i.add_argument("-o", "--output", help="write here (and assets.tsv next to it); default stdout")
     i.add_argument("--force", action="store_true", help="overwrite existing files")
     i.set_defaults(f=cmd_import_legacy)
+
+    t = sub.add_parser("textfile", help="collect one node_exporter textfile through its adapter (cron)")
+    t.add_argument("name", choices=["nas", "pve-quorum"])
+    t.add_argument("targets", nargs="*", metavar="LABEL=user@host[,user@host...]",
+                   help="pve-quorum without targets reads a pvecm status transcript on stdin")
+    t.add_argument("--out", help="write here atomically instead of stdout")
+    t.add_argument("--local", action="store_true", help="nas: run on the NAS itself; the targets are bare labels")
+    t.set_defaults(f=cmd_textfile)
 
     d = sub.add_parser("drill", help="drill records (drills.jsonl v1)").add_subparsers(dest="sub", required=True)
     r = d.add_parser("record", help="append one v1 record")

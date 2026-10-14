@@ -1,0 +1,138 @@
+# HELP nas_up 1 when ssh and zfs answered
+# TYPE nas_up gauge
+nas_up{nas="primary"} 1
+nas_up{nas="secondary"} 1
+# HELP nas_zpool_size_bytes Pool size
+# TYPE nas_zpool_size_bytes gauge
+nas_zpool_size_bytes{nas="primary",pool="zpool1"} 24855000000000
+nas_zpool_size_bytes{nas="secondary",pool="zpool2"} 24855000000000
+# HELP nas_zpool_alloc_bytes Pool allocated bytes
+# TYPE nas_zpool_alloc_bytes gauge
+nas_zpool_alloc_bytes{nas="primary",pool="zpool1"} 6500000000000
+nas_zpool_alloc_bytes{nas="secondary",pool="zpool2"} 6500000000000
+# HELP nas_zpool_capacity_percent Pool capacity used, percent
+# TYPE nas_zpool_capacity_percent gauge
+nas_zpool_capacity_percent{nas="primary",pool="zpool1"} 26
+nas_zpool_capacity_percent{nas="secondary",pool="zpool2"} 26
+# HELP nas_zpool_health 1 for the current pool state
+# TYPE nas_zpool_health gauge
+nas_zpool_health{nas="primary",pool="zpool1",state="ONLINE"} 1
+nas_zpool_health{nas="secondary",pool="zpool2",state="ONLINE"} 1
+# HELP nas_zfs_used_bytes Dataset used bytes
+# TYPE nas_zfs_used_bytes gauge
+nas_zfs_used_bytes{nas="primary",dataset="zpool1/zfs263"} 3640000000000
+nas_zfs_used_bytes{nas="primary",dataset="zpool1/zfs264"} 24000000000
+nas_zfs_used_bytes{nas="secondary",dataset="zpool2/zfs263"} 3640000000000
+nas_zfs_used_bytes{nas="secondary",dataset="zpool2/zfs264"} 24000000000
+# HELP nas_zfs_snapshots Snapshots per dataset, excluding :init:
+# TYPE nas_zfs_snapshots gauge
+nas_zfs_snapshots{nas="primary",dataset="zpool1/zfs263"} 2
+nas_zfs_snapshots{nas="secondary",dataset="zpool2/zfs263"} 2
+# HELP nas_zfs_snapshot_used_bytes Space held by snapshots per dataset
+# TYPE nas_zfs_snapshot_used_bytes gauge
+nas_zfs_snapshot_used_bytes{nas="primary",dataset="zpool1/zfs263"} 125802467
+nas_zfs_snapshot_used_bytes{nas="secondary",dataset="zpool2/zfs263"} 125802467
+# HELP nas_zfs_snapshot_newest_timestamp Creation time of the newest snapshot
+# TYPE nas_zfs_snapshot_newest_timestamp gauge
+nas_zfs_snapshot_newest_timestamp{nas="primary",dataset="zpool1/zfs263"} 1791889200
+nas_zfs_snapshot_newest_timestamp{nas="secondary",dataset="zpool2/zfs263"} 1791889200
+# HELP nas_zfs_snapshot_oldest_timestamp Creation time of the oldest snapshot
+# TYPE nas_zfs_snapshot_oldest_timestamp gauge
+nas_zfs_snapshot_oldest_timestamp{nas="primary",dataset="zpool1/zfs263"} 1791885600
+nas_zfs_snapshot_oldest_timestamp{nas="secondary",dataset="zpool2/zfs263"} 1791885600
+# HELP nas_hbs_installed 1 when HBS 3 is installed
+# TYPE nas_hbs_installed gauge
+nas_hbs_installed{nas="primary"} 1
+nas_hbs_installed{nas="secondary"} 0
+# HELP nas_buddyinfo_free_blocks Free blocks of 2^order pages per zone, from /proc/buddyinfo
+# TYPE nas_buddyinfo_free_blocks gauge
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="0"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="1"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="2"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="3"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="4"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="5"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="6"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="7"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="8"} 1
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="9"} 1
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="10"} 3
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="0"} 313
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="1"} 255
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="2"} 172
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="3"} 113
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="4"} 55
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="5"} 2180
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="6"} 611
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="7"} 207
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="8"} 50
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="9"} 1
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="10"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="0"} 425257
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="1"} 74031
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="2"} 93543
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="3"} 77921
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="4"} 12561
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="5"} 30507
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="6"} 259
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="7"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="8"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="9"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="10"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="0"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="1"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="2"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="3"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="4"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="5"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="6"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="7"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="8"} 1
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="9"} 1
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA",order="10"} 3
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="0"} 313
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="1"} 255
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="2"} 172
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="3"} 113
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="4"} 55
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="5"} 2180
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="6"} 611
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="7"} 207
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="8"} 50
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="9"} 1
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="DMA32",order="10"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="0"} 425257
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="1"} 74031
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="2"} 93543
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="3"} 77921
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="4"} 12561
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="5"} 30507
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="6"} 259
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="7"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="8"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="9"} 0
+nas_buddyinfo_free_blocks{nas="secondary",node="0",zone="Normal",order="10"} 0
+# HELP nas_memory_free_bytes Free memory per zone, summed from /proc/buddyinfo
+# TYPE nas_memory_free_bytes gauge
+nas_memory_free_bytes{nas="primary",zone="DMA"} 15728640
+nas_memory_free_bytes{nas="primary",zone="DMA32"} 622456832
+nas_memory_free_bytes{nas="primary",zone="Normal"} 11323944960
+nas_memory_free_bytes{nas="secondary",zone="DMA"} 15728640
+nas_memory_free_bytes{nas="secondary",zone="DMA32"} 622456832
+nas_memory_free_bytes{nas="secondary",zone="Normal"} 11323944960
+# HELP nas_memory_free_highorder_ratio Share of free memory per zone in blocks of order 9 (2 MiB) and up
+# TYPE nas_memory_free_highorder_ratio gauge
+nas_memory_free_highorder_ratio{nas="primary",zone="DMA"} 0.933333
+nas_memory_free_highorder_ratio{nas="primary",zone="DMA32"} 0.003369
+nas_memory_free_highorder_ratio{nas="primary",zone="Normal"} 0.000000
+nas_memory_free_highorder_ratio{nas="secondary",zone="DMA"} 0.933333
+nas_memory_free_highorder_ratio{nas="secondary",zone="DMA32"} 0.003369
+nas_memory_free_highorder_ratio{nas="secondary",zone="Normal"} 0.000000
+# HELP nas_boot_time_seconds Unix time the NAS booted
+# TYPE nas_boot_time_seconds gauge
+nas_boot_time_seconds{nas="primary"} 1791196320
+nas_boot_time_seconds{nas="secondary"} 1791196320
+# HELP nas_textfile_last_run_timestamp Unix time of the last run per NAS
+# TYPE nas_textfile_last_run_timestamp gauge
+nas_textfile_last_run_timestamp{nas="primary"} 1791892800
+nas_textfile_last_run_timestamp{nas="secondary"} 1791892800

@@ -1,0 +1,51 @@
+# HELP nas_up 1 when ssh and zfs answered
+# TYPE nas_up gauge
+nas_up{nas="primary"} 0
+# HELP nas_buddyinfo_free_blocks Free blocks of 2^order pages per zone, from /proc/buddyinfo
+# TYPE nas_buddyinfo_free_blocks gauge
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="0"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="1"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="2"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="3"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="4"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="5"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="6"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="7"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="8"} 1
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="9"} 1
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA",order="10"} 3
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="0"} 313
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="1"} 255
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="2"} 172
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="3"} 113
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="4"} 55
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="5"} 2180
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="6"} 611
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="7"} 207
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="8"} 50
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="9"} 1
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="DMA32",order="10"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="0"} 425257
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="1"} 74031
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="2"} 93543
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="3"} 77921
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="4"} 12561
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="5"} 30507
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="6"} 259
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="7"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="8"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="9"} 0
+nas_buddyinfo_free_blocks{nas="primary",node="0",zone="Normal",order="10"} 0
+# HELP nas_memory_free_bytes Free memory per zone, summed from /proc/buddyinfo
+# TYPE nas_memory_free_bytes gauge
+nas_memory_free_bytes{nas="primary",zone="DMA"} 15728640
+nas_memory_free_bytes{nas="primary",zone="DMA32"} 622456832
+nas_memory_free_bytes{nas="primary",zone="Normal"} 11323944960
+# HELP nas_memory_free_highorder_ratio Share of free memory per zone in blocks of order 9 (2 MiB) and up
+# TYPE nas_memory_free_highorder_ratio gauge
+nas_memory_free_highorder_ratio{nas="primary",zone="DMA"} 0.933333
+nas_memory_free_highorder_ratio{nas="primary",zone="DMA32"} 0.003369
+nas_memory_free_highorder_ratio{nas="primary",zone="Normal"} 0.000000
+# HELP nas_boot_time_seconds Unix time the NAS booted
+# TYPE nas_boot_time_seconds gauge
+nas_boot_time_seconds{nas="primary"} 1791196320

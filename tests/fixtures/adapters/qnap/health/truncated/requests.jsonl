@@ -1,0 +1,1 @@
+{"op": "run", "dest": "ops30@192.0.2.2", "argv": ["sh", "-s"], "stdin_sha256": "438476002405083f6719295f4247cc6ac73a1af7ab896a3f1ed3461e47d3823a", "rc": 0, "out": "001.out"}

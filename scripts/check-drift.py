@@ -36,7 +36,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 NODE_SIDE = [
     "collector/textfile/gb10-textfile.py",      # copied to /usr/local/bin on the GB10 hosts
-    "collector/textfile/nas-textfile.sh",       # runs over ssh against the NAS
+    "adapters/nas/qnap/remote.sh",              # piped to sh on the NAS over ssh
     "drills/pve-backup/canary.sh",              # installed in the guest as /usr/local/bin/canary.sh
     "drills/nas-backup/share-canary.sh",        # runs on the NAS (cron) and reads the share
     "drills/nas-backup/nas-audit.sh",           # runs on the NAS

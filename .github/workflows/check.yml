@@ -42,7 +42,7 @@ jobs:
           bin/30ops render --site examples/sample-site/site.yaml --compare-legacy tests/fixtures/legacy-root
           systemd-analyze verify build/etc/systemd/system/mnt-worm.mount
           for f in build/nodes/*/etc/sudoers.d/pcap; do sudo visudo -cf "$f"; done
-      - run: shellcheck -s sh bin/30ops lib/sh/ops30.sh tests/sh/test_ops30_sh.sh scripts/fetch-legacy.sh tests/sh/test_fetch_legacy.sh
+      - run: shellcheck -s sh bin/30ops lib/sh/ops30.sh adapters/nas/qnap/remote.sh tests/sh/test_ops30_sh.sh scripts/fetch-legacy.sh tests/sh/test_fetch_legacy.sh
       - run: sh tests/sh/test_ops30_sh.sh
       - run: sh tests/sh/test_fetch_legacy.sh
 

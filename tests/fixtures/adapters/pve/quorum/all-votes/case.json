@@ -1,0 +1,7 @@
+{
+ "targets": [
+  "lab=root@192.0.2.9,root@192.0.2.5"
+ ],
+ "now": 1791892800,
+ "source": "field transcripts collector/tests/pvecm-status*.txt (PVE 9.2), addresses anonymised"
+}

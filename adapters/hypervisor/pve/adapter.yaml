@@ -12,7 +12,7 @@ capabilities:
     milestone: v1.x
   quorum:
     face: collect
-    status: planned
+    status: implemented
     textfile: pve-quorum.prom
   backup_jobs:
     status: planned

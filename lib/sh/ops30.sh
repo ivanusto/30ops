@@ -8,7 +8,7 @@
 #   . "$OPS30_SH"
 #
 # Scripts that are copied to a node and run there on their own (canary.sh,
-# share-canary.sh, nas-audit.sh, replica-verify.sh, nas-textfile.sh) do not
+# share-canary.sh, nas-audit.sh, replica-verify.sh, the qnap remote.sh) do not
 # source this file; see docs/lib.md.
 
 # the checkout this file belongs to (OPS30_SH is set by the caller, see above)
