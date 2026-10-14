@@ -79,4 +79,44 @@ install 只動收集端本身。下列設備要另外設定，install 結束時�
 
 ## 節點：`30ops install node`
 
-見下一節（v0.5 第 7 步）。
+```sh
+bin/30ops install node spark01 --site site.yaml --ssh ops@192.0.2.131   # 經 ssh，遠端以 sudo 執行
+bin/30ops install node pve1 --site site.yaml                             # hosts[].ssh 是 root 時不用 sudo
+bin/30ops install node spark01 --site site.yaml --bundle /tmp/           # 只產生 bundle
+bin/30ops install node nas-primary --site site.yaml                      # 設備：列出要在設備上做的設定
+```
+
+先裝收集端：bundle 要帶收集端的公鑰（pcap 拉取金鑰、quorum 用的 `metrics` 金鑰）。
+
+### bundle
+
+`30ops-node-<主機>.tar.gz` 解開是 `30ops-node-<主機>/`，內容依主機的角色決定：
+
+| 內容 | 何時 |
+|---|---|
+| `node-install.sh`、`install.env` | 一律 |
+| `collector/install-node.sh` 與 node_exporter 單元；有 gb10-ops 插件時加 gb10-textfile | 角色 node |
+| `logs/node/install-journal-upload.sh` | 角色 journal |
+| `logs/pcap/` 的安裝程式、render 產出的 `etc/pcap/*.env` 與 `etc/sudoers.d/pcap`、`keys/pcap-pull.pub` | 角色 pcap |
+| `keys/quorum.pub` | 角色 hypervisor 且有 `pve.cluster` |
+
+bundle 是確定性的：條目排序，mtime、uid、gid 都是 0，gzip 檔頭的時間也是 0。同一份 site.yaml 產生相同的位元組，sha256 就代表裝了什麼。
+
+### 節點上做的事（`node-install.sh`，以 root 執行）
+
+| 角色 | 做什麼 |
+|---|---|
+| node | node_exporter（版本相同時不下載，單元檔沒變時不重啟）；ufw 啟用時允許 `SCRAPE_FROM` 連 9100 |
+| journal | systemd-journal-upload 送到收集端，從現在開始送；設定沒變時不重啟 journald 與上傳程式 |
+| pcap | 擷取單元、render 產出的設定檔與 sudoers，收集端的拉取金鑰限定為 `rrsync -ro` |
+| hypervisor | 收集端的金鑰限定只能從收集端執行 `pvecm status`，`loginctl enable-linger root`。PVE 的 `/root/.ssh/authorized_keys` 是指向 `/etc/pve/priv` 的 symlink（叢集共用），所以直接附加到實際檔案，不用 rename 取代，否則 symlink 會變成本機檔案 |
+
+每一步都可以重複執行，第二次執行不會有任何變更。
+
+### 經 ssh
+
+上傳與執行走同一條 ControlMaster 連線：先以 `cat > /tmp/...` 傳 bundle，再開一個互動 session 執行 `sudo sh node-install.sh`，sudo 要密碼時可以直接輸入。有 pcap 或 hypervisor 角色時，順便從這條已驗證的連線讀節點的 host key，寫進收集端 `metrics` 的 `known_hosts`，cron 的拉取與 quorum 檢查才不會在第一次連線時盲目信任。不是以 root 執行時，改為印出要執行的指令。
+
+### 設備
+
+NAS、防火牆、交換器不裝任何東西，`install node` 改印出該 adapter 的設定步驟（SNMP v3 唯讀帳號、ssh 帳號與金鑰、QuLog 記錄傳送、FortiGate 的唯讀 API 帳號與 syslogd2、syslogd3）。改設備設定之前先備份並開變更單。

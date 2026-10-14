@@ -2,7 +2,11 @@
 # install-pcap: set up least-privilege packet capture on a DGX Spark (DGX OS 7,
 # Ubuntu 24.04) or a Proxmox VE 9 node (Debian 13).
 #
-#   sudo ./install-pcap.sh [--pull-key /path/to/collector.pub]
+#   sudo ./install-pcap.sh [--pull-key /path/to/collector.pub] [--profiles DIR] [--sudoers FILE]
+#
+# --profiles and --sudoers take the site's files that 30ops render writes
+# (nodes/<host>/etc/pcap/*.env and etc/sudoers.d/pcap); 30ops install node
+# passes them. Without them the repo's profiles and sudoers-pcap are used.
 #
 # What it does
 #   1. apt install tcpdump (and rsync, for the collector's pull)
@@ -10,7 +14,8 @@
 #      /var/lib/pcap/{live,done}; tcpdump runs as this user with CAP_NET_RAW
 #      only, granted by the unit, never by setcap on the binary
 #   3. pcap-run.sh, pcap-seal.sh, pcap@.service, the profiles in /etc/pcap
-#      (existing profiles are kept), tmpfiles retention (live 2 d, done 7 d)
+#      (the repo's are installed only where none exists; --profiles ones
+#      replace what differs), tmpfiles retention (live 2 d, done 7 d)
 #   4. --pull-key: lets the collector read done/ over ssh as `pcap`, forced
 #      to `rrsync -ro /var/lib/pcap/done` with `restrict`; when the host has
 #      Day 11's `sshusers` group (sshd AllowGroups), pcap is added to it,
@@ -25,8 +30,15 @@
 set -eu
 
 HERE=$(cd "$(dirname "$0")" && pwd)
-PULL_KEY=""
-[ "${1:-}" = --pull-key ] && { PULL_KEY=${2:-}; [ -s "$PULL_KEY" ] || { echo "--pull-key needs a readable public key file" >&2; exit 64; }; }
+PULL_KEY="" PROFILES="" SUDOERS="$HERE/sudoers-pcap"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --pull-key) PULL_KEY=${2:-}; [ -s "$PULL_KEY" ] || { echo "--pull-key needs a readable public key file" >&2; exit 64; }; shift 2 ;;
+    --profiles) PROFILES=${2:-}; [ -d "$PROFILES" ] || { echo "--profiles needs a directory" >&2; exit 64; }; shift 2 ;;
+    --sudoers) SUDOERS=${2:-}; [ -s "$SUDOERS" ] || { echo "--sudoers needs a file" >&2; exit 64; }; shift 2 ;;
+    *) echo "unknown argument $1" >&2; exit 64 ;;
+  esac
+done
 [ "$(id -u)" -eq 0 ] || { echo "run as root" >&2; exit 1; }
 
 if ! command -v tcpdump >/dev/null || ! command -v rsync >/dev/null; then
@@ -53,16 +65,23 @@ install -m 0755 "$HERE/pcap-run.sh"  /usr/local/bin/pcap-run.sh
 install -m 0755 "$HERE/pcap-seal.sh" /usr/local/bin/pcap-seal.sh
 install -m 0644 "$HERE/pcap@.service" /etc/systemd/system/pcap@.service
 install -d -m 0755 /etc/pcap
-for p in "$HERE"/profiles/*.env; do
-  b=$(basename "$p")
-  [ -e "/etc/pcap/$b" ] || install -m 0644 "$p" "/etc/pcap/$b"
-done
+if [ -n "$PROFILES" ]; then
+  for p in "$PROFILES"/*.env; do
+    b=$(basename "$p")
+    cmp -s "$p" "/etc/pcap/$b" || install -m 0644 "$p" "/etc/pcap/$b"
+  done
+else
+  for p in "$HERE"/profiles/*.env; do
+    b=$(basename "$p")
+    [ -e "/etc/pcap/$b" ] || install -m 0644 "$p" "/etc/pcap/$b"
+  done
+fi
 systemctl daemon-reload
 
 # a Proxmox VE node often has no sudo at all (root logs in directly); the
 # drop-in is only installed where sudo is, and checked before it counts
 if command -v visudo >/dev/null; then
-  install -m 0440 "$HERE/sudoers-pcap" /etc/sudoers.d/pcap
+  install -m 0440 "$SUDOERS" /etc/sudoers.d/pcap
   visudo -cf /etc/sudoers.d/pcap >/dev/null || { rm -f /etc/sudoers.d/pcap; echo "sudoers-pcap failed visudo, not installed" >&2; exit 1; }
 else
   echo "sudo is not installed: no sudoers drop-in, pcap-ops has no effect here"

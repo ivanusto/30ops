@@ -140,6 +140,22 @@ class Ops:
         except subprocess.TimeoutExpired:
             return subprocess.CompletedProcess(argv, 124, "", f"timeout after {timeout}s")
 
+    def pipe(self, argv, data, timeout=600):
+        """run with bytes on stdin (a bundle over ssh)."""
+        try:
+            p = subprocess.run(argv, input=data, capture_output=True, timeout=timeout)
+        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            return subprocess.CompletedProcess(argv, 127, "", str(e))
+        return subprocess.CompletedProcess(argv, p.returncode, p.stdout.decode(errors="replace"),
+                                           p.stderr.decode(errors="replace"))
+
+    def run_tty(self, argv):
+        """run attached to this terminal (sudo may ask for a password); the exit code."""
+        try:
+            return subprocess.run(argv).returncode
+        except FileNotFoundError:
+            return 127
+
     def http(self, url, method="GET", timeout=5, auth=None):
         req = urllib.request.Request(url, method=method)
         if auth:

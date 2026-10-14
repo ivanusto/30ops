@@ -225,6 +225,17 @@ def cmd_install_collector(a):
                              out=lambda line: print(line, flush=True))
 
 
+def cmd_install_node(a):
+    from . import render
+    from .install import node
+    from .install.ops import Ops
+    r = _site(a)
+    if r is None:
+        return 2
+    tree = render.render(*r)
+    return node.install(r[0], tree, a.host, Ops(), bundle=a.bundle, ssh=a.ssh, out=lambda line: print(line, flush=True))
+
+
 def cmd_textfile(a):
     from . import collect
     return collect.run(a.name, a.targets, out=a.out, local=a.local,
@@ -268,6 +279,12 @@ def parser():
                    help="create missing docker volumes (a new site; a moved collector names its old ones)")
     c.add_argument("--root", default="/", help=argparse.SUPPRESS)
     c.set_defaults(f=cmd_install_collector)
+    n = ins.add_parser("node", help="install a node's roles over ssh, or write its bundle (docs/install.md)")
+    n.add_argument("host", help="the host's name in site.yaml")
+    n.add_argument("--site", default=site_default, help="default ./site.yaml or $OPS30_SITE")
+    n.add_argument("--bundle", metavar="PATH", help="write the bundle (a file, or a directory for it) and stop")
+    n.add_argument("--ssh", metavar="USER@HOST", help="log in as this user (with sudo) instead of hosts[].ssh")
+    n.set_defaults(f=cmd_install_node)
 
     t = sub.add_parser("textfile", help="collect one node_exporter textfile through its adapter (cron)")
     t.add_argument("name", choices=["nas", "pve-quorum"])

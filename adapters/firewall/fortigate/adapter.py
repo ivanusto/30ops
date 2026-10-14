@@ -54,3 +54,21 @@ def licences(transport, url, token, insecure=False):
         return from_doc(json.loads(r.out))
     except ValueError as e:
         raise RuntimeError(f"{PATH}: not JSON ({e})") from None
+
+
+def manual_steps(site, h):
+    """What 30ops install node prints for a FortiGate. Back up the config
+    first, and make each of these a change record."""
+    col = next(x for x in site["hosts"] if x["name"] == site["collector"]["host"])["address"]
+    out = []
+    if h.get("api"):
+        f = site["credentials"][h["api"]["token"]]["file"]
+        out.append(f"an admin profile with sysgrp custom and only upd read, and a REST API user on it with "
+                   f"trusthost {col}/32; its token in {f} (0400, install collector sets the owner)")
+    if "syslog" in h["roles"] or "webfilter" in h["roles"]:
+        out.append(f"log syslogd2: server {col}, port 514, mode reliable, format rfc5424, forward and local "
+                   "traffic (logs/firewall/fortigate-webfilter.md)")
+    if "audit-source" in h["roles"]:
+        out.append(f"log syslogd3: server {col}, port 515, mode reliable, format rfc5424, event log only "
+                   "(logs/audit/fortigate-syslogd3.md)")
+    return out

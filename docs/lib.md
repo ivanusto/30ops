@@ -68,6 +68,7 @@ POSIX sh。`date -d @EPOCH` 在 GNU date 與 busybox date 都可用。
 |---|---|
 | `collector/textfile/gb10-textfile.py` | GB10 主機的 `/usr/local/bin` |
 | `adapters/nas/qnap/remote.sh` | 經 ssh 送到 NAS 的 sh 執行 |
+| `collector/node/node-install.sh` | 節點上，從 `30ops install node` 的 bundle 執行 |
 | `drills/pve-backup/canary.sh` | 還原演練的 VM 內，`/usr/local/bin/canary.sh` |
 | `drills/nas-backup/share-canary.sh` | NAS 的 cron |
 | `drills/nas-backup/nas-audit.sh` | NAS |

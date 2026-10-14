@@ -58,7 +58,7 @@ jobs:
           curl -fsSL -o p.tgz "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
           echo "${PROMETHEUS_SHA256}  p.tgz" | sha256sum -c
           tar xzf p.tgz && sudo install -m 0755 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
-      - run: shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh tests/fake-nas.sh tests/compose-smoke.sh grafana/build.sh
+      - run: shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh node/node-install.sh tests/fake-nas.sh tests/compose-smoke.sh grafana/build.sh
       - name: render the sample site
         run: |
           sudo apt-get install -y -qq python3-yaml

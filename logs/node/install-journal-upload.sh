@@ -21,9 +21,11 @@
 #      stops shipping until someone restarts the unit (spark02 went silent
 #      this way on 2026-10-07 and again on 10-12). A drop-in retries every
 #      30 s with no start limit.
-#   6. enable and (re)start systemd-journal-upload.service, then show the
-#      cursor. Running the script again on a host is how the drop-in gets
-#      there; the existing cursor is kept.
+#   6. enable systemd-journal-upload.service and start it, restarting it
+#      only when its configuration changed, then show the cursor. Running
+#      the script again on a host is how a new drop-in gets there; the
+#      existing cursor is kept, and a second run with nothing new changes
+#      nothing (journald is restarted only when its drop-in changed).
 #
 # The unit runs with DynamicUser=yes and StateDirectory=, so there is no
 # static systemd-journal-upload user and the cursor lives in
@@ -40,6 +42,15 @@ case "$URL" in
   *) echo "URL must start with http:// or https://" >&2; exit 64 ;;
 esac
 
+# put FILE: stdin becomes FILE when it differs; true when it changed
+put() {
+  t=$(mktemp)
+  cat > "$t"
+  if cmp -s "$t" "$1"; then rm -f "$t"; return 1; fi
+  install -m 0644 "$t" "$1"
+  rm -f "$t"
+}
+
 if [ ! -x /usr/lib/systemd/systemd-journal-upload ] && [ ! -x /lib/systemd/systemd-journal-upload ]; then
   apt-get update -qq
   DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd-journal-remote
@@ -49,20 +60,26 @@ fi
 #    persistent when /var/log/journal exists; the drop-in makes it explicit.
 #    No SystemMaxUse here on purpose: lowering it vacuums history at once.
 mkdir -p /var/log/journal /etc/systemd/journald.conf.d
-cat > /etc/systemd/journald.conf.d/10-persistent.conf <<'EOF'
+if put /etc/systemd/journald.conf.d/10-persistent.conf <<'EOF'
 # written by onprem-logs/node/install-journal-upload.sh
 [Journal]
 Storage=persistent
 EOF
-systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
-systemctl restart systemd-journald
+then
+  systemd-tmpfiles --create --prefix /var/log/journal >/dev/null 2>&1 || true
+  systemctl restart systemd-journald
+fi
+changed=0
 
 # 3. uploader config; systemd-journal-upload appends /upload to the URL
-cat > /etc/systemd/journal-upload.conf <<EOF
+if put /etc/systemd/journal-upload.conf <<EOF
 # written by onprem-logs/node/install-journal-upload.sh
 [Upload]
 URL=$URL/insert/journald
 EOF
+then
+  changed=1
+fi
 
 # 4. optional: start from now
 state=/var/lib/private/systemd/journal-upload/state
@@ -76,7 +93,7 @@ fi
 
 # 5. retry for ever
 mkdir -p /etc/systemd/system/systemd-journal-upload.service.d
-cat > /etc/systemd/system/systemd-journal-upload.service.d/10-retry.conf <<'EOF'
+if put /etc/systemd/system/systemd-journal-upload.service.d/10-retry.conf <<'EOF'
 # written by onprem-logs/node/install-journal-upload.sh
 # keep trying when the collector is not reachable yet (boot) or down
 [Unit]
@@ -85,13 +102,18 @@ StartLimitIntervalSec=0
 Restart=on-failure
 RestartSec=30s
 EOF
-systemctl daemon-reload
+then
+  systemctl daemon-reload
+  changed=1
+fi
 
 # 6. run
-systemctl enable systemd-journal-upload.service
-systemctl reset-failed systemd-journal-upload.service 2>/dev/null || true
-systemctl restart systemd-journal-upload.service
-sleep 3
+systemctl enable --quiet systemd-journal-upload.service
+if [ "$changed" = 1 ] || ! systemctl is-active --quiet systemd-journal-upload.service; then
+  systemctl reset-failed systemd-journal-upload.service 2>/dev/null || true
+  systemctl restart systemd-journal-upload.service
+  sleep 3
+fi
 systemctl --no-pager --lines=5 status systemd-journal-upload.service || true
 echo
 echo "cursor: $(sed -n 's/^LAST_CURSOR=//p' "$state" 2>/dev/null | head -c 120)"

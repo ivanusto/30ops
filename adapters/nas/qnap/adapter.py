@@ -140,3 +140,27 @@ def health(targets, transport, now):
             continue
         _one(m, t.label, s)
     return m.blocks()
+
+
+def manual_steps(site, h):
+    """What 30ops install node prints for a QNAP NAS: nothing is installed
+    on it, the collector reaches it over SNMP v3 and one ssh key."""
+    col = next(x for x in site["hosts"] if x["name"] == site["collector"]["host"])["address"]
+    user = site["collector"]["user"]
+    out = []
+    if h.get("snmp"):
+        a = site["snmp"]["auths"][h["snmp"]["auth"]]
+        out.append(f"Control Panel, Network & File Services, SNMP: enable SNMP V3 only, user {a['username']}, "
+                   f"authentication {a.get('auth_protocol', '-')}, privacy {a.get('priv_protocol', '-')}, "
+                   f"passwords from credentials {a.get('password', '-')} and {a.get('priv_password', '-')}; "
+                   f"UDP 161 reachable from {col}")
+    if h.get("ssh"):
+        out.append(f"Control Panel, Telnet / SSH: SSH on, Telnet off; give {h['ssh']['user']} (not admin) the "
+                   f"collector's key, /var/lib/{user}/.ssh/id_ed25519.pub; zfs list and zpool list need no root")
+        out.append(f"on the collector, as {user}: ssh-keyscan -t ed25519 {h['address']}, compare the fingerprint "
+                   f"with the one the NAS shows (ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub on it), "
+                   f"then add the line to ~/.ssh/known_hosts")
+    if "syslog" in h["roles"]:
+        out.append(f"QuLog Center, Log Sender, Send to Syslog Server: master switch on, destination {col} port 514 "
+                   "TCP, event and access logs (logs/nas/qulog-log-sender.md)")
+    return out
