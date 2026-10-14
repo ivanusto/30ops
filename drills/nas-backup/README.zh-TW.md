@@ -9,7 +9,7 @@ QNAP NAS 共享資料夾的備份盤點與還原演練工具。搭配 QuTS hero 
 | `nas-audit.sh` | 任何能 ssh 到 NAS 的機器，或 NAS 本機 | 列出儲存池、資料集、每個資料集的快照數與新舊、快照保留屬性、快照排程檔是否存在、HBS 3 是否安裝、rsync 模組與 NFS 匯出，輸出 Markdown |
 | `share-canary.sh` | 掛載了共享資料夾的 Linux 主機 | 每分鐘往資料夾寫一筆心跳並 fsync，保存固定 payload 與其 sha256。`verify` 指向快照目錄、次要 NAS 的副本或回復後的資料夾，找出還原點與 RPO，校驗 payload。`verify` 不寫入 |
 | `replica-verify.sh` | 任何能同時看到來源與副本的主機 | `manifest` 產生 sha256 清單，`check` 逐檔校驗，`quick` 只比路徑與大小 |
-| `restore-drill.sh` | 控制端 | 按下還原時啟動，依序等 `beats.log` 出現、canary 驗證、manifest 校驗，印出 drill-log 的一列與 JSONL |
+| `restore-drill.sh` | 控制端 | 按下還原時啟動，依序等 `beats.log` 出現、canary 驗證、manifest 校驗，印出 drill-log 的一列與 drills.jsonl v1 紀錄 |
 | `policy.md` | 文件 | 盤點結果、資料分級、快照與 HBS 3 的設定與依據、3-2-1 對照、實測到的邊界 |
 | `drill-log.md` | 文件 | 四個還原演練與紀錄表 |
 | `outage-checklist.md` | 文件 | 主 NAS 停機演練的檢查清單 |

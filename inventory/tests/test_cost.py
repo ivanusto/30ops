@@ -1,4 +1,4 @@
-"""scripts/cost.py 對 tests/cost-fixture.yaml 的手算核對。python3 -m unittest discover tests"""
+"""inventory/cost.py 對 tests/cost-fixture.yaml 的手算核對。python3 -m unittest discover tests"""
 import copy
 import sys
 import unittest
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import cost  # noqa: E402
 
 FIXTURE = yaml.safe_load((Path(__file__).parent / "cost-fixture.yaml").read_text(encoding="utf-8"))

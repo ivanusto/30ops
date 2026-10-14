@@ -8,7 +8,7 @@
 
 ## 狀態
 
-**v0.1.0**：程式已併入同一個 repo，各模組的測試在新路徑全數通過，但還是各自安裝、各自設定。單一 `site.yaml`、`30ops` 指令、安裝程式與 adapter 在後續版本完成。
+**v0.2.0**：程式已併入同一個 repo，收集端各模組共用 `lib/`（front matter、RFC 3339、textfile 輸出、JSON Lines、演練紀錄），所有演練都寫 drills.jsonl v1。各模組仍各自安裝、各自設定。單一 `site.yaml`、`30ops` 指令、安裝程式與 adapter 在後續版本完成。
 
 | 版本 | 內容 |
 |---|---|
@@ -35,7 +35,10 @@
 | `inventory/` | 一年成本模型（電費、攤提、雲端對照） | 索引 repo |
 | `plugins/` | 可選的節點模組：GB10 主機防護、節點基線、NFS 模型庫 | gb10-ops、spark-baseline、nfs-model-library |
 | `examples/sample-site/` | 範例場域的資產清單與成本表 | |
-| `scripts/` | `hygiene.py`、`check-ci-pins.sh` | |
+| `bin/` | `30ops` 指令（v0.2：`drill record`、`drill migrate`） | |
+| `lib/` | `python/ops30` 與 `sh/ops30.sh`，收集端與演練腳本共用，見 [docs/lib.md](docs/lib.md) | |
+| `tests/` | `unit/` 測 lib，`golden/` 是不得改變的 textfile 輸出，`sh/` | |
+| `scripts/` | `hygiene.py`、`check-drift.py`、`check-ci-pins.sh` | |
 
 ## 檢查
 
@@ -43,6 +46,8 @@ CI 的每個模組一個 job，見 `.github/workflows/check.yml`。本機可以�
 
 ```sh
 python3 scripts/hygiene.py          # 破折號、私有 IP、家目錄路徑、.pii-patterns
+python3 scripts/check-drift.py      # lib/ 已有的寫法不得在別處再寫一份
+python3 -m unittest discover -s tests/unit && python3 -m unittest tests/test_golden.py && sh tests/sh/test_ops30_sh.sh
 sh scripts/check-ci-pins.sh         # action 釘 SHA、下載驗 sha256、映像帶 digest
 (cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh)
 (cd changes && python3 -m unittest discover -s tests && python3 scripts/check.py --assets ../examples/sample-site/assets.tsv)

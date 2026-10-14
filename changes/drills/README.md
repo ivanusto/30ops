@@ -6,7 +6,7 @@ time somebody ran it.
 | File | What |
 |---|---|
 | [drill.sh](drill.sh) | Times one rollback: polls a verification command every 2 s until it exits 0 (or `-t` seconds pass), writes start and end to the journal with tag `drill`, appends one JSON line to `drills.jsonl` |
-| [drills.jsonl](drills.jsonl) | One line per drill, the shape pve-backup-drill / nas-backup-drill / cloud-offload-drill use (`t0`, `label`, `result`, `rto_s`) plus `cr` (the drill record) and `rollback_of` (the record whose rollback was run). Created by the first drill |
+| `drills.jsonl` | One drills.jsonl v1 record per drill (kind `change-rollback`, [docs/drills-jsonl.md](../../docs/drills-jsonl.md)) with `cr` (the drill record) and `rollback_of` (the record whose rollback was run). Created by the first drill; site data, kept in the site repository |
 | [drills.md](drills.md) | The human table, Day 15's format: expected, observed, with times |
 
 ```

@@ -8,7 +8,7 @@ An on-prem operations platform for small and medium businesses to run themselves
 
 ## Status
 
-**v0.1.0**: the code lives in one repository and every module's tests pass at the new paths, but each module is still installed and configured on its own. A single `site.yaml`, the `30ops` command, installers and adapters come in later versions.
+**v0.2.0**: the code lives in one repository, the collector-side modules share `lib/` (front matter, RFC 3339, textfile output, JSON Lines, drill records) and every drill writes drills.jsonl v1. Each module is still installed and configured on its own. A single `site.yaml`, the `30ops` command, installers and adapters come in later versions.
 
 | Version | Scope |
 |---|---|
@@ -35,7 +35,10 @@ An on-prem operations platform for small and medium businesses to run themselves
 | `inventory/` | One-year cost model (power, depreciation, cloud comparison) | series index |
 | `plugins/` | Optional node modules: GB10 host guard, node baseline, NFS model library | gb10-ops, spark-baseline, nfs-model-library |
 | `examples/sample-site/` | Asset list and cost sheet of a sample site | |
-| `scripts/` | `hygiene.py`, `check-ci-pins.sh` | |
+| `bin/` | `30ops` command (v0.2: `drill record`, `drill migrate`) | |
+| `lib/` | `python/ops30` and `sh/ops30.sh`, shared by the collector-side and drill scripts, see [docs/lib.md](docs/lib.md) | |
+| `tests/` | `unit/` for lib, `golden/` textfile outputs that must not change, `sh/` | |
+| `scripts/` | `hygiene.py`, `check-drift.py`, `check-ci-pins.sh` | |
 
 ## Checks
 
@@ -43,6 +46,8 @@ CI runs one job per module, see `.github/workflows/check.yml`. Locally:
 
 ```sh
 python3 scripts/hygiene.py          # em dash, private IPs, home paths, .pii-patterns
+python3 scripts/check-drift.py      # nothing that lib/ already has is written again
+python3 -m unittest discover -s tests/unit && python3 -m unittest tests/test_golden.py && sh tests/sh/test_ops30_sh.sh
 sh scripts/check-ci-pins.sh         # actions by SHA, downloads by sha256, images by digest
 (cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh)
 (cd changes && python3 -m unittest discover -s tests && python3 scripts/check.py --assets ../examples/sample-site/assets.tsv)

@@ -12,7 +12,7 @@
 | `gcs-bucket.sh` | 有 gcloud 的機器 | 建 bucket（區域、版本、保留政策、生命週期、禁止公開）、上傳身分與自訂角色、HBS 3 需要的列 bucket 權限、HMAC 金鑰、列出設定當證據、鎖定保留政策 |
 | `s3-bucket.sh` | 有 aws CLI 的機器 | 在 S3 相容服務建同樣的 bucket，Object Lock 在建立時啟用 |
 | `iam/` | 資料 | 自訂角色、生命週期與 Object Lock 設定檔 |
-| `offload-drill.sh` | 有 rclone 的機器 | 上傳計時、還原並過 manifest、刪除被保留的物件（預期被拒）、冷層首位元組延遲，各印一列 drill-log 與 JSONL |
+| `offload-drill.sh` | 有 rclone 的機器 | 上傳計時、還原並過 manifest、刪除被保留的物件（預期被拒）、冷層首位元組延遲，各印一列 drill-log 與 drills.jsonl v1 紀錄 |
 | `hmac-rm-generation.py` | 有 Python 3 與 botocore 的機器 | 用上傳身分的 HMAC 金鑰刪除 GCS 物件的指定 generation，證明擋下來的是保留政策 |
 | `policy.md` | 文件 | 外移什麼、不可變怎麼做才算數、上傳工具、排程、隱藏成本、實測到的邊界 |
 | `drill-log.md` | 文件 | 演練紀錄 |

@@ -43,7 +43,7 @@ sudo ./canary.sh install
 ./restore-drill.sh vs 192.168.x.y --no-pve --label "1. 即時還原" --failed-at 2026-10-02T03:10:00Z
 ```
 
-結束時印出一列表格，貼進 `drill-log.md`，JSONL 追加到 `drills.jsonl`（可用環境變數 `OUT` 換路徑）。
+結束時印出一列表格，貼進 `drill-log.md`，drills.jsonl v1 紀錄追加到 `drills.jsonl`（可用環境變數 `OUT` 換路徑，格式見 [docs/drills-jsonl.md](../../docs/drills-jsonl.md)）。
 
 ## 要讓 IP 可預期
 

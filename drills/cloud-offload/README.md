@@ -12,7 +12,7 @@ Move NAS data to object storage to complete the last 1 of 3-2-1 and the immutabl
 | `gcs-bucket.sh` | A host with gcloud | Creates the bucket (region, versioning, retention policy, lifecycle, public access prevention), the upload identity and its custom role, the bucket list permission HBS 3 needs, the HMAC key, dumps the settings as evidence, and locks the retention policy |
 | `s3-bucket.sh` | A host with the aws CLI | Creates the same bucket on an S3 compatible service, with Object Lock enabled at creation |
 | `iam/` | Data | Custom roles, lifecycle and Object Lock configuration |
-| `offload-drill.sh` | A host with rclone | Timed upload, restore with a manifest check, deleting retained objects (expected to be refused), and cold tier first byte latency. Each prints one drill log row and a JSONL record |
+| `offload-drill.sh` | A host with rclone | Timed upload, restore with a manifest check, deleting retained objects (expected to be refused), and cold tier first byte latency. Each prints one drill log row and a drills.jsonl v1 record |
 | `hmac-rm-generation.py` | A host with Python 3 and botocore | Deletes a specific generation of a GCS object with the upload identity's HMAC key, to show that the retention policy is what blocks it |
 | `policy.md` | Document (Traditional Chinese) | What to move offsite, what makes immutability count, upload tools, schedule, hidden costs, and limits found in testing |
 | `drill-log.md` | Document (Traditional Chinese) | Drill log |

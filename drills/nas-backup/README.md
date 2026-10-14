@@ -9,7 +9,7 @@ Backup audit and restore drill tools for shared folders on a QNAP NAS. They work
 | `nas-audit.sh` | Any host that can ssh to the NAS, or the NAS itself | Lists pools, datasets, snapshot count and age per dataset, snapshot reserve properties, whether the snapshot schedule files exist, whether HBS 3 is installed, rsync modules and NFS exports, as Markdown |
 | `share-canary.sh` | A Linux host that mounts the shared folder | Appends a heartbeat to the folder every minute and fsyncs it, and keeps a fixed payload with its sha256. `verify` points at a snapshot directory, a replica on the secondary NAS, or the folder after a revert, finds the restore point and RPO, and checks the payload. `verify` never writes |
 | `replica-verify.sh` | Any host that sees both source and replica | `manifest` writes a sha256 list, `check` verifies every file, `quick` compares paths and sizes only |
-| `restore-drill.sh` | The control host | Started when you trigger the restore; waits in order for `beats.log`, the canary check and the manifest check, then prints one drill-log row and a JSONL record |
+| `restore-drill.sh` | The control host | Started when you trigger the restore; waits in order for `beats.log`, the canary check and the manifest check, then prints one drill-log row and a drills.jsonl v1 record |
 | `policy.md` | Document (Traditional Chinese) | Audit results, data classification, snapshot and HBS 3 settings with their reasons, the 3-2-1 mapping, and limits found in testing |
 | `drill-log.md` | Document (Traditional Chinese) | The four restore drills and their log |
 | `outage-checklist.md` | Document (Traditional Chinese) | Checklist for a primary NAS shutdown drill |
