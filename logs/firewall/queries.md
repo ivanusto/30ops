@@ -28,12 +28,12 @@ _time:24h "conn log:" | extract "Source IP: <ip>," | extract "Action: <action>"
   | filter action:~"(?i)fail" | stats by (hostname, ip) count() as n | sort by (n) desc
 
 # NAS，排除收集端每分鐘的 SSH 之後，依來源、類型與動作
-_time:24h "conn log:" -"Source IP: 192.168.2.49,"
+_time:24h "conn log:" -"Source IP: 192.0.2.49,"
   | extract "Source IP: <ip>," | extract "Connection type: <ctype>," | extract "Action: <action>"
   | stats by (hostname, ip, ctype, action) count() as n | sort by (n) desc
 
 # NAS，一個來源做過的所有事
-_time:7d "conn log:" "Source IP: 192.168.2.10," | sort by (_time) | limit 100
+_time:7d "conn log:" "Source IP: 192.0.2.10," | sort by (_time) | limit 100
 
 # 一道牆被擋的封包每小時分佈
 _time:7d hostname:=fgt-edge "type=\"traffic\"" "action=\"deny\"" | stats by (_time:1h) count() as n
@@ -59,4 +59,4 @@ _time:7d offset 24h hostname:=fgt-edge "action=\"deny\"" | unpack_logfmt from _m
 - 欄位在 `unpack_logfmt` 之後才存在，所以第一段的篩選只能用原文關鍵字，`action:=deny` 放在後面的 `filter`。順序反過來，查到的會是空集合。`"action=\"deny\""` 先在原文篩一次，能讓 `unpack_logfmt` 少拆大部分的 accept。
 - `extract " SRC=<src> "` 前後的空白是刻意的：`MAC=` 的值裡也有等號，沒有空白會對錯位。
 - `_time:7d offset 24h` 是「到 24 小時前為止的 7 天」。順序寫反會變成「到 7 天前為止的 24 小時」，本機測試時踩過。
-- 收集端的 Day 19 `nas-textfile.sh` 每分鐘以 SSH 登入兩台 NAS，每台每天約 1,440 筆 `Login Success`，看 NAS 的連線紀錄前先排除 192.168.2.49。
+- 收集端的 Day 19 `nas-textfile.sh` 每分鐘以 SSH 登入兩台 NAS，每台每天約 1,440 筆 `Login Success`，看 NAS 的連線紀錄前先排除 192.0.2.49。

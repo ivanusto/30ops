@@ -149,7 +149,7 @@ class Drills(unittest.TestCase):
     def test_three_formats(self):
         # one line of each, copied from the drills.jsonl the three tools wrote
         pve = self.write("pve.jsonl", [
-            {"t0": "2026-09-30T15:47:06Z", "label": "d3-full", "vmid": "104", "ip": "192.168.2.49", "restore_point": "2026-09-30T15:34:02Z", "t_exists": 23, "t_running": 557, "t_ping": 568, "t_ssh": 568, "rto_s": 569, "rpo_s": "784", "result": "OK", "host": "spark1"},
+            {"t0": "2026-09-30T15:47:06Z", "label": "d3-full", "vmid": "104", "ip": "192.0.2.49", "restore_point": "2026-09-30T15:34:02Z", "t_exists": 23, "t_running": 557, "t_ping": 568, "t_ssh": 568, "rto_s": 569, "rpo_s": "784", "result": "OK", "host": "spark1"},
             {"t0": "2026-09-30T15:08:44Z", "label": "d1-instant", "vmid": "vs", "restore_point": "2026-09-30T15:05:02Z", "t_exists": None, "t_running": None, "t_ping": 0, "t_ssh": 0, "rto_s": 0, "rpo_s": "", "result": "FAIL", "host": "x"},
         ])
         nas = self.write("nas.jsonl", [

@@ -3,7 +3,7 @@
 # uploader that ships with systemd. No third-party agent, no new user, no
 # new binary. Works on DGX OS 7 (Ubuntu 24.04) and Proxmox VE 9 (Debian 13).
 #
-#   sudo ./install-journal-upload.sh http://192.168.2.49:9428 [--from-now]
+#   sudo ./install-journal-upload.sh http://192.0.2.49:9428 [--from-now]
 #
 # What it does
 #   1. apt install systemd-journal-remote (provides systemd-journal-upload)

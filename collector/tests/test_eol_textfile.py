@@ -31,7 +31,7 @@ def run(*args):
 
 class Assets(unittest.TestCase):
     def test_inventory_parses_and_every_row_is_accounted_for(self):
-        rows = eol.read_assets(HERE / "eol" / "assets.tsv")
+        rows = eol.read_assets(HERE.parent / "examples" / "sample-site" / "assets.tsv")
         self.assertGreater(len(rows), 10)
         for r in rows:
             self.assertIn(r["basis"], ("vendor", "estimate", "licence", "unknown"))

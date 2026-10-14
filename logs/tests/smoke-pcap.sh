@@ -28,7 +28,7 @@ for p in nfs corosync syslog custom; do
   case "$line" in *"tcpdump -p -n -i "*) ;; *) echo "dry run $p: $line"; exit 1 ;; esac
 done
 line=$( set -a; . "$tmp/etc/nfs.env"; set +a; IFACE=lo PCAP_DRYRUN=1 TCPDUMP=tcpdump "$here/pcap/pcap-run.sh" nfs )
-[ "$line" = "timeout -s INT 3660 tcpdump -p -n -i lo -s 256 -G 600 -W 6 -w $PCAP_LIVE/nfs-%Y%m%dT%H%M%SZ.pcap host 192.168.2.2 and tcp port 2049 " ] \
+[ "$line" = "timeout -s INT 3660 tcpdump -p -n -i lo -s 256 -G 600 -W 6 -w $PCAP_LIVE/nfs-%Y%m%dT%H%M%SZ.pcap host 192.0.2.2 and tcp port 2049 " ] \
   || { echo "nfs dry run differs: $line"; exit 1; }
 line=$( set -a; . "$tmp/etc/corosync.env"; set +a; IFACE=lo PCAP_DRYRUN=1 TCPDUMP=tcpdump "$here/pcap/pcap-run.sh" corosync )
 case "$line" in *"-C 50 -W 20 -w $PCAP_LIVE/corosync.pcap udp portrange 5405-5412 or tcp port 5403 ") ;; *) echo "corosync dry run differs: $line"; exit 1 ;; esac

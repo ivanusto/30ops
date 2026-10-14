@@ -89,10 +89,10 @@ _time:7d hostname:=fgt-edge "subtype=\"webfilter\""
   | sort by (_time) desc | limit 50
 
 # 一台工作站一天去了哪（稽核抽查的那種問題）
-_time:[2026-10-06T00:00:00+08:00, 2026-10-07T00:00:00+08:00) hostname:=fgt-edge "subtype=\"webfilter\"" "srcip=192.168.2.23"
+_time:[2026-10-06T00:00:00+08:00, 2026-10-07T00:00:00+08:00) hostname:=fgt-edge "subtype=\"webfilter\"" "srcip=192.0.2.23"
   | rename hostname as fgt
   | unpack_logfmt from _msg fields (srcip, hostname, catdesc, action)
-  | filter srcip:=192.168.2.23
+  | filter srcip:=192.0.2.23
   | stats by (hostname, catdesc, action) count() as n | sort by (n) desc
 
 # 每小時幾筆，看一天的形狀

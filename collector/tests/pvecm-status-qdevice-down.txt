@@ -25,5 +25,5 @@ Flags:            Quorate
 Membership information
 ----------------------
     Nodeid      Votes Name
-0x00000001          1 192.168.2.9 (local)
-0x00000003          1 192.168.2.5
+0x00000001          1 192.0.2.9 (local)
+0x00000003          1 192.0.2.5

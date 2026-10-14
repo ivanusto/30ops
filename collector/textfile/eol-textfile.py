@@ -6,7 +6,7 @@ and an alert 90 days out, not a line in someone's memory.
 
     eol-textfile.py --assets eol/assets.tsv --out /var/lib/node_exporter/textfile/eol.prom
     eol-textfile.py ... --refresh --cache /var/lib/onprem-metrics/eol      # check dates against endoflife.date
-    eol-textfile.py ... --fortigate https://192.168.2.99:10443 --token-file /etc/onprem-metrics/fgt.token
+    eol-textfile.py ... --fortigate https://192.0.2.99:10443 --token-file /etc/onprem-metrics/fgt.token
     eol-textfile.py ... --offline       # tests: use the cache, never fetch
 
 Metrics (labels asset, component, kind, version, milestone, basis)
@@ -238,13 +238,13 @@ def write_atomic(path, body):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--assets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "eol", "assets.tsv"))
+    ap.add_argument("--assets", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "examples", "sample-site", "assets.tsv"))
     ap.add_argument("--out", help="write the textfile here; default stdout")
     ap.add_argument("--refresh", action="store_true", help="compare TSV dates with endoflife.date (cached)")
     ap.add_argument("--cache", default="/var/lib/onprem-metrics/eol", help="cache dir for endoflife.date answers")
     ap.add_argument("--max-age", type=int, default=86400, help="seconds before a cached answer is fetched again")
     ap.add_argument("--offline", action="store_true", help="never fetch; use the cache as is (tests)")
-    ap.add_argument("--fortigate", help="base URL of the FortiGate, e.g. https://192.168.2.99:10443 (the admin port)")
+    ap.add_argument("--fortigate", help="base URL of the FortiGate, e.g. https://192.0.2.99:10443 (the admin port)")
     ap.add_argument("--token-file", help="file holding the read-only REST token")
     ap.add_argument("--fortigate-asset", default="fgt-edge", help="asset label for the licences")
     ap.add_argument("--insecure", action="store_true", help="do not verify the FortiGate's TLS certificate")

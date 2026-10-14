@@ -3,7 +3,7 @@
 
     scripts/check.py                          # all of changes/*.md
     scripts/check.py changes/CR-2026-0001-*.md
-    scripts/check.py --assets ../onprem-metrics/eol/assets.tsv   # assets must exist there
+    scripts/check.py --assets ../examples/sample-site/assets.tsv   # assets must exist there
 
 Rules, in the order they are reported
   file      name is CR-YYYY-NNNN-<slug>.md and matches `id`; ids are unique
@@ -146,7 +146,7 @@ def check_file(path, assets=None):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("files", nargs="*")
-    ap.add_argument("--assets", help="onprem-metrics eol/assets.tsv; every asset/component must be a row")
+    ap.add_argument("--assets", help="assets.tsv (examples/sample-site/assets.tsv); every asset/component must be a row")
     ap.add_argument("--dir", default=os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "changes"))
     a = ap.parse_args()
     files = a.files or sorted(f for f in glob.glob(os.path.join(a.dir, "*.md")) if os.path.basename(f) != "TEMPLATE.md")

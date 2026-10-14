@@ -8,7 +8,7 @@ PVE 節點不裝 ufw。Proxmox VE 有自己的防火牆（`pve-firewall`，PVE 8
 
 1. **開關在叢集層。** `is_enabled_and_not_nftables()`（5524 行）只看 `cluster.fw` 的 `enable`。`cluster.fw` 一寫 `enable: 1`，所有節點的 `pve-firewall` 都會編譯並套用規則。`host.fw` 的 `enable: 0` 只會跳過該節點的主機規則（4525 行起），`apply_ruleset()` 仍然會執行。
 2. **一開就打開橋接過濾。** `apply_ruleset()` 第一件事是 `enable_bridge_firewall()`（2082 行），把 `net.bridge.bridge-nf-call-iptables` 設成 1，從此橋接在 `vmbr0` 上的 VM 流量也要走 iptables 的 FORWARD 鏈。`PVEFW-FORWARD` 是用 `-A` **附加**在 FORWARD 最後（5103 行）。節點上如果有 Docker，Docker 已經把 FORWARD 的 policy 設成 DROP，它自己的鏈排在前面；VM 的新連線走完 Docker 的鏈與 `PVEFW-FORWARD` 都沒有被接受，就會掉到 policy DROP。這個場域的 pve1 上就有 Docker（`proxcenter-frontend`），而收集端 VM 正好跑在 pve1 上。
-3. **`management` 一定包含整個本地網段。** 4408 行把 `local_network`（沒有另外定義時就是節點所在的網段，這裡是 192.168.2.0/24）無條件推進 `management` IPSet。自己定義一個比較窄的 `management` 並不能把網段其他位址擋在 22 與 8006 之外；要縮小範圍，得改 `local_network` 這個 alias。好處是鎖死自己的風險比想像中小，壞處是同網段的機器照樣可以碰管理埠。
+3. **`management` 一定包含整個本地網段。** 4408 行把 `local_network`（沒有另外定義時就是節點所在的網段，這裡是 192.0.2.0/24）無條件推進 `management` IPSet。自己定義一個比較窄的 `management` 並不能把網段其他位址擋在 22 與 8006 之外；要縮小範圍，得改 `local_network` 這個 alias。好處是鎖死自己的風險比想像中小，壞處是同網段的機器照樣可以碰管理埠。
 
 ## 日誌落在哪
 
@@ -26,7 +26,7 @@ VMID LOGLEVEL CHAIN TIMESTAMP MESSAGE
 
 1. 有 Docker 的節點先處理橋接：在 `DOCKER-USER` 放行橋接在 `vmbr0` 上的流量，並寫成開機會套用的 unit，例如 `iptables -I DOCKER-USER -i vmbr0 -o vmbr0 -j ACCEPT`。這條規則也會讓客體層的防火牆在這台節點上失效，要用客體防火牆的話，得改成只放行沒有 `fwbr` 的介面。
 2. 先開一條到每台節點的 SSH 不要關，另外開一個瀏覽器分頁在 8006。
-3. 需要比整個網段更窄時才改 `local_network`。這個場域會用到管理埠的位址有：收集端（pve-exporter 與每分鐘的 `pvecm status`）、管理工作站、兩台節點、QDevice VM（192.168.2.148）、NAS（HDP 連 PVE 的 API）。
+3. 需要比整個網段更窄時才改 `local_network`。這個場域會用到管理埠的位址有：收集端（pve-exporter 與每分鐘的 `pvecm status`）、管理工作站、兩台節點、QDevice VM（192.0.2.148）、NAS（HDP 連 PVE 的 API）。
 4. 叢集層 `cluster.fw`
 
 ```

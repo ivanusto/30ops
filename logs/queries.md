@@ -28,7 +28,7 @@ Grafana 的 Explore 選 VictoriaLogs 資料源，貼查詢，時間範圍對準�
 _time:1d | stats by (_HOSTNAME, hostname) count()
 
 # NAS 的登入，排除收集端自己每分鐘的 SSH（Day 19 的 nas-textfile.sh）
-hostname:* "conn log:" -"Source IP: 192.168.2.49" | extract "Users: <user>, Source IP: <ip>," | stats by (hostname, user, ip) count()
+hostname:* "conn log:" -"Source IP: 192.0.2.49" | extract "Users: <user>, Source IP: <ip>," | stats by (hostname, user, ip) count()
 
 # sshd 登入失敗，依來源 IP
 _SYSTEMD_UNIT:ssh.service "Failed password" | extract "from <ip> port" | stats by (ip) count() as n | sort by (n) desc

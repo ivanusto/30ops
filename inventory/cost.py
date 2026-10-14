@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""由 lab/cost.yaml 算一年成本：電費（累進費率的邊際那一段）、硬體攤提、雲端對照。
+"""由 cost.yaml（範例在 examples/sample-site/）算一年成本：電費（累進費率的邊際那一段）、硬體攤提、雲端對照。
 
-    python3 scripts/cost.py                 # 印 Markdown 表
-    python3 scripts/cost.py --check         # 只驗 cost.yaml 的欄位（CI）
-    python3 scripts/cost.py --json          # 機器可讀
+    python3 inventory/cost.py                 # 印 Markdown 表
+    python3 inventory/cost.py --check         # 只驗 cost.yaml 的欄位（CI）
+    python3 inventory/cost.py --json          # 機器可讀
 
 沒填的數字印【待填】，含它的總計標「不含待填」。電費依 tariff.kind：
   tiered  場域用電疊在 household_base_kwh_per_month 之上，算多出來的那一段，
@@ -309,7 +309,7 @@ def markdown(r, c):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--file", default=str(ROOT / "lab" / "cost.yaml"))
+    ap.add_argument("--file", default=str(ROOT / "examples" / "sample-site" / "cost.yaml"))
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()

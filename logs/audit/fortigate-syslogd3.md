@@ -23,7 +23,7 @@ compose 的對應設定（一個監聽器一個值，依序）：
 ```
 config log syslogd3 setting
     set status enable
-    set server "192.168.2.49"
+    set server "192.0.2.49"
     set mode reliable
     set port 515
     set format rfc5424

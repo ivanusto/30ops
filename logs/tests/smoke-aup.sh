@@ -29,7 +29,7 @@ off="$tmp/cmp/offline.md"
 grep -q '^檔案 7 行 = 6 解析 + 1 略過，其中 webfilter 以外 2 行不計$' "$off" || { echo "reconciliation line wrong"; sed -n 3p "$off"; exit 1; }
 grep -q '^## fgt-edge  webfilter 4 筆，擋下 2 筆$' "$off" || { echo "totals wrong"; grep '^## ' "$off"; exit 1; }
 grep -q 'login-verify.example.org | Phishing | blocked | 1' "$off" || { echo "urgent row missing"; exit 1; }
-grep -q '192.168.2.49' "$off" && { echo "a traffic line leaked into the webfilter report"; exit 1; }
+grep -q '192.0.2.49' "$off" && { echo "a traffic line leaked into the webfilter report"; exit 1; }
 
 # 3. textfile: urgent categories always present, silent FortiGate written as 0
 python3 -I "$here/firewall/aup-report.py" --from-file "$fx" --expect fgt-edge,fgt-silent --textfile "$tmp/aup.prom" --out /dev/null
@@ -39,11 +39,11 @@ grep -q '^aup_webfilter_urgent{fgt="fgt-edge",catdesc="Phishing"} 1$' "$tmp/aup.
 grep -q '^aup_webfilter_urgent{fgt="fgt-edge",catdesc="Malicious Websites"} 0$' "$tmp/aup.prom" || { echo "urgent zero row missing"; exit 1; }
 grep -q '^aup_webfilter_total{fgt="fgt-silent"} 0$' "$tmp/aup.prom" || { echo "silent FortiGate not written as 0"; exit 1; }
 grep -q '^aup_webfilter_urgent{fgt="fgt-silent",catdesc="Spam URLs"} 0$' "$tmp/aup.prom" || { echo "silent urgent zero missing"; exit 1; }
-grep -q '^aup_webfilter_blocked_top_source{fgt="fgt-edge",who="192.168.2.23"} 2$' "$tmp/aup.prom" || { echo "top source"; exit 1; }
+grep -q '^aup_webfilter_blocked_top_source{fgt="fgt-edge",who="192.0.2.23"} 2$' "$tmp/aup.prom" || { echo "top source"; exit 1; }
 [ "$(stat -c %a "$tmp/aup.prom")" = 644 ] || { echo "textfile mode $(stat -c %a "$tmp/aup.prom"), want 644"; exit 1; }
 
 # 4. a line without any time field is skipped by the loader, not dated now
-printf 'type="utm" subtype="webfilter" srcip=192.168.2.5 hostname="a.example" action="passthrough" catdesc="Business"\n' > "$tmp/notime.log"
+printf 'type="utm" subtype="webfilter" srcip=192.0.2.5 hostname="a.example" action="passthrough" catdesc="Business"\n' > "$tmp/notime.log"
 cat "$fx" >> "$tmp/notime.log"
 rc=0; PORT=19432 sh "$here/firewall/aup-compare.sh" "$tmp/notime.log" "$tmp/cmp2" > "$tmp/cmp2.log" 2>&1 || rc=$?
 grep -q '8 lines, 6 loaded, 2 skipped' "$tmp/cmp2.log" || { echo "loader did not skip the untimed line"; cat "$tmp/cmp2.log"; exit 1; }

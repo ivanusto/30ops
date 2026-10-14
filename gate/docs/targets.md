@@ -71,7 +71,7 @@ or an ACL as above).
 useradd --system --home /var/lib/gate --create-home --shell /bin/sh gate
 install -d -m 0700 -o gate -g gate /var/lib/gate/.ssh
 cat > /var/lib/gate/.ssh/authorized_keys <<'EOF'
-restrict,from="192.168.2.49" ssh-ed25519 AAAA... agent-gate@collector
+restrict,from="192.0.2.49" ssh-ed25519 AAAA... agent-gate@collector
 EOF
 chown gate:gate /var/lib/gate/.ssh/authorized_keys; chmod 0600 /var/lib/gate/.ssh/authorized_keys
 ```

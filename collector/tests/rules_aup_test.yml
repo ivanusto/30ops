@@ -29,7 +29,7 @@ tests:
   # blocked burst needs 20 for ten minutes; 19 never fires
   - interval: 1m
     input_series:
-      - series: 'aup_webfilter_blocked_top_source{fgt="fgt-edge",who="192.168.2.23"}'
+      - series: 'aup_webfilter_blocked_top_source{fgt="fgt-edge",who="192.0.2.23"}'
         values: "19x12 20x12"
     alert_rule_test:
       - eval_time: 12m
@@ -38,9 +38,9 @@ tests:
       - eval_time: 24m
         alertname: AupBlockedBurst
         exp_alerts:
-          - exp_labels: {severity: warning, fgt: fgt-edge, who: "192.168.2.23"}
+          - exp_labels: {severity: warning, fgt: fgt-edge, who: "192.0.2.23"}
             exp_annotations:
-              summary: "fgt-edge: 192.168.2.23 was blocked 20 times in the last hour"
+              summary: "fgt-edge: 192.0.2.23 was blocked 20 times in the last hour"
 
   # silent: six hours of 0 (the expected FortiGate written as 0 by aup-report)
   - interval: 1m

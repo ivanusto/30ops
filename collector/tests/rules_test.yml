@@ -17,7 +17,7 @@ tests:
   # sample at or above 180 with no "for".
   - interval: 15s
     input_series:
-      - series: 'gb10_soak_seconds{job="gb10",node="192.168.2.131",instance="192.168.2.131:9100"}'
+      - series: 'gb10_soak_seconds{job="gb10",node="192.0.2.131",instance="192.0.2.131:9100"}'
         values: "0 21 36 51 66 81 96 111 126 141 156 171 186 201 216 227 0"
     alert_rule_test:
       - eval_time: 2m45s
@@ -26,9 +26,9 @@ tests:
       - eval_time: 3m             # 13th sample = 186
         alertname: Gb10SoakNearBudget
         exp_alerts:
-          - exp_labels: {severity: warning, job: gb10, node: "192.168.2.131", instance: "192.168.2.131:9100"}
+          - exp_labels: {severity: warning, job: gb10, node: "192.0.2.131", instance: "192.0.2.131:9100"}
             exp_annotations:
-              summary: "192.168.2.131 hottest zone above threshold for 186 s, guard trips at 240"
+              summary: "192.0.2.131 hottest zone above threshold for 186 s, guard trips at 240"
               runbook: "Day 12: the guard will kill the hottest process; move or pause the workload first"
       - eval_time: 4m             # back to 0 after the guard
         alertname: Gb10SoakNearBudget
@@ -153,7 +153,7 @@ tests:
         values: "3 2 2 2 2 2"
       - series: 'pve_quorum_qdevice_votes{job="collector-host",cluster="lab"}'
         values: "1 0 0 0 0 0"
-      - series: 'pve_up{job="pve",instance="192.168.2.9",id="cluster/lab"}'
+      - series: 'pve_up{job="pve",instance="192.0.2.9",id="cluster/lab"}'
         values: "1x5"
     alert_rule_test:
       - eval_time: 1m
@@ -176,7 +176,7 @@ tests:
   # Day 15 table row 4: quorum lost.
   - interval: 1m
     input_series:
-      - series: 'pve_up{job="pve",instance="192.168.2.9",id="cluster/lab"}'
+      - series: 'pve_up{job="pve",instance="192.0.2.9",id="cluster/lab"}'
         values: "1 0 0"
     alert_rule_test:
       - eval_time: 1m
@@ -209,23 +209,23 @@ tests:
   # and the UPS string is "-1" when no UPS is attached.
   - interval: 1m
     input_series:
-      - series: 'qnap_disk_status{job="nas-snmp",instance="192.168.2.2",nas="primary",diskIndex="1",diskModel="m1",qnap_disk_status="Good"}'
+      - series: 'qnap_disk_status{job="nas-snmp",instance="192.0.2.2",nas="primary",diskIndex="1",diskModel="m1",qnap_disk_status="Good"}'
         values: "1x10"
-      - series: 'qnap_disk_status{job="nas-snmp",instance="192.168.2.2",nas="primary",diskIndex="2",diskModel="m2",qnap_disk_status="Warning"}'
+      - series: 'qnap_disk_status{job="nas-snmp",instance="192.0.2.2",nas="primary",diskIndex="2",diskModel="m2",qnap_disk_status="Warning"}'
         values: "1x10"
-      - series: 'qnap_pool_status_info{job="nas-snmp",instance="192.168.2.2",nas="primary",storagepoolID="1",qnap_pool_status="ready"}'
+      - series: 'qnap_pool_status_info{job="nas-snmp",instance="192.0.2.2",nas="primary",storagepoolID="1",qnap_pool_status="ready"}'
         values: "1x10"
-      - series: 'qnap_ups_status{job="nas-snmp",instance="192.168.2.2",nas="primary",qnap_ups_status="-1"}'
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.0.2.2",nas="primary",qnap_ups_status="-1"}'
         values: "1x10"
-      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.168.2.2",nas="primary",qnap_service_telnet_enabled="no"}'
+      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.0.2.2",nas="primary",qnap_service_telnet_enabled="no"}'
         values: "1x10"
-      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.168.2.22",nas="secondary",qnap_service_telnet_enabled="yes"}'
+      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.0.2.22",nas="secondary",qnap_service_telnet_enabled="yes"}'
         values: "1x10"
     alert_rule_test:
       - eval_time: 6m
         alertname: NasDiskNotGood
         exp_alerts:
-          - exp_labels: {severity: critical, job: nas-snmp, instance: "192.168.2.2", nas: primary, diskIndex: "2", diskModel: m2, qnap_disk_status: Warning}
+          - exp_labels: {severity: critical, job: nas-snmp, instance: "192.0.2.2", nas: primary, diskIndex: "2", diskModel: m2, qnap_disk_status: Warning}
             exp_annotations: {summary: "primary disk 2 m2 is Warning"}
       - eval_time: 6m
         alertname: NasPoolStatusNotReady
@@ -236,16 +236,16 @@ tests:
       - eval_time: 10m
         alertname: NasTelnetEnabled
         exp_alerts:
-          - exp_labels: {severity: warning, job: nas-snmp, instance: "192.168.2.22", nas: secondary, qnap_service_telnet_enabled: "yes"}
+          - exp_labels: {severity: warning, job: nas-snmp, instance: "192.0.2.22", nas: secondary, qnap_service_telnet_enabled: "yes"}
             exp_annotations: {summary: "secondary has Telnet enabled (Day 11 hardening regression)"}
 
   # pve-exporter is scraped through both nodes; one storage down is one
   # alert, not two.
   - interval: 1m
     input_series:
-      - series: 'pve_up{job="pve",instance="192.168.2.9",id="storage/n1/pbs"}'
+      - series: 'pve_up{job="pve",instance="192.0.2.9",id="storage/n1/pbs"}'
         values: "0x5"
-      - series: 'pve_up{job="pve",instance="192.168.2.5",id="storage/n1/pbs"}'
+      - series: 'pve_up{job="pve",instance="192.0.2.5",id="storage/n1/pbs"}'
         values: "0x5"
     alert_rule_test:
       - eval_time: 3m
@@ -305,21 +305,21 @@ tests:
   # limit, and below the FortiGate's 1,200 (its busiest camera logs ~550).
   - interval: 1m
     input_series:
-      - series: 'fw_top_source_blocked{job="collector-host",source="ufw",host="spark02",src="192.168.2.50"}'
+      - series: 'fw_top_source_blocked{job="collector-host",source="ufw",host="spark02",src="192.0.2.50"}'
         values: "150x20"
-      - series: 'fw_top_source_blocked{job="collector-host",source="fortigate",host="fgt-edge",src="192.168.2.126"}'
+      - series: 'fw_top_source_blocked{job="collector-host",source="fortigate",host="fgt-edge",src="192.0.2.126"}'
         values: "150x20"
     alert_rule_test:
       - eval_time: 15m
         alertname: FwSourceBurst
         exp_alerts:
-          - exp_labels: {severity: warning, job: collector-host, source: ufw, host: spark02, src: "192.168.2.50"}
-            exp_annotations: {summary: "spark02 dropped 150 packets from 192.168.2.50 in the last hour (ufw)"}
+          - exp_labels: {severity: warning, job: collector-host, source: ufw, host: spark02, src: "192.0.2.50"}
+            exp_annotations: {summary: "spark02 dropped 150 packets from 192.0.2.50 in the last hour (ufw)"}
 
   # Slow guessing under the NAS ban: 10 an hour warns, 50 is critical.
   - interval: 1m
     input_series:
-      - series: 'nas_login_failed_top_source{job="collector-host",nas="nas-primary",src="192.168.2.88"}'
+      - series: 'nas_login_failed_top_source{job="collector-host",nas="nas-primary",src="192.0.2.88"}'
         values: "4x9 12x10 60x10"
     alert_rule_test:
       - eval_time: 5m
@@ -328,13 +328,13 @@ tests:
       - eval_time: 15m
         alertname: NasLoginFailures
         exp_alerts:
-          - exp_labels: {severity: warning, job: collector-host, nas: nas-primary, src: "192.168.2.88"}
-            exp_annotations: {summary: "nas-primary: 12 failed logins from 192.168.2.88 in the last hour"}
+          - exp_labels: {severity: warning, job: collector-host, nas: nas-primary, src: "192.0.2.88"}
+            exp_annotations: {summary: "nas-primary: 12 failed logins from 192.0.2.88 in the last hour"}
       - eval_time: 25m
         alertname: NasLoginFailuresCritical
         exp_alerts:
-          - exp_labels: {severity: critical, job: collector-host, nas: nas-primary, src: "192.168.2.88"}
-            exp_annotations: {summary: "nas-primary: 60 failed logins from 192.168.2.88 in the last hour, the ban is not holding; block the source upstream"}
+          - exp_labels: {severity: critical, job: collector-host, nas: nas-primary, src: "192.0.2.88"}
+            exp_annotations: {summary: "nas-primary: 60 failed logins from 192.0.2.88 in the last hour, the ban is not holding; block the source upstream"}
 
   # fw-report itself stopped (timestamp stuck at 0): stale after 30 minutes
   # plus the 10 minute hold.

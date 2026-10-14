@@ -60,7 +60,7 @@ sudo install -d -o metrics /var/log/onprem-logs /srv/drills/onprem-logs /var/tmp
 sudo install -m 0644 collector.cron /etc/cron.d/onprem-logs
 
 # every node (DGX Spark, PVE)
-sudo ./node/install-journal-upload.sh http://192.168.2.49:9428
+sudo ./node/install-journal-upload.sh http://192.0.2.49:9428
 
 # every NAS: follow nas/qulog-log-sender.md
 

@@ -69,7 +69,7 @@ while [ $# -gt 0 ]; do case "$1" in -o) shift 2 ;; sh) shift 2; break ;; *) shif
 exec sh -s "$@"
 EOT
 chmod +x "$T/bin/ssh"
-out3=$(PATH="$T/bin:$PATH" "$HERE/textfile/nas-textfile.sh" primary=claude@nas1 secondary=claude@nas2)
+out3=$(PATH="$T/bin:$PATH" "$HERE/textfile/nas-textfile.sh" primary=ops30@nas1 secondary=ops30@nas2)
 printf '%s\n' "$out3" > "$T/two.prom"
 out=$out3
 check "second NAS keeps its label" '^nas_up{nas="secondary"} 1$'
@@ -78,6 +78,6 @@ if printf '%s\n' "$out3" | grep -v '^#' | sed 's/[{ ].*//' | uniq | sort | uniq 
 if command -v promtool >/dev/null 2>&1; then
   if promtool check metrics < "$T/two.prom" >/dev/null 2>&1; then pass=$((pass+1)); echo "ok   promtool two NAS"; else fail=$((fail+1)); echo "FAIL promtool two NAS"; promtool check metrics < "$T/two.prom"; fi
 fi
-if "$HERE/textfile/nas-textfile.sh" claude@nas1 >/dev/null 2>&1; then fail=$((fail+1)); echo "FAIL bare user@host accepted"; else pass=$((pass+1)); echo "ok   bare user@host rejected"; fi
+if "$HERE/textfile/nas-textfile.sh" ops30@nas1 >/dev/null 2>&1; then fail=$((fail+1)); echo "FAIL bare user@host accepted"; else pass=$((pass+1)); echo "ok   bare user@host rejected"; fi
 printf '\n%s passed, %s failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

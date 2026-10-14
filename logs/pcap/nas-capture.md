@@ -33,7 +33,7 @@ cd "$d" && for f in *.pcap; do sha256sum "$f" > "$f.sha256"; done     # 跟節�
 
 ```sh
 # 收集端，以 metrics 身份
-scp -i ~/.ssh/<nas-textfile 的金鑰> 'admin@192.168.2.2:/share/PcapStage/*' /var/lib/onprem-pcap/in/nas-primary/
+scp -i ~/.ssh/<nas-textfile 的金鑰> 'admin@192.0.2.2:/share/PcapStage/*' /var/lib/onprem-pcap/in/nas-primary/
 PCAP_NODES="nas-primary=/var/lib/onprem-pcap/in/nas-primary/" ARCHIVE=/mnt/worm/pcap ./pcap-pull.sh
 ```
 

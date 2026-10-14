@@ -33,7 +33,7 @@ ls -l /var/lib/pcap/done
 
 | profile | 抓什麼 | 介面 | snaplen | 模式 | 上限 |
 |---|---|---|---|---|---|
-| `nfs` | 到主 NAS 的 TCP 2049 | `auto`，走到 192.168.2.2 的那個介面（兩台 Spark 都是 10GbE 的 `enP7s7`，CX7 的兩個不在路由上） | 256 | timed | 10 分鐘一檔，6 檔後自己停 |
+| `nfs` | 到主 NAS 的 TCP 2049 | `auto`，走到 192.0.2.2 的那個介面（兩台 Spark 都是 10GbE 的 `enP7s7`，CX7 的兩個不在路由上） | 256 | timed | 10 分鐘一檔，6 檔後自己停 |
 | `corosync` | UDP 5405 到 5412 與 TCP 5403 | `vmbr0` | 128 | ring | 20 檔各 50 MB，最舊的被覆寫，手動停 |
 | `syslog` | TCP 514 與 9428 | `auto` | 128 | timed | 5 分鐘一檔，2 檔 |
 | `custom` | 自己填 | `auto` | 256 | timed | 5 分鐘 1 檔 |
@@ -56,7 +56,7 @@ ls -l /var/lib/pcap/done
 ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_pcap -C pcap-pull   # 公鑰給每台節點的 install-pcap.sh --pull-key
 sudo install -d -o metrics -g metrics /var/lib/onprem-pcap
 mkdir -p /mnt/worm/pcap      # the WORM share squashes every uid, so no chown here
-PCAP_NODES="spark01=pcap@192.168.2.131:/" ARCHIVE=/mnt/worm/pcap ./pcap-pull.sh
+PCAP_NODES="spark01=pcap@192.0.2.131:/" ARCHIVE=/mnt/worm/pcap ./pcap-pull.sh
 ARCHIVE=/mnt/worm/pcap ./verify-pcap.sh --latest --against-index
 ```
 

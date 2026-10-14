@@ -18,7 +18,7 @@ curl -s http://127.0.0.1:9428/select/logsql/query -d 'query=_time:5m hostname:* 
 
 ```
 {"_time":"2026-10-04T14:26:13Z","hostname":"nas-primary","app_name":"qulogd","format":"rfc3164",
- "_msg":"conn log: Users: ops, Source IP: 192.168.2.131, Computer name: ---, Connection type: SSH/SFTP, Accessed resources: ---, Action: Login Success"}
+ "_msg":"conn log: Users: ops, Source IP: 192.0.2.131, Computer name: ---, Connection type: SSH/SFTP, Accessed resources: ---, Action: Login Success"}
 ```
 
 - `app_name` 是 `qulogd`，事件記錄與存取記錄都是，用訊息開頭區分：存取記錄是 `conn log:`，事件記錄是 `event log:`。
@@ -40,4 +40,4 @@ QuLog 本機的記錄照它自己的設定保留，當 NAS 上的檢視介面。
 
 ## 已知的雜訊
 
-收集端 Day 19 的 `nas-textfile.sh` 每分鐘以 SSH 登入兩台 NAS 一次，每次都是一筆 `conn log ... Login Success`，每台每天約 1,440 筆。查登入異常時先排除 `Source IP: 192.168.2.49`。
+收集端 Day 19 的 `nas-textfile.sh` 每分鐘以 SSH 登入兩台 NAS 一次，每次都是一筆 `conn log ... Login Success`，每台每天約 1,440 筆。查登入異常時先排除 `Source IP: 192.0.2.49`。

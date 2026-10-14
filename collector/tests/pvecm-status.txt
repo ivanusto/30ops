@@ -25,6 +25,6 @@ Flags:            Quorate Qdevice
 Membership information
 ----------------------
     Nodeid      Votes    Qdevice Name
-0x00000001          1    A,V,NMW 192.168.2.9 (local)
-0x00000003          1    A,V,NMW 192.168.2.5
+0x00000001          1    A,V,NMW 192.0.2.9 (local)
+0x00000003          1    A,V,NMW 192.0.2.5
 0x00000000          1            Qdevice

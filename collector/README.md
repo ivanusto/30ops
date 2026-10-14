@@ -70,22 +70,22 @@ docker compose up -d
 # whole root user manager each time (about 75 journal lines per login,
 # 108,000 a day, measured on Day 21):
 #   loginctl enable-linger root
-sudo -u metrics ./textfile/pve-quorum-textfile.sh lab=root@192.168.2.9,root@192.168.2.5 | promtool check metrics
+sudo -u metrics ./textfile/pve-quorum-textfile.sh lab=root@192.0.2.9,root@192.0.2.5 | promtool check metrics
 
 # first SNMP walk: which OIDs does the real box answer
-curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=192.168.2.2'
+curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=192.0.2.2'
 
 # each DGX Spark
 sudo ./install-node.sh
-sudo ufw allow proto tcp from 192.168.2.49 to any port 9100   # collector only
+sudo ufw allow proto tcp from 192.0.2.49 to any port 9100   # collector only
 curl -s localhost:9100/metrics | grep ^gb10_
 
 # then, on the collector (Prometheus listens on 127.0.0.1 since Day 20;
 # from elsewhere, ssh -L 9090:localhost:9090 to the collector first)
 ./verify.sh \
-  --gb10 user@192.168.2.131 --gb10 user@192.168.2.141 \
-  --nas primary=claude@192.168.2.2 --nas secondary=claude@192.168.2.22 \
-  --pve root@192.168.2.9 > verify.md
+  --gb10 user@192.0.2.131 --gb10 user@192.0.2.141 \
+  --nas primary=ops30@192.0.2.2 --nas secondary=ops30@192.0.2.22 \
+  --pve root@192.0.2.9 > verify.md
 ```
 
 ## Metrics added

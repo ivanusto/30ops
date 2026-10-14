@@ -67,22 +67,22 @@ docker compose up -d
 # 並在每台 PVE 節點執行下面這行，每分鐘的登入才不會每次起停整個 root 的
 # user manager（每次約 75 行 journal，每天 10.8 萬行，Day 21 實測）：
 #   loginctl enable-linger root
-sudo -u metrics ./textfile/pve-quorum-textfile.sh lab=root@192.168.2.9,root@192.168.2.5 | promtool check metrics
+sudo -u metrics ./textfile/pve-quorum-textfile.sh lab=root@192.0.2.9,root@192.0.2.5 | promtool check metrics
 
 # 第一次 SNMP 抓取，看實機有哪些 OID 回值
-curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=192.168.2.2'
+curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=192.0.2.2'
 
 # 每台 DGX Spark
 sudo ./install-node.sh
-sudo ufw allow proto tcp from 192.168.2.49 to any port 9100   # 只放收集端
+sudo ufw allow proto tcp from 192.0.2.49 to any port 9100   # 只放收集端
 curl -s localhost:9100/metrics | grep ^gb10_
 
 # 然後
 # Day 20 起 Prometheus 只聽 127.0.0.1，在收集端上跑；要從別台跑，先 ssh -L 9090:localhost:9090 到收集端
 ./verify.sh \
-  --gb10 user@192.168.2.131 --gb10 user@192.168.2.141 \
-  --nas primary=claude@192.168.2.2 --nas secondary=claude@192.168.2.22 \
-  --pve root@192.168.2.9 > verify.md
+  --gb10 user@192.0.2.131 --gb10 user@192.0.2.141 \
+  --nas primary=ops30@192.0.2.2 --nas secondary=ops30@192.0.2.22 \
+  --pve root@192.0.2.9 > verify.md
 ```
 
 ## 測試

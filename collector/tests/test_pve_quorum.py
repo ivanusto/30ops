@@ -39,8 +39,8 @@ class PveQuorum(unittest.TestCase):
         self.assertEqual(s['pve_quorum_quorum{cluster="lab"}'], "2")
         self.assertEqual(s['pve_quorum_quorate{cluster="lab"}'], "1")
         self.assertEqual(s['pve_quorum_qdevice_votes{cluster="lab"}'], "1")
-        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.168.2.9"}'], "1")
-        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.168.2.5"}'], "1")
+        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.0.2.9"}'], "1")
+        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.0.2.5"}'], "1")
         ok, msg = promtool_ok(out)
         self.assertTrue(ok, msg)
 
@@ -53,8 +53,8 @@ class PveQuorum(unittest.TestCase):
         self.assertEqual(s['pve_quorum_quorate{cluster="lab"}'], "1")
         self.assertEqual(s['pve_quorum_qdevice_votes{cluster="lab"}'], "0")
         # the Qdevice flags column disappears with the daemon; node names must not shift
-        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.168.2.9"}'], "1")
-        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.168.2.5"}'], "1")
+        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.0.2.9"}'], "1")
+        self.assertEqual(s['pve_quorum_node_votes{cluster="lab",node="192.0.2.5"}'], "1")
         self.assertFalse([k for k in s if 'node=""' in k or "(local)" in k])
 
     def test_empty_input_is_down(self):
