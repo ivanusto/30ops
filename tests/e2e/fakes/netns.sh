@@ -64,14 +64,16 @@ up() {
   fill "$HERE/sshd_config.in" > "$STATE/sshd_config"
   id ops30 >/dev/null 2>&1 || useradd --system --create-home --shell /bin/sh ops30
   mkdir -p /run/sshd
-  in_ns /usr/sbin/sshd -f "$STATE/sshd_config" -E "$STATE/sshd.log"
+  # the daemons get no terminal fds: an ssh session that started run.sh
+  # (tests/vm/e2e.sh) would otherwise wait for them to close at the end
+  in_ns /usr/sbin/sshd -f "$STATE/sshd_config" -E "$STATE/sshd.log" < /dev/null > /dev/null 2>&1
 
   # snmpd: nas-primary
   python3 "$HERE/snmp/build-data.py" > "$STATE/qnap.data"
   fill "$HERE/snmp/snmpd.conf.in" | sed -e "s|@USER@|ops30|" \
     -e "s|@AUTH@|$(cat "$SECRETS/snmp-auth.pass")|" -e "s|@PRIV@|$(cat "$SECRETS/snmp-priv.pass")|" > "$STATE/snmpd.conf"
   chmod 600 "$STATE/snmpd.conf"
-  SNMP_PERSISTENT_DIR="$STATE/snmp" in_ns snmpd -C -c "$STATE/snmpd.conf" -p "$STATE/snmpd.pid" -Lf "$STATE/snmpd.log"
+  SNMP_PERSISTENT_DIR="$STATE/snmp" in_ns snmpd -C -c "$STATE/snmpd.conf" -p "$STATE/snmpd.pid" -Lf "$STATE/snmpd.log" < /dev/null > /dev/null 2>&1
 
   # HTTP: PVE API, FortiGate API, webhook sink
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=ops30-e2e \
@@ -82,7 +84,7 @@ up() {
     --pve-token "prometheus@pve!exporter=$(cat "$SECRETS/pve-exporter.token")" \
     --fortigate 192.0.2.99 --fortigate-token "$(cat "$SECRETS/fortigate-api.token")" \
     --fortigate-body "$REPO/tests/fixtures/adapters/fortigate/licences/license-status/001.out" \
-    --sink 192.0.2.250 >> "$STATE/http.log" 2>&1 &
+    --sink 192.0.2.250 < /dev/null >> "$STATE/http.log" 2>&1 &
   echo $! > "$STATE/http.pid"
   # every listener answers, or the fake LAN is not up
   for hp in 192.0.2.250:9999 192.0.2.9:8006 192.0.2.5:8006 192.0.2.99:10443 192.0.2.2:22 192.0.2.9:22; do
