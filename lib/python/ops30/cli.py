@@ -236,6 +236,18 @@ def cmd_install_node(a):
     return node.install(r[0], tree, a.host, Ops(), bundle=a.bundle, ssh=a.ssh, out=lambda line: print(line, flush=True))
 
 
+def cmd_doctor(a):
+    from . import doctor, render
+    from .install.ops import Ops
+    r = _site(a)
+    if r is None:
+        return 2
+    d = doctor.Doctor(r[0], render.render(*r), Ops(a.root))
+    res = d.run(skip=set(a.skip))
+    sys.stdout.write(doctor.report(res, a.format))
+    return 1 if any(x["status"] == doctor.FAIL for x in res) else 0
+
+
 def cmd_textfile(a):
     from . import collect
     return collect.run(a.name, a.targets, out=a.out, local=a.local,
@@ -285,6 +297,13 @@ def parser():
     n.add_argument("--bundle", metavar="PATH", help="write the bundle (a file, or a directory for it) and stop")
     n.add_argument("--ssh", metavar="USER@HOST", help="log in as this user (with sudo) instead of hosts[].ssh")
     n.set_defaults(f=cmd_install_node)
+
+    dr = sub.add_parser("doctor", help="check the installed collector against site.yaml (read-only)")
+    dr.add_argument("--site", default=site_default, help="default ./site.yaml or $OPS30_SITE")
+    dr.add_argument("--format", choices=["text", "json"], default="text")
+    dr.add_argument("--skip", action="append", default=[], metavar="CHECK", help="leave a check out (repeatable)")
+    dr.add_argument("--root", default="/", help=argparse.SUPPRESS)
+    dr.set_defaults(f=cmd_doctor)
 
     t = sub.add_parser("textfile", help="collect one node_exporter textfile through its adapter (cron)")
     t.add_argument("name", choices=["nas", "pve-quorum"])

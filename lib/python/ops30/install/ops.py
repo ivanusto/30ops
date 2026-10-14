@@ -169,6 +169,12 @@ class Ops:
         except (urllib.error.URLError, OSError):
             return 0, ""
 
+    def statvfs(self, p):
+        try:
+            return os.statvfs(self.path(p))
+        except OSError:
+            return None
+
     def euid(self):
         return os.geteuid()
 

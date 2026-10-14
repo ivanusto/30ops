@@ -39,6 +39,22 @@ def at(utc, tz):
     return f + ("*" if dow is None else str((dow + day) % 7))
 
 
+# every textfile a cron job writes, the metric prefix of its
+# *_last_run_timestamp, and the age at which its stale alert fires (doctor
+# uses the same numbers; tests/unit/test_doctor.py holds them to the rules)
+TEXTFILES = {
+    "nas.prom": ("nas_textfile", 600),
+    "drills.prom": ("drills_textfile", 7200),
+    "pve-quorum.prom": ("pve_quorum_textfile", 300),
+    "eol.prom": ("eol_textfile", 2 * 86400),
+    "fw.prom": ("fw_report", 1800),
+    "aup.prom": ("aup_report", 1800),
+    "audit.prom": ("audit_report", 1800),
+    "changes.prom": ("changes_textfile", 3600),
+    "agent-gate.prom": ("agent_gate_textfile", 1800),
+}
+
+
 def q(v):
     return f'"{v}"' if " " in v else v
 

@@ -120,3 +120,25 @@ bundle 是確定性的：條目排序，mtime、uid、gid 都是 0，gzip 檔頭
 ### 設備
 
 NAS、防火牆、交換器不裝任何東西，`install node` 改印出該 adapter 的設定步驟（SNMP v3 唯讀帳號、ssh 帳號與金鑰、QuLog 記錄傳送、FortiGate 的唯讀 API 帳號與 syslogd2、syslogd3）。改設備設定之前先備份並開變更單。
+
+## 檢查：`30ops doctor`
+
+```sh
+sudo bin/30ops doctor --site site.yaml [--format json] [--skip CHECK]
+```
+
+只讀不寫。每一項回報 ok、warn 或 fail，有任何 fail 就 exit 1。
+
+| 檢查 | fail 的條件 |
+|---|---|
+| images | 有服務沒在執行，或執行中的映像 digest 不是 compose.yml 釘的那個 |
+| targets | Prometheus 有 target 不是 up |
+| textfile | cron job 寫的 textfile 不存在，或比它的 stale 告警門檻還舊（門檻與規則相同，見 `render/cron.py` 的 `TEXTFILES`）；檔案裡有 `*_up 0` 時為 warn；node_exporter 解析失敗 |
+| cron | cron 沒有在執行 |
+| worm | WORM 分享沒掛上、不是 nfs4、唯讀，或 `metrics` 不能寫入。doctor 不寫測試檔，因為 WORM 上的檔案 10 分鐘後就鎖定、刪不掉 |
+| clock | 時區不是 `site.timezone`（cron 以本地時間排程，時區錯了，封存會在 UTC 那一天還沒結束時就執行）；NTP 未同步為 warn |
+| disk | `/`、docker 根目錄、textfile 目錄有一個超過 90 %（超過 80 % 為 warn） |
+| secrets | 憑證檔不存在，或擁有者與權限和上表不符 |
+| grafana | 管理密碼仍是 `admin`。doctor 先用秘密檔的密碼登入，失敗才試一次 `admin`，避免觸發 Grafana 的登入鎖定 |
+| accounts | `metrics` 不在 `node-exporter` 群組 |
+| render | 已安裝的檔案與 render 結果不同（內容、權限或擁有者） |
