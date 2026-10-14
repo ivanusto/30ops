@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Sample this box's temperature, power and memory while a job runs.
+
+Two jobs. It writes an evidence trail a report can cite, and it watches for the
+soak that precedes a hard power cut on this hardware. The cut is not triggered
+by a peak: the fatal run on 2026-09-01 reached its plateau in four minutes and
+then sat at roughly GPU 82 to 86 C and zone 91 to 94 C for seven more before the
+box died with nothing in the kernel log. So what is measured is time spent hot,
+continuously, and the default budget here is the same 240 s that the guards use.
+
+Neither video server can be interrupted once a generation is launched, so this
+cannot stop a clip in flight. What it does instead is drop a HOT file. The
+driver checks for it between clips and stops there. Losing the rest of a run
+beats losing the box.
+
+Memory is sampled from /proc/meminfo, not nvidia-smi, which reports N/A for
+memory on the GB10 because the pool is unified.
+
+On SIGINT or SIGTERM it prints a one line summary of the extremes it saw, so a
+run that was stopped by hand still leaves a usable number behind. For the full
+statistics over a window, feed the JSONL to bench/summarize-samples.py.
+"""
+import argparse
+import glob
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+
+SOAK_ZONE = 88
+SOAK_BUDGET = 240
+
+
+def gpu():
+    try:
+        out = subprocess.run(
+            ["nvidia-smi", "--query-gpu=temperature.gpu,power.draw,utilization.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10).stdout.strip().splitlines()[0]
+        temp, power, util = (part.strip() for part in out.split(","))
+        return int(float(temp)), float(power), int(float(util))
+    except Exception:
+        return None, None, None
+
+
+def zone():
+    hottest = 0
+    for path in glob.glob("/sys/class/thermal/thermal_zone*/temp"):
+        try:
+            with open(path) as fh:
+                hottest = max(hottest, int(fh.read().strip()) // 1000)
+        except Exception:
+            continue
+    return hottest or None
+
+
+def memory():
+    """MemAvailable and swap used, in GiB. The used figure on a unified memory
+    box conflates CPU, GPU and page cache, so available is the honest one."""
+    fields = {}
+    with open("/proc/meminfo") as fh:
+        for line in fh:
+            key, _, rest = line.partition(":")
+            fields[key] = int(rest.split()[0])
+    return (round(fields["MemAvailable"] / 1048576, 2),
+            round((fields["SwapTotal"] - fields["SwapFree"]) / 1048576, 2))
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--hot-flag", required=True)
+    ap.add_argument("--interval", type=float, default=3.0)
+    ap.add_argument("--soak-zone", type=int, default=SOAK_ZONE,
+                    help="thermal zone temperature that counts as soaking")
+    ap.add_argument("--soak-seconds", type=float, default=SOAK_BUDGET,
+                    help="continuous soak that drops the HOT flag")
+    a = ap.parse_args()
+
+    soak = 0.0
+    longest_soak = 0.0
+    peak = {"gpu_c": 0, "zone_c": 0, "power_w": 0.0, "avail_gib_min": None,
+            "swap_gib": 0.0, "samples": 0}
+
+    def report(*_):
+        peak["longest_soak_s"] = round(longest_soak)
+        print(json.dumps({"summary": peak}, ensure_ascii=False), flush=True)
+        sys.exit(0)
+
+    # Without this the extremes were accumulated and then thrown away on exit.
+    signal.signal(signal.SIGINT, report)
+    signal.signal(signal.SIGTERM, report)
+
+    with open(a.out, "a", buffering=1) as fh:
+        prev = time.monotonic()
+        while True:
+            g, p, u = gpu()
+            z = zone()
+            avail, swap = memory()
+            # Measure the step instead of assuming it equals --interval: a pass
+            # that shells out to nvidia-smi takes noticeably longer than that,
+            # and counting intervals undercounted the soak.
+            now = time.monotonic()
+            step, prev = now - prev, now
+            row = {"t": round(time.time(), 1), "gpu_c": g, "zone_c": z,
+                   "power_w": p, "util": u, "avail_gib": avail, "swap_gib": swap}
+            fh.write(json.dumps(row) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+
+            peak["samples"] += 1
+            if g:
+                peak["gpu_c"] = max(peak["gpu_c"], g)
+            if z:
+                peak["zone_c"] = max(peak["zone_c"], z)
+            if p:
+                peak["power_w"] = max(peak["power_w"], p)
+            peak["avail_gib_min"] = (avail if peak["avail_gib_min"] is None
+                                     else min(peak["avail_gib_min"], avail))
+            peak["swap_gib"] = max(peak["swap_gib"], swap)
+
+            # The soak has to be unbroken. Dropping below the threshold means
+            # the cooling caught up, and that is the state that survived.
+            soak = soak + step if (z and z >= a.soak_zone) else 0.0
+            longest_soak = max(longest_soak, soak)
+            if soak >= a.soak_seconds and not os.path.exists(a.hot_flag):
+                with open(a.hot_flag, "w") as flag:
+                    flag.write(json.dumps(
+                        {"soaked_seconds": soak, "zone_c": z, "gpu_c": g,
+                         "at": time.strftime("%F %T")}) + "\n")
+                print(f"HOT: soaked {soak:.0f}s at zone >= {a.soak_zone} C", flush=True)
+            time.sleep(a.interval)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(0)
