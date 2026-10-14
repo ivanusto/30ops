@@ -77,17 +77,25 @@ up() {
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=ops30-e2e \
     -keyout "$STATE/tls.key" -out "$STATE/tls.crt" 2>/dev/null
   # ip netns exec execs the command, so $! is the fake's own pid
-  in_ns python3 "$HERE/http.py" --state "$STATE" --cert "$STATE/tls.crt" --key "$STATE/tls.key" \
+  in_ns python3 -I "$HERE/httpfakes.py" --state "$STATE" --cert "$STATE/tls.crt" --key "$STATE/tls.key" \
     --pve pve1=192.0.2.9 --pve pve2=192.0.2.5 --pve-cluster lab \
     --pve-token "prometheus@pve!exporter=$(cat "$SECRETS/pve-exporter.token")" \
     --fortigate 192.0.2.99 --fortigate-token "$(cat "$SECRETS/fortigate-api.token")" \
     --fortigate-body "$REPO/tests/fixtures/adapters/fortigate/licences/license-status/001.out" \
     --sink 192.0.2.250 >> "$STATE/http.log" 2>&1 &
   echo $! > "$STATE/http.pid"
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    in_ns python3 -c 'import socket; socket.create_connection(("192.0.2.250", 9999), 1)' 2>/dev/null && break
-    sleep 1
+  # every listener answers, or the fake LAN is not up
+  for hp in 192.0.2.250:9999 192.0.2.9:8006 192.0.2.5:8006 192.0.2.99:10443 192.0.2.2:22 192.0.2.9:22; do
+    n=0
+    until in_ns python3 -I -c 'import socket, sys; h, p = sys.argv[1].split(":"); socket.create_connection((h, int(p)), 1).close()' "$hp" 2>/dev/null; do
+      n=$((n + 1))
+      [ "$n" -lt 20 ] || { tail -n 20 "$STATE/http.log" "$STATE/sshd.log" >&2; die "nothing listens on $hp"; }
+      sleep 0.5
+    done
   done
+  if ! { [ -s "$STATE/snmpd.pid" ] && kill -0 "$(cat "$STATE/snmpd.pid")"; }; then
+    tail -n 20 "$STATE/snmpd.log" >&2; die "snmpd is not running"
+  fi
   echo "netns.sh: $NS up ($ADDRS)"
 }
 

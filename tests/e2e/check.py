@@ -4,7 +4,7 @@
   check.py baseline --rules DIR --expected FILE
   check.py alert    --sink FILE [--alert NasPoolNotOnline] [--timeout 300]
   check.py logs     --token T --kernel-log FILE
-  check.py archive  --day-dir DIR --drills FILE
+  check.py archive  --day-dir DIR --drills FILE [--source NAME ...]
   check.py doctor   --json FILE --allowed FILE
 
 Every mode prints one "ok" or "FAIL" line per check and exits 1 when any
@@ -128,7 +128,7 @@ def logs(a):
 
     found(f'"{t}-nas" hostname:nas-primary', "syslog from nas-primary (514/tcp, allowlisted) is in VictoriaLogs")
     found(f'"{t}-audit" audit:fortigate', "the FortiGate event log on 515 carries audit=fortigate")
-    found(f'"{t}-journal" _HOSTNAME:*', "the collector's own journal arrives through journal-upload")
+    found(f'"{t}-journal" SYSLOG_IDENTIFIER:ops30-e2e', "the collector's own journal arrives through journal-upload")
     rows = vl_query(f'"{t}-blocked"')
     ok(not rows, "syslog from 192.0.2.66 (not allowlisted) is not in VictoriaLogs", f"{len(rows)} rows")
     klog = open(a.kernel_log, encoding="utf-8", errors="replace").read()
@@ -139,6 +139,10 @@ def logs(a):
 def archive(a):
     files = set(os.listdir(a.day_dir)) if os.path.isdir(a.day_dir) else set()
     ok({"MANIFEST.tsv", "SHA256SUMS"} <= files, f"archive day {a.day_dir} is complete", ", ".join(sorted(files)))
+    manifest = open(os.path.join(a.day_dir, "MANIFEST.tsv"), encoding="utf-8").read() if "MANIFEST.tsv" in files else ""
+    srcs = {line.split("\t")[0] for line in manifest.splitlines() if line and not line.startswith("#")}
+    want = set(a.sources)
+    ok(want <= srcs, f"the archive has {', '.join(sorted(want))}", f"MANIFEST.tsv lists {', '.join(sorted(srcs))}")
     mounts = open("/proc/mounts", encoding="utf-8").read()
     ok(re.search(r"^\S+ /mnt/worm nfs4 ", mounts, re.M) is not None, "the WORM share is an nfs4 mount")
     recs = [json.loads(x) for x in open(a.drills, encoding="utf-8") if x.strip()] if os.path.exists(a.drills) else []
@@ -177,6 +181,7 @@ def main(argv=None):
     ar = sub.add_parser("archive")
     ar.add_argument("--day-dir", required=True)
     ar.add_argument("--drills", required=True)
+    ar.add_argument("--source", dest="sources", action="append", default=[])
     d = sub.add_parser("doctor")
     d.add_argument("--json", required=True)
     d.add_argument("--allowed", required=True)

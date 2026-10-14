@@ -39,7 +39,14 @@ mkdir -p "$OUT"
 step() { printf '\n== %s (%ss)\n' "$*" "$(( $(date +%s) - T0 ))"; }
 fail() { printf 'FAIL: %s\n' "$*" | tee -a "$OUT/summary.txt"; exit 1; }
 ops30() { (cd "$R" && bin/30ops "$@"); }
-check() { python3 "$R/tests/e2e/check.py" "$@"; }
+# check.py MODE ...: output to $OUT/check-MODE.txt and the terminal; a
+# failed check stops the run (a pipe into tee would hide the exit code)
+check() {
+  rc=0
+  python3 -I "$R/tests/e2e/check.py" "$@" > "$OUT/check-$1.txt" 2>&1 || rc=$?
+  cat "$OUT/check-$1.txt"
+  [ "$rc" = 0 ] || fail "check.py $1"
+}
 
 collect() {
   rc=$?
@@ -150,45 +157,54 @@ grep -q '^30ops install collector: 0 change(s), 0 warning(s)$' "$OUT/install-2.l
 
 # ---------------------------------------------------------------------------
 step "baseline: targets, metric names, rules"
-check baseline --rules /etc/30ops/prometheus/rules --expected "$R/tests/e2e/expected-metrics.txt" \
-  | tee "$OUT/check-baseline.txt" || fail "baseline"
+check baseline --rules /etc/30ops/prometheus/rules --expected "$R/tests/e2e/expected-metrics.txt"
 
 step "fault: nas-primary's pool DEGRADED"
 "$R/tests/e2e/fakes/netns.sh" degrade
 job nas.prom
 grep -q 'state="DEGRADED"} 1$' /var/lib/node_exporter/textfile/nas.prom || fail "nas.prom does not show DEGRADED"
-check alert --sink /run/ops30e2e/webhook.jsonl | tee "$OUT/check-alert.txt" || fail "alert"
+check alert --sink /run/ops30e2e/webhook.jsonl
 
 step "logs: syslog, audit, journal, allowlist"
+# the test lines carry yesterday's time (UTC): archive-day and the verify
+# against the live store work on a closed day, as the 08:10 cron does
 token="e2e$(date +%s)"
-ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+day=$(date -u -d yesterday +%Y-%m-%d)
+ts="${day}T12:00:00Z"
 since=$(date '+%Y-%m-%d %H:%M:%S')
 printf '<134>1 %s nas-primary qulogd - - - [System] %s-nas\n' "$ts" "$token" \
   | "$R/tests/e2e/fakes/netns.sh" send 192.0.2.2 514
 printf '<189>1 %s fgt-edge fortigate - - - logid="0100032102" type="event" subtype="system" devname="fgt-edge" msg="%s-audit"\n' "$ts" "$token" \
   | "$R/tests/e2e/fakes/netns.sh" send 192.0.2.99 515
-printf '<134>1 %s intruder test - - - %s-blocked\n' "$ts" "$token" \
-  | "$R/tests/e2e/fakes/netns.sh" send 192.0.2.66 514 && fail "192.0.2.66 got through to 514" || true
+if printf '<134>1 %s intruder test - - - %s-blocked\n' "$ts" "$token" \
+  | "$R/tests/e2e/fakes/netns.sh" send 192.0.2.66 514 2>/dev/null; then
+  fail "192.0.2.66 got through to 514"
+fi
+# a journald entry of yesterday from the collector, so the day has all
+# three kinds of source; today's journal comes through journal-upload
+printf '__REALTIME_TIMESTAMP=%s\n_HOSTNAME=collector\n_SYSTEMD_UNIT=ops30-e2e.service\nPRIORITY=6\nMESSAGE=%s-journal-day\n\n' \
+  "$(( $(date -u -d "$ts" +%s) * 1000000 ))" "$token" \
+  | curl -fsS -X POST -H 'Content-Type: application/vnd.fdo.journal' --data-binary @- http://192.0.2.49:9428/insert/journald/upload
 logger -t ops30-e2e "$token-journal"
 sleep 2
 journalctl -k --since "$since" --no-pager > "$OUT/kernel.log"
-check logs --token "$token" --kernel-log "$OUT/kernel.log" | tee "$OUT/check-logs.txt" || fail "logs"
+check logs --token "$token" --kernel-log "$OUT/kernel.log"
 
-step "archive the day to the WORM share, then verify"
-day=$(date -u +%Y-%m-%d)
+step "archive $day to the WORM share, then verify"
 findmnt /mnt/worm > "$OUT/worm-mount.txt" || fail "/mnt/worm is not mounted"
 runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE=/mnt/worm/logs ARCHIVE_SKIP=syslog-fgt-edge \
   "$R/logs/archive/archive-day.sh" "$day" > "$OUT/archive.log" 2>&1 || { cat "$OUT/archive.log"; fail "archive-day"; }
 runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE=/mnt/worm/logs DRILLS=/srv/drills/onprem-logs/drills.jsonl \
   "$R/logs/archive/verify-archive.sh" "$day" --against-live > "$OUT/verify.log" 2>&1 || { cat "$OUT/verify.log"; fail "verify-archive"; }
+cat "$OUT/verify.log"
 check archive --day-dir "/mnt/worm/logs/$(echo "$day" | tr - /)" --drills /srv/drills/onprem-logs/drills.jsonl \
-  | tee "$OUT/check-archive.txt" || fail "archive"
+  --source syslog-nas-primary --source audit-fgt-edge --source journald-collector
 
 step "recover, doctor"
 "$R/tests/e2e/fakes/netns.sh" recover
 job nas.prom
 ops30 doctor --site "$SITE" --format json > "$OUT/doctor.json" || true
-check doctor --json "$OUT/doctor.json" --allowed "$R/tests/e2e/allowed-warn.txt" | tee "$OUT/check-doctor.txt" || fail "doctor"
+check doctor --json "$OUT/doctor.json" --allowed "$R/tests/e2e/allowed-warn.txt"
 
 step "memory"
 docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' > "$OUT/memory.txt"
@@ -211,5 +227,5 @@ step "passed"
 {
   echo "30ops e2e passed: $v, $(( $(date +%s) - T0 )) s"
   echo "containers: $((mem / 1048576)) MiB"
-  tail -n1 "$OUT/check-doctor.txt"
+  grep '^     doctor:' "$OUT/check-doctor.txt"
 } | tee -a "$OUT/summary.txt"

@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""HTTP fakes for the e2e LAN, one process, a thread per listener:
+"""HTTP fakes for the e2e LAN, one process, a thread per listener (named
+httpfakes.py: an http.py would shadow the stdlib http package):
 
   PVE API      https://<pve address>:8006/api2/json/...  (pve-exporter)
   FortiGate    https://<fgt address>:10443/api/v2/monitor/license/status
   webhook sink http://<sink address>:9999/<receiver>     (Alertmanager)
 
-  http.py --state DIR --cert PEM --key PEM \
+  httpfakes.py --state DIR --cert PEM --key PEM \
           --pve pve1=192.0.2.9 --pve pve2=192.0.2.5 --pve-cluster lab \
           --pve-token 'prometheus@pve!exporter=SECRET' \
           --fortigate 192.0.2.99 --fortigate-token SECRET --fortigate-body FILE \

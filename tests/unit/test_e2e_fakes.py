@@ -29,7 +29,7 @@ def load(name, path):
 
 build = load("e2e_build_data", FAKES / "snmp" / "build-data.py")
 pp = load("e2e_pass_persist", FAKES / "snmp" / "pass-persist.py")
-http = load("e2e_http", FAKES / "http.py")
+http = load("e2e_http", FAKES / "httpfakes.py")
 
 
 class SnmpData(unittest.TestCase):
