@@ -60,6 +60,12 @@ collect() {
   curl -fsS http://127.0.0.1:9090/api/v1/alerts > "$OUT/prometheus-alerts.json" 2>/dev/null
   curl -fsS http://127.0.0.1:9093/api/v2/alerts > "$OUT/alertmanager-alerts.json" 2>/dev/null
   journalctl -b --no-pager -u mnt-worm.mount -u 30ops-allowlist -u systemd-journal-upload -u nfs-server > "$OUT/units.log" 2>&1
+  {
+    systemctl --failed --no-pager
+    systemctl list-dependencies --no-pager mnt-worm.mount
+    systemctl show --no-pager -p ActiveState,Requires,After,RequiresMountsFor mnt-worm.mount mnt.mount
+    findmnt /mnt; findmnt /mnt/worm; grep -v '^#' /etc/fstab
+  } > "$OUT/mounts.txt" 2>&1
   printf 'exit %s after %ss\n' "$rc" "$(( $(date +%s) - T0 ))" >> "$OUT/summary.txt"
   chmod -R a+rX "$OUT"
 }
