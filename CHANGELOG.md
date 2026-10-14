@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.3.0（2026-10-14）
+
+- 新增 `site.yaml`（version 1）與 `30ops validate`：schema、參照、重複的名稱與位址、zoneinfo、明文秘密一律拒絕（只能引用 `credentials` 的檔案），assets.tsv 與 cost.yaml 以原本的規則檢查。`--strict` 把警告當錯誤，`--secrets` 在收集端檢查秘密檔的權限。欄位見 `docs/site-yaml.md`，範例在 `examples/sample-site/site.yaml`。
+- 新增 `30ops render`：由 site.yaml 產生 Prometheus targets、prometheus.yml（併入 victorialogs job）、pve.yml 與 snmp-auth.yml（秘密為佔位）、alertmanager.yml、Grafana datasources、單一 `/etc/cron.d/30ops`、日誌允許清單與 service、WORM mount、gate 的 config.json 與 tools.json、assets.tsv、各節點的安裝參數與擷取設定檔，另附 `manifest.json`。輸出具確定性，以 `tests/golden/render/sample-site/` 驗證。`--diff` 對已安裝的檔案比對。說明見 `docs/render.md`。
+- 新增 `30ops import-legacy` 與 `scripts/fetch-legacy.sh`：從現行收集端唯讀抓取設定快照（秘密在主機端遮蔽），草擬 site.yaml。`render --compare-legacy` 對舊佈局做語意比對：targets、cron、允許清單、mount、收件者、gate 設定。
+- 範例場域的 render 與 repo 原有的手寫設定（targets、五個 cron 片段、允許清單、mount、gate 設定）比對為 0 差異；實際場域的 site.yaml 對收集端 .49 的快照比對也是 0 差異。compose 與告警規則不在 v0.3 範圍，v0.4 處理。
+- `scripts/check-drift.py` 新增規則：repo 內不得新增手寫的場域設定檔，既有的列在 `LEGACY_SITE`，v0.4 移除。
+- `snmp-auth.yml.example` 的範例帳號改為 `ops30`，與 cron 範例一致。
+- CI 的 `lib` 與 `collector` job 安裝 `python3-yaml`，並對範例場域的 render 產出跑 promtool、amtool、snmp_exporter dry-run、`systemd-analyze verify` 與 `visudo -c`。
+
 ## v0.2.0（2026-10-14）
 
 - 新增共用函式庫 `lib/python/ops30`（frontmatter、rfc3339、textfile、jsonl、drills）與 `lib/sh/ops30.sh`，說明見 `docs/lib.md`。

@@ -26,7 +26,7 @@ repo 根的 `.shellcheckrc` 設了 `source-path=SCRIPTDIR`，shellcheck 會跟�
 
 ## lib/python/ops30
 
-只用 Python 3.12 標準函式庫。
+Python 3.12 標準函式庫；只有讀寫 site.yaml 的 `yamlio` 需要 PyYAML（`python3-yaml`，apt 版本，`python3 -I` 下也找得到），而且是用到時才載入，`drill` 子命令不需要它。
 
 | 模組 | 內容 |
 |---|---|
@@ -35,7 +35,11 @@ repo 根的 `.shellcheckrc` 設了 `source-path=SCRIPTDIR`，shellcheck 會跟�
 | `textfile` | `esc(v)` 依 exposition format 跳脫反斜線、引號與換行；`family(lines, name, help, type)`；`write(path, text)`：同目錄暫存檔、0644、fsync、rename，失敗時清掉暫存檔 |
 | `jsonl` | `lock(path)` 以 flock 取得獨占附加權；`write_line`；`append(path, obj)`；`read(path)` 回傳 `(records, skipped)`，略過空行、壞行與非物件行 |
 | `drills` | drills.jsonl v1：`new`、`validate`、`append`、`normalise(rec, hint)`、`load(path, hint)`，見 [drills-jsonl.md](drills-jsonl.md) |
-| `cli` | `30ops` 指令。v0.2 只有 `drill record` 與 `drill migrate` |
+| `yamlio` | `load`、`loads`：SafeLoader，重複鍵報錯，日期保持字串；`dumps`：固定順序的 block style |
+| `site` | site.yaml：`load`、`validate(doc, base, strict, secrets)` 回傳 `(errors, warnings)`、`resolve` 補預設值，見 [site-yaml.md](site-yaml.md) |
+| `render` | `render(site, sha)` 回傳安裝路徑到 `Output` 的對照，`write(tree, out)`，見 [render.md](render.md) |
+| `legacy` | 舊佈局的語意比對 `compare(tree, root, site)`；`legacy_import.draft(root)` 從舊佈局草擬 site.yaml |
+| `cli` | `30ops` 指令：`validate`、`render`、`import-legacy`、`drill record`、`drill migrate` |
 
 gate 的稽核鏈在 `jsonl.lock` 之內讀最後一筆再寫下一筆，兩個呼叫端不會拿到同一個 seq。鏈上遇到壞行仍然報錯，不會略過，因為壞行本身就是竄改的證據。
 

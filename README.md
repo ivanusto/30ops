@@ -8,13 +8,13 @@ An on-prem operations platform for small and medium businesses to run themselves
 
 ## Status
 
-**v0.2.0**: the code lives in one repository, the collector-side modules share `lib/` (front matter, RFC 3339, textfile output, JSON Lines, drill records) and every drill writes drills.jsonl v1. Each module is still installed and configured on its own. A single `site.yaml`, the `30ops` command, installers and adapters come in later versions.
+**v0.3.0**: one `site.yaml` describes the site, and `30ops render` generates every site-specific configuration file from it: Prometheus targets and exporter configs, Alertmanager, Grafana datasources, one cron file, the log allowlist, the WORM mount, the gate config and the node parameters ([docs/site-yaml.md](docs/site-yaml.md), [docs/render.md](docs/render.md)). `30ops import-legacy` drafts a `site.yaml` from an existing collector, and `render --compare-legacy` shows it does the same as that collector. Nothing installs the output yet: the compose project, the alert rules and `30ops install` come in v0.4 and v0.5.
 
 | Version | Scope |
 |---|---|
 | v0.1 | History-preserving import, one CI, publishing hygiene |
 | v0.2 | Shared `ops30` library, deduplication, `drills.jsonl` v1 |
-| v0.3 | `site.yaml`, `30ops validate`, `30ops render` |
+| v0.3 | `site.yaml`, `30ops validate`, `30ops render`, `30ops import-legacy` |
 | v0.4 | One compose project, one source for rules, Grafana image |
 | v0.5 | Adapters, `30ops install`, `30ops doctor` |
 | v0.6 | End-to-end tests, release pipeline (SHA256SUMS and provenance attestation) |
@@ -34,11 +34,11 @@ An on-prem operations platform for small and medium businesses to run themselves
 | `checks/` | PVE QDevice check, operability checklist | pve-qdevice-on-qnap, series index |
 | `inventory/` | One-year cost model (power, depreciation, cloud comparison) | series index |
 | `plugins/` | Optional node modules: GB10 host guard, node baseline, NFS model library | gb10-ops, spark-baseline, nfs-model-library |
-| `examples/sample-site/` | Asset list and cost sheet of a sample site | |
-| `bin/` | `30ops` command (v0.2: `drill record`, `drill migrate`) | |
+| `examples/sample-site/` | `site.yaml`, asset list and cost sheet of a sample site | |
+| `bin/` | `30ops` command: `validate`, `render`, `import-legacy`, `drill record`, `drill migrate` | |
 | `lib/` | `python/ops30` and `sh/ops30.sh`, shared by the collector-side and drill scripts, see [docs/lib.md](docs/lib.md) | |
-| `tests/` | `unit/` for lib, `golden/` textfile outputs that must not change, `sh/` | |
-| `scripts/` | `hygiene.py`, `check-drift.py`, `check-ci-pins.sh` | |
+| `tests/` | `unit/` for lib, `golden/` textfile outputs that must not change and the sample site's render, `fixtures/legacy-root/` the pre-30ops layout, `sh/` | |
+| `scripts/` | `hygiene.py`, `check-drift.py`, `check-ci-pins.sh`, `fetch-legacy.sh` | |
 
 ## Checks
 
@@ -47,7 +47,9 @@ CI runs one job per module, see `.github/workflows/check.yml`. Locally:
 ```sh
 python3 scripts/hygiene.py          # em dash, private IPs, home paths, .pii-patterns
 python3 scripts/check-drift.py      # nothing that lib/ already has is written again
-python3 -m unittest discover -s tests/unit && python3 -m unittest tests/test_golden.py && sh tests/sh/test_ops30_sh.sh
+python3 -m unittest discover -s tests/unit && python3 -m unittest tests/test_golden.py tests/test_render.py
+sh tests/sh/test_ops30_sh.sh && sh tests/sh/test_fetch_legacy.sh
+bin/30ops validate --site examples/sample-site/site.yaml && bin/30ops render --site examples/sample-site/site.yaml --compare-legacy tests/fixtures/legacy-root
 sh scripts/check-ci-pins.sh         # actions by SHA, downloads by sha256, images by digest
 (cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh)
 (cd changes && python3 -m unittest discover -s tests && python3 scripts/check.py --assets ../examples/sample-site/assets.tsv)

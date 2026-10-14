@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
 """check-drift: code that lib/ already has must not be written again.
 
-v0.2 checks duplicates only: the helpers that used to exist in four to
-eight copies (label escaping, HELP/TYPE writers, atomic textfile writes,
-RFC 3339 parsing, front matter, the sh epoch-to-ISO helper, drill records
-built with printf) may appear in lib/ and nowhere else. Rules, dashboards
-and compose drift join in v0.4.
+Duplicates (v0.2): the helpers that used to exist in four to eight copies
+(label escaping, HELP/TYPE writers, atomic textfile writes, RFC 3339
+parsing, front matter, the sh epoch-to-ISO helper, drill records built
+with printf) may appear in lib/ and nowhere else.
+
+Site files (v0.3): targets, Alertmanager config, cron files, allowlists,
+mount units and the like come from site.yaml through `30ops render`. The
+hand-written ones that predate it are listed in LEGACY_SITE and go with
+the compose merge in v0.4; a new one anywhere else is a finding.
+
+Rules, dashboards and compose drift join in v0.4.
 
 Exempt: node-side scripts that are copied to another host and run there on
 their own (docs/lib.md), source-specific parsers, tests and documentation.
@@ -34,6 +40,14 @@ SOURCE_SPECIFIC = [
     "logs/firewall/aup-compare.sh",             # one-off comparison helper, inline python
 ]
 EXEMPT = ["lib/*", "tests/*", "*/tests/*", "docs/*", "*.md", "scripts/check-drift.py"] + NODE_SIDE + SOURCE_SPECIFIC
+
+SITE_GLOBS = ["*/targets/*.yml", "*alertmanager.yml", "*.mount", "*allowlist.default", "*.cron",
+              "*/pve.yml", "*/snmp-auth.yml", "*/config.json", "*/cron.d/*"]
+LEGACY_SITE = [
+    "collector/systemd/collector.cron", "logs/collector.cron", "logs/audit/collector.cron",
+    "logs/firewall/collector.cron", "logs/pcap/collector.cron", "changes/collector.cron", "gate/collector.cron",
+    "logs/collector/onprem-logs-allowlist.default", "logs/collector/mnt-worm.mount",
+]
 
 PY_RULES = [
     (re.compile(r"^\s*def esc\("), "label escaping: use ops30.textfile.esc"),
@@ -79,6 +93,9 @@ def main():
             errors.append(f"{path}: a second front matter reader; use lib/python/ops30/frontmatter.py")
         if exempt(path):
             continue
+        if any(fnmatch.fnmatch(path, g) for g in SITE_GLOBS) and path not in LEGACY_SITE:
+            errors.append(f"{path}: a site-specific file outside site.yaml; 30ops render writes it (docs/render.md)")
+            continue
         k = kind(path)
         if k is None:
             continue
@@ -90,7 +107,7 @@ def main():
                         errors.append(f"{path}:{n}: {why}")
     for e in errors:
         print(e, file=sys.stderr)
-    print(f"check-drift: {len(files)} files, {len(errors)} duplicate(s) of lib/")
+    print(f"check-drift: {len(files)} files, {len(errors)} finding(s)")
     return 1 if errors else 0
 
 
