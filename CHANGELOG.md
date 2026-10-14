@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.6.0（2026-10-14）
+
+- 端到端測試 `tests/e2e/run.sh`：在拋棄式 Ubuntu 24.04 主機上，把這個 commit 的 release tarball 裝成 `tests/e2e/site.yaml` 的收集端，再以 network namespace 裡的假 LAN 代替設備（`tests/e2e/fakes/`）：sshd 代 NAS（假 zpool、zfs、getcfg）與 PVE 的 `pvecm status`，snmpd 加 pass_persist 以 `snmp.yml` 合成的 QNAP OID 回應 SNMPv3，`httpfakes.py` 代 PVE API、FortiGate API 與告警的 webhook 收件端，主機上的 NFS 匯出代 WORM 資料夾。驗證項目：第二次 install 0 個變更；每個 target up、`expected-metrics.txt` 的名稱都在、規則全數載入；pool 轉 DEGRADED 後 `NasPoolNotOnline` 經 Alertmanager 送到 webhook；syslog、FortiGate 事件日誌與 journald 進 VictoriaLogs，不在允許清單的來源被 DOCKER-USER 丟棄並留下 DROP 紀錄；前一天封存到 NFS 並通過 `verify-archive.sh --against-live`；doctor 無 fail；容器合計低於 3 GiB。見 `docs/e2e.md`。
+- `e2e.yml`：每次推送 main 與每個 PR 在 GitHub 的 runner 上執行端到端測試，失敗時上傳證據。`tests/vm/e2e.sh` 在拋棄式 VM 上執行同一支測試。
+- 發行管線 `release.yml`：推送 tag `vX.Y.Z` 或 `vX.Y.Z-rc.N`（預發版）時，先跑 `check.yml` 與 `e2e.yml`，再以 `scripts/release-check.sh` 核對 tag、VERSION 與 CHANGELOG 段落，`scripts/dist.sh` 產生兩次並逐位元比對原始碼 tarball 與 `images.txt`，產生 `SHA256SUMS`，確認 compose 釘的 Grafana 映像帶有本 repo 的 attestation，對三個檔案產生 build provenance attestation，最後建立 GitHub Release。節點 bundle 依場域產生，不隨 Release 發行。見 `docs/release.md`；`docs/install.md` 加上下載與驗證步驟。
+- 共用替身：假 zpool、zfs、getcfg 移到 `tests/fakes/qnap/bin/`（`fake-nas.sh` 與 e2e 共用，`FAKE_NAS_STATE` 控制 degraded），變更單的 bare repo 移到 `tests/fakes/changes-repo.sh`（VM 驗收與 e2e 共用）。
+
 ## v0.5.0（2026-10-14）
 
 - adapter：`adapters/<kind>/<vendor>/` 的 `adapter.yaml` 宣告能力，`adapter.py` 實作，共用的 schema、輸出、連線方式（ssh、本機、HTTP、錄製重放）與載入在 `lib/python/ops30/adapters/`。v0.5 有 qnap、fortigate、pve、generic-snmp、linux 五個；尚未實作的能力標 `planned` 與版本（pve 的 backup_jobs，fortigate 的 facts、config_backup、managed_aps，generic-snmp 的交換器抓取在 v0.7）。`30ops validate` 依角色找 adapter，找不到就是錯誤。契約測試（`tests/unit/adapters/test_contract.py`）對 `tests/fixtures/adapters/` 的錄製 case 重放，輸出要與預期完全相同，family 與 label 要等於 schema。見 `docs/adapters.md`。
