@@ -39,20 +39,13 @@ The soak counter needs memory between samples, the NAS has no package manager an
 ```sh
 # collector VM, with the checkout in /opt/30ops and the site's site.yaml
 bin/30ops validate --site site.yaml --strict
-sudo bin/30ops render --site site.yaml --out /     # /etc/30ops, /etc/cron.d/30ops, units, ...
-# until `30ops install` (v0.5): put the token and passphrases in place of the
-# @secret: values in /etc/30ops/prometheus/pve.yml and snmp-auth.yml, and
-# create the secret files compose mounts (owner = the uid the container runs as)
-sudo install -d -m 0700 /etc/30ops/secrets
-openssl rand -base64 24 | sudo install -m 0400 -o 472 /dev/stdin /etc/30ops/secrets/grafana-admin.pass
-# SMTP password: owner 65534 (Alertmanager runs as nobody), mode 0400
-# a new site creates its volumes; a moved one names its old ones in site.yaml
-for v in prometheus alertmanager grafana victorialogs; do docker volume create "30ops_$v-data"; done
-docker compose --env-file /etc/30ops/compose.env -f collector/compose.yml up -d
-sudo ./collector/install-node.sh --collector
-# Grafana reads the admin password only when it creates its database. If the
-# file was unreadable on the first start, the password is "admin": fix the
-# owner, then remove the grafana container and its volume and start again.
+sudo bin/30ops install collector --site site.yaml --dry-run   # what it would change
+# a new site adds --create-volumes; a moved collector names its old volumes in
+# site.yaml. install fills the @secret: values, sets each secret file's owner,
+# deploys /etc/30ops, the units and the cron file, starts the stack and runs
+# each textfile job once (docs/install.md). A second run changes nothing.
+sudo bin/30ops install collector --site site.yaml
+sudo bin/30ops doctor --site site.yaml
 
 # PVE quorum: one line in /root/.ssh/authorized_keys on a node (it is
 # /etc/pve/priv/authorized_keys, shared by the whole cluster)

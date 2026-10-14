@@ -139,7 +139,7 @@ SCHEMA = {
                     "receivers": _f(("map", {"email": _f(("list", S)), "webhook": _f(("list", S)),
                                              "send_resolved": _f(B)}), True),
                     "thresholds": _f(("map", N))}),
-    "changes": _f({"clone": _f(S), "state_dir": _f(S)}),
+    "changes": _f({"clone": _f(S), "state_dir": _f(S), "remote": _f(S)}),
     "gate": _f({"principal": _f(S), "home": _f(S), "approval_ttl_s": _f(I),
                 "approvers": _f(("list", S)),
                 "targets": _f(("list", {"asset": _f(S, True), "ssh": _f(S, True)}))}),

@@ -1,6 +1,6 @@
 """The 30ops command: validate, render, import-legacy (v0.3), drill
-record / migrate (v0.2), textfile (v0.5). install, doctor and readiness
-arrive later."""
+record / migrate (v0.2), textfile, install, doctor (v0.5). readiness
+arrives later."""
 import argparse
 import difflib
 import json
@@ -87,29 +87,51 @@ def cmd_validate(a):
     return 0
 
 
-def _installed_diff(tree, root):
+def _installed_diff(tree, root, owners=False, out=None):
+    """Differences between the tree and what is installed under root:
+    content (secret values masked), mode, and with owners also owner.
+    nodes/ is what install node ships, not part of the collector."""
     from .legacy import _mask
     from . import yamlio
+    from .install import deploy
+    from .install.ops import Ops
+    out = out or sys.stdout
+    ops = Ops(root)
     n = 0
-    for p, o in tree.items():
+    for p in deploy.collector_paths(tree):
+        o = tree[p]
         dst = os.path.join(root, p)
-        try:
-            with open(dst, encoding="utf-8") as f:
-                old = f.read()
-        except OSError:
-            print(f"30ops render --diff: {dst} is not installed")
+        raw = ops.read(p)
+        if raw is None:
+            print(f"30ops render --diff: {dst} is not installed", file=out)
             n += 1
             continue
+        old = raw.decode("utf-8", "replace")
+        bad = []
         if o.secret:
-            same = _mask(yamlio.loads(old, dst)) == _mask(yamlio.loads(o.text, p))
+            try:
+                same = _mask(yamlio.loads(old, dst)) == _mask(yamlio.loads(o.text, p))
+            except yamlio.YamlError:
+                same = False
             if not same:
-                print(f"30ops render --diff: {dst} differs (secret values not shown)")
-                n += 1
-            continue
-        if old != o.text:
-            sys.stdout.writelines(difflib.unified_diff(old.splitlines(True), o.text.splitlines(True),
-                                                       f"installed/{p}", f"rendered/{p}"))
-            n += 1
+                bad.append("differs (secret values not shown)")
+        elif old != o.text:
+            out.writelines(difflib.unified_diff(old.splitlines(True), o.text.splitlines(True),
+                                                f"installed/{p}", f"rendered/{p}"))
+            bad.append("")
+        st = ops.stat(p)
+        if st.st_mode & 0o7777 != o.mode:
+            bad.append(f"mode {st.st_mode & 0o7777:04o}, rendered {o.mode:04o}")
+        if owners:
+            try:
+                want = ops.ids(o.owner)
+            except LookupError as e:
+                want = str(e)
+            if ops.owner(p) != want:
+                bad.append(f"owner {st.st_uid}:{st.st_gid}, rendered {o.owner}")
+        for b in [b for b in bad if b]:
+            print(f"30ops render --diff: {dst} {b}", file=out)
+        n += bool(bad)
     return n
 
 
@@ -124,7 +146,7 @@ def cmd_render(a):
         render.write(tree, a.out)
         print(f"30ops render: {len(tree)} files under {a.out}", file=sys.stderr)
     if a.diff:
-        n = _installed_diff(tree, a.root)
+        n = _installed_diff(tree, a.root, owners=a.owners or os.geteuid() == 0)
         if n:
             print(f"30ops render --diff: {n} file(s) differ from {a.root}", file=sys.stderr)
             rc = 1
@@ -191,6 +213,18 @@ def _nonneg_float(s):
     return n
 
 
+def cmd_install_collector(a):
+    from . import render
+    from .install import collector
+    from .install.ops import Ops
+    r = _site(a)
+    if r is None:
+        return 2
+    tree = render.render(*r)
+    return collector.install(r[0], tree, Ops(a.root), dry_run=a.dry_run, create_volumes=a.create_volumes,
+                             out=lambda line: print(line, flush=True))
+
+
 def cmd_textfile(a):
     from . import collect
     return collect.run(a.name, a.targets, out=a.out, local=a.local,
@@ -214,6 +248,7 @@ def parser():
     r.add_argument("--out", help="write the files under this directory")
     r.add_argument("--diff", action="store_true", help="compare with the installed files; 1 if any differs")
     r.add_argument("--root", default="/", help="where --diff looks for the installed files (default /)")
+    r.add_argument("--owners", action="store_true", help="--diff also compares owners (the default as root)")
     r.add_argument("--compare-legacy", metavar="DIR",
                    help="compare with an old collector's files (a fetch-legacy.sh snapshot); 1 if any differs")
     r.set_defaults(f=cmd_render)
@@ -223,6 +258,16 @@ def parser():
     i.add_argument("-o", "--output", help="write here (and assets.tsv next to it); default stdout")
     i.add_argument("--force", action="store_true", help="overwrite existing files")
     i.set_defaults(f=cmd_import_legacy)
+
+    ins = sub.add_parser("install", help="install the rendered site on this host").add_subparsers(
+        dest="sub", required=True)
+    c = ins.add_parser("collector", help="this host is the collector (docs/install.md)")
+    c.add_argument("--site", default=site_default, help="default ./site.yaml or $OPS30_SITE")
+    c.add_argument("--dry-run", action="store_true", help="show what would change, change nothing")
+    c.add_argument("--create-volumes", action="store_true",
+                   help="create missing docker volumes (a new site; a moved collector names its old ones)")
+    c.add_argument("--root", default="/", help=argparse.SUPPRESS)
+    c.set_defaults(f=cmd_install_collector)
 
     t = sub.add_parser("textfile", help="collect one node_exporter textfile through its adapter (cron)")
     t.add_argument("name", choices=["nas", "pve-quorum"])

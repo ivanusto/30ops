@@ -39,19 +39,13 @@ soak 計數要記住上一次的狀態，NAS 沒有套件管理器，演練紀�
 ```sh
 # 收集端 VM，checkout 在 /opt/30ops，旁邊有場域的 site.yaml
 bin/30ops validate --site site.yaml --strict
-sudo bin/30ops render --site site.yaml --out /     # /etc/30ops、/etc/cron.d/30ops、單元檔等
-# 在 `30ops install`（v0.5）之前：把 /etc/30ops/prometheus/pve.yml 與 snmp-auth.yml
-# 裡的 @secret: 值換成 token 與密語，並建立 compose 掛載的秘密檔
-# （擁有者是容器執行的 uid）
-sudo install -d -m 0700 /etc/30ops/secrets
-openssl rand -base64 24 | sudo install -m 0400 -o 472 /dev/stdin /etc/30ops/secrets/grafana-admin.pass
-# SMTP 密碼：擁有者 65534（Alertmanager 以 nobody 執行），權限 0400
-# 新場域自己建立 volume；從舊收集端搬過來的在 site.yaml 寫舊 volume 的名稱
-for v in prometheus alertmanager grafana victorialogs; do docker volume create "30ops_$v-data"; done
-docker compose --env-file /etc/30ops/compose.env -f collector/compose.yml up -d
-sudo ./collector/install-node.sh --collector
-# Grafana 只在建立資料庫那一次讀管理密碼。第一次啟動時檔案讀不到，密碼就是 admin，
-# 改好擁有者之後要移除 grafana 容器與它的 volume 再啟動。
+sudo bin/30ops install collector --site site.yaml --dry-run   # 先看會改什麼
+# 新場域加 --create-volumes；從舊收集端搬過來的，在 site.yaml 寫舊 volume 的名稱。
+# install 會代入 @secret: 值、設定每個秘密檔的擁有者、部署 /etc/30ops、單元檔與
+# cron，啟動 stack，再把每個 textfile job 各跑一次（docs/install.md）。
+# 第二次執行不會有任何變更。
+sudo bin/30ops install collector --site site.yaml
+sudo bin/30ops doctor --site site.yaml
 
 # PVE 票數：在一台節點的 /root/.ssh/authorized_keys 加一行（它就是叢集共用的
 # /etc/pve/priv/authorized_keys）

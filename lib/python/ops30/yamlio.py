@@ -43,6 +43,8 @@ def _loader():
     def mapping(loader, node, deep=False):
         seen = set()
         for k, _ in node.value:
+            if k.tag == "tag:yaml.org,2002:merge":
+                continue        # << merges an anchor (compose files); its keys may be overridden
             key = loader.construct_object(k, deep=deep)
             if key in seen:
                 raise yaml.constructor.ConstructorError(

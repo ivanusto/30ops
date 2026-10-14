@@ -63,6 +63,7 @@ alerting:
 | `alerting.thresholds` | | 告警門檻覆寫，鍵與預設值見 `collector/prometheus/thresholds.yml`，說明見 [rules.md](rules.md#門檻)。鍵必須存在、值大於 0，成對的警告線與危險線順序要對 |
 | `changes.clone` | | 變更單 repo 在收集端的 clone，預設 `/var/lib/30ops/changes` |
 | `changes.state_dir` | | 預設 `/var/lib/onprem-changes` |
+| `changes.remote` | | 變更單 repo 的 git 網址。clone 不存在時，install 以 `collector.user` 從這裡 clone（v0.5） |
 | `gate.targets[]` | | `asset`（`asset/component`，必須是 assets.tsv 的一列）、`ssh`（`user@host` 或 `local`） |
 | `gate.principal`、`home`、`approval_ttl_s`、`approvers` | | 預設 `agent:ops`、`/var/lib/onprem-agent-gate`、600、`[implementer, approver]` |
 | `assets` | | assets.tsv 的路徑，相對於 site.yaml，格式見 [assets-tsv.md](assets-tsv.md) |
