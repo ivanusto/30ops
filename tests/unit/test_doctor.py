@@ -31,6 +31,7 @@ class DoctorOps(FakeOps):
         self.grafana_pw = None
         self.down = []
         self.digest_override = {}
+        self.fresh = False
 
     def statvfs(self, p):
         return Fs()
@@ -39,6 +40,7 @@ class DoctorOps(FakeOps):
         if "/api/v1/targets" in url:
             ts = [{"labels": {"job": "node", "instance": "192.0.2.49:9100"}, "health": "up"}]
             ts += [{"labels": {"job": j, "instance": i}, "health": "down", "lastError": "refused"} for j, i in self.down]
+            ts += [{"labels": {"job": "grafana", "instance": "grafana:3000"}, "health": "unknown"}] if self.fresh else []
             return 200, json.dumps({"data": {"activeTargets": ts}})
         if "/api/v1/query" in url:
             return 200, json.dumps({"data": {"result": [{"metric": {"instance": "192.0.2.49:9100"}, "value": [0, "0"]}]}})
@@ -134,6 +136,12 @@ class Doctor(unittest.TestCase):
         self.assertIn("/etc/30ops/alertmanager/alertmanager.yml: content", res["render"]["detail"])
         self.assertEqual(res["images"]["status"], "fail")
         self.assertIn("grafana runs sha256:000", res["images"]["detail"])
+
+    def test_target_not_scraped_yet_is_a_warning(self):
+        self.ops.fresh = True
+        res = self.results()["targets"]
+        self.assertEqual(res["status"], "warn")
+        self.assertIn("grafana/grafana:3000", res["detail"])
 
     def test_text_and_json(self):
         res = doctor.Doctor(self.site, self.tree, self.ops).run()

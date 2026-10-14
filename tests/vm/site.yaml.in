@@ -1,0 +1,30 @@
+# The v0.5 acceptance site: one fresh VM that is its own collector and
+# ships its own journal. No NAS, PVE, FortiGate, WORM or gate, so the test
+# touches nothing but the VM. run.sh puts the VM's address in place of
+# @ADDR@; the changes clone comes from a bare repository on the VM.
+version: 1
+
+site:
+  id: vmtest
+  name: 30ops acceptance VM
+  timezone: Asia/Taipei
+  locale: en
+
+collector:
+  host: vm
+
+hosts:
+  - name: vm
+    address: "@ADDR@"
+    vendor: linux
+    roles: [collector, journal]
+
+alerting:
+  receivers:
+    ops-critical: {webhook: ["http://127.0.0.1:9/critical"]}
+    ops-warning: {webhook: ["http://127.0.0.1:9/warning"]}
+    ops-digest: {webhook: ["http://127.0.0.1:9/digest"], send_resolved: false}
+
+changes:
+  clone: /var/lib/30ops/changes
+  remote: /srv/git/changes.git

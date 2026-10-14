@@ -76,9 +76,15 @@ class Doctor:
             self.add("targets", FAIL, f"Prometheus did not answer ({code})")
             return
         ts = json.loads(body)["data"]["activeTargets"]
-        down = [f"{t['labels'].get('job')}/{t['labels'].get('instance')}: {t.get('lastError') or t['health']}"
-                for t in ts if t["health"] != "up"]
-        self.add("targets", FAIL if down else OK, "; ".join(down) or f"{len(ts)} targets up")
+        name = lambda t: f"{t['labels'].get('job')}/{t['labels'].get('instance')}"   # noqa: E731
+        down = [f"{name(t)}: {t.get('lastError') or t['health']}" for t in ts if t["health"] == "down"]
+        new = [name(t) for t in ts if t["health"] not in ("up", "down")]
+        if down:
+            self.add("targets", FAIL, "; ".join(down))
+        elif new:
+            self.add("targets", WARN, f"not scraped yet (just started?): {', '.join(new)}")
+        else:
+            self.add("targets", OK, f"{len(ts)} targets up")
 
     def textfiles(self):
 
@@ -101,8 +107,8 @@ class Doctor:
             else:
                 self.add(f"textfile {name}", OK, f"{int(age)} s old")
         r = self._query("node_textfile_scrape_error")
-        if r is None:
-            self.add("textfile scrape", WARN, "could not ask Prometheus for node_textfile_scrape_error")
+        if not r:
+            self.add("textfile scrape", WARN, "Prometheus has no node_textfile_scrape_error yet (not scraped, or no node_exporter)")
         else:
             bad = [x["metric"].get("instance", "?") for x in r if x["value"][1] != "0"]
             self.add("textfile scrape", FAIL if bad else OK,
