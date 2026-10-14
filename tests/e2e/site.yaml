@@ -66,10 +66,13 @@ snmp:
       priv_protocol: AES
       priv_password: snmp-priv
 
+# not /mnt/worm as on the sample site: a GitHub runner's /mnt is an fstab
+# entry for a disk it may not have, and a failed mnt.mount fails every
+# mount below /mnt (RequiresMountsFor)
 worm:
   host: nas-primary
   export: /LogArchive
-  mount: /mnt/worm
+  mount: /srv/worm
 
 logs:
   archive:

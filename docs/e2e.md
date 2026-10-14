@@ -46,7 +46,7 @@
 | PVE API | `httpfakes.py`，自簽 TLS，驗 API token，回應一個 quorate 的兩節點叢集、每節點一個 storage、沒有 guest，端點依 pve-exporter 3.5.5 實際呼叫的路徑 |
 | FortiGate API | `httpfakes.py`，Bearer token，回應 fixture 的授權狀態 |
 | SNMP | net-snmp 的 snmpd，SNMPv3（SHA、AES），QNAP 的 enterprise OID 由 `snmp/pass-persist.py` 供應，資料由 `snmp/build-data.py` 讀 `collector/prometheus/snmp.yml` 合成：表格兩列、狀態字串與列舉取健康值。不是真實 NAS 的 walk |
-| WORM | 主機上的 nfs-kernel-server 匯出暫存目錄，主機 nat OUTPUT 把 `192.0.2.2:2049` 轉到本機，所以 render 出的 `mnt-worm.mount` 原封不動地掛載 |
+| WORM | 主機上的 nfs-kernel-server 匯出暫存目錄，主機 nat OUTPUT 把 `192.0.2.2:2049` 轉到本機，所以 render 出的掛載單元原封不動地掛載。掛載點是 `/srv/worm` 而不是範例場域的 `/mnt/worm`：GitHub runner 的 fstab 有一筆指向不存在磁碟的 `/mnt`，失敗的 `mnt.mount` 會讓 `/mnt` 底下的每個掛載都失敗 |
 | 告警收件 | `httpfakes.py` 把每個 POST 寫進 `/run/ops30e2e/webhook.jsonl` |
 
 E2E 場域是 `tests/e2e/site.yaml`：由範例場域縮減，廠商與位址相同，只留假 LAN 能代替的主機。

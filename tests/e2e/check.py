@@ -4,7 +4,7 @@
   check.py baseline --rules DIR --expected FILE
   check.py alert    --sink FILE [--alert NasPoolNotOnline] [--timeout 300]
   check.py logs     --token T --kernel-log FILE
-  check.py archive  --day-dir DIR --drills FILE [--source NAME ...]
+  check.py archive  --mount DIR --day-dir DIR --drills FILE [--source NAME ...]
   check.py doctor   --json FILE --allowed FILE
 
 Every mode prints one "ok" or "FAIL" line per check and exits 1 when any
@@ -144,7 +144,7 @@ def archive(a):
     want = set(a.sources)
     ok(want <= srcs, f"the archive has {', '.join(sorted(want))}", f"MANIFEST.tsv lists {', '.join(sorted(srcs))}")
     mounts = open("/proc/mounts", encoding="utf-8").read()
-    ok(re.search(r"^\S+ /mnt/worm nfs4 ", mounts, re.M) is not None, "the WORM share is an nfs4 mount")
+    ok(re.search(rf"^\S+ {re.escape(a.mount)} nfs4 ", mounts, re.M) is not None, f"the WORM share at {a.mount} is an nfs4 mount")
     recs = [json.loads(x) for x in open(a.drills, encoding="utf-8") if x.strip()] if os.path.exists(a.drills) else []
     last = recs[-1] if recs else {}
     ok(last.get("v") == 1 and last.get("kind") == "logs-restore" and last.get("result") == "pass",
@@ -179,6 +179,7 @@ def main(argv=None):
     lg.add_argument("--kernel-log", required=True)
     lg.add_argument("--timeout", type=int, default=120)
     ar = sub.add_parser("archive")
+    ar.add_argument("--mount", required=True)
     ar.add_argument("--day-dir", required=True)
     ar.add_argument("--drills", required=True)
     ar.add_argument("--source", dest="sources", action="append", default=[])

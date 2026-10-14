@@ -25,6 +25,7 @@ TARBALL=${1:?usage: OPS30_E2E_DISPOSABLE=1 run.sh 30ops-X.Y.Z.tar.gz}
 OUT=${OUT:-/var/tmp/ops30e2e}
 R=/opt/30ops
 SITE=/opt/30ops-site/site.yaml
+WORM_MNT=/srv/worm   # worm.mount of tests/e2e/site.yaml
 MEM_LIMIT=$((3 * 1024 * 1024 * 1024))
 T0=$(date +%s)
 
@@ -59,12 +60,12 @@ collect() {
   curl -fsS 'http://127.0.0.1:9090/api/v1/targets?state=active' > "$OUT/targets.json" 2>/dev/null
   curl -fsS http://127.0.0.1:9090/api/v1/alerts > "$OUT/prometheus-alerts.json" 2>/dev/null
   curl -fsS http://127.0.0.1:9093/api/v2/alerts > "$OUT/alertmanager-alerts.json" 2>/dev/null
-  journalctl -b --no-pager -u mnt-worm.mount -u 30ops-allowlist -u systemd-journal-upload -u nfs-server > "$OUT/units.log" 2>&1
+  journalctl -b --no-pager -u srv-worm.mount -u 30ops-allowlist -u systemd-journal-upload -u nfs-server > "$OUT/units.log" 2>&1
   {
     systemctl --failed --no-pager
-    systemctl list-dependencies --no-pager mnt-worm.mount
-    systemctl show --no-pager -p ActiveState,Requires,After,RequiresMountsFor mnt-worm.mount mnt.mount
-    findmnt /mnt; findmnt /mnt/worm; grep -v '^#' /etc/fstab
+    systemctl list-dependencies --no-pager srv-worm.mount
+    systemctl show --no-pager -p ActiveState,Requires,After,RequiresMountsFor srv-worm.mount
+    findmnt "$WORM_MNT"; grep -v '^#' /etc/fstab
   } > "$OUT/mounts.txt" 2>&1
   printf 'exit %s after %ss\n' "$rc" "$(( $(date +%s) - T0 ))" >> "$OUT/summary.txt"
   chmod -R a+rX "$OUT"
@@ -199,13 +200,13 @@ journalctl -k --since "$since" --no-pager > "$OUT/kernel.log"
 check logs --token "$token" --kernel-log "$OUT/kernel.log"
 
 step "archive $day to the WORM share, then verify"
-findmnt /mnt/worm > "$OUT/worm-mount.txt" || fail "/mnt/worm is not mounted"
-runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE=/mnt/worm/logs ARCHIVE_SKIP=syslog-fgt-edge \
+findmnt "$WORM_MNT" > "$OUT/worm-mount.txt" || fail "$WORM_MNT is not mounted"
+runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE="$WORM_MNT/logs" ARCHIVE_SKIP=syslog-fgt-edge \
   "$R/logs/archive/archive-day.sh" "$day" > "$OUT/archive.log" 2>&1 || { cat "$OUT/archive.log"; fail "archive-day"; }
-runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE=/mnt/worm/logs DRILLS=/srv/drills/onprem-logs/drills.jsonl \
+runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE="$WORM_MNT/logs" DRILLS=/srv/drills/onprem-logs/drills.jsonl \
   "$R/logs/archive/verify-archive.sh" "$day" --against-live > "$OUT/verify.log" 2>&1 || { cat "$OUT/verify.log"; fail "verify-archive"; }
 cat "$OUT/verify.log"
-check archive --day-dir "/mnt/worm/logs/$(echo "$day" | tr - /)" --drills /srv/drills/onprem-logs/drills.jsonl \
+check archive --mount "$WORM_MNT" --day-dir "$WORM_MNT/logs/$(echo "$day" | tr - /)" --drills /srv/drills/onprem-logs/drills.jsonl \
   --source syslog-nas-primary --source audit-fgt-edge --source journald-collector
 
 step "recover, doctor"
