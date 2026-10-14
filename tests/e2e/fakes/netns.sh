@@ -78,8 +78,11 @@ up() {
   # HTTP: PVE API, FortiGate API, webhook sink
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=ops30-e2e \
     -keyout "$STATE/tls.key" -out "$STATE/tls.crt" 2>/dev/null
-  # ip netns exec execs the command, so $! is the fake's own pid
-  in_ns python3 -I "$HERE/httpfakes.py" --state "$STATE" --cert "$STATE/tls.crt" --key "$STATE/tls.key" \
+  # a plain command, not in_ns: a function sent to the background runs in a
+  # subshell that waits for its child, keeps the caller's stdout and stderr
+  # on saved fds (an ssh session running this never ends) and is what $!
+  # names. ip netns exec execs python, so $! is the fake itself.
+  ip netns exec "$NS" python3 -I "$HERE/httpfakes.py" --state "$STATE" --cert "$STATE/tls.crt" --key "$STATE/tls.key" \
     --pve pve1=192.0.2.9 --pve pve2=192.0.2.5 --pve-cluster lab \
     --pve-token "prometheus@pve!exporter=$(cat "$SECRETS/pve-exporter.token")" \
     --fortigate 192.0.2.99 --fortigate-token "$(cat "$SECRETS/fortigate-api.token")" \
