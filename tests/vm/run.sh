@@ -31,14 +31,27 @@ r 'sudo timedatectl set-timezone Asia/Taipei && sudo DEBIAN_FRONTEND=noninteract
    docker --version && docker compose version'
 git -C "$here" archive --format=tar "$REV" | r 'sudo rm -rf /opt/30ops && sudo mkdir -p /opt/30ops && sudo tar x -C /opt/30ops'
 sed "s/@ADDR@/$addr/" "$here/tests/vm/site.yaml.in" | r 'sudo mkdir -p /opt/30ops-site && sudo tee /opt/30ops-site/site.yaml >/dev/null'
-# shellcheck disable=SC2016 # runs on the VM
-r 'set -e; [ -d /srv/git/changes.git ] && exit 0
-   sudo git init -q --bare -b main /srv/git/changes.git; t=$(mktemp -d); cd "$t"; git init -q -b main
-   mkdir changes drills; : > drills/drills.jsonl; cp /opt/30ops/changes/tests/fixtures/CR-*.md changes/ 2>/dev/null || true
-   git add -A; git -c user.name=vmtest -c user.email=vmtest@example.net commit -q -m seed
-   sudo git push -q /srv/git/changes.git main; sudo chmod -R a+rX /srv/git/changes.git; rm -rf "$t"
-   # a root-owned repository read by metrics: git refuses that unless told (a real site clones over ssh or https)
-   sudo git config --system --add safe.directory /srv/git/changes.git'
+# the changes clone's upstream: a bare repository on the VM, seeded with
+# one record; root owns it and metrics reads it, which git refuses unless
+# the path is a safe.directory (a real site clones over ssh or https)
+r 'sudo sh -s' <<'EOF'
+set -e
+grep -qs 'directory = /srv/git/changes.git' /etc/gitconfig || git config --system --add safe.directory /srv/git/changes.git
+if git -C /srv/git/changes.git rev-parse -q --verify refs/heads/main >/dev/null 2>&1; then exit 0; fi
+rm -rf /srv/git/changes.git
+git init -q --bare -b main /srv/git/changes.git
+t=$(mktemp -d)
+cd "$t"
+git init -q -b main
+mkdir changes drills
+: > drills/drills.jsonl
+cp /opt/30ops/changes/tests/fixtures/CR-*.md changes/
+git add -A
+git -c user.name=vmtest -c user.email=vmtest@example.net commit -q -m seed
+git push -q /srv/git/changes.git main
+chmod -R a+rX /srv/git/changes.git
+rm -rf "$t"
+EOF
 I="cd /opt/30ops && sudo bin/30ops"
 S="--site /opt/30ops-site/site.yaml"
 
