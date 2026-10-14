@@ -8,7 +8,8 @@ tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 n=0
 ok() { n=$((n + 1)); }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
-V=$(tr -d '[:space:]' < "$ROOT/VERSION")
+# dist.sh packs HEAD, so the expectations come from HEAD too
+V=$(git -C "$ROOT" show HEAD:VERSION | tr -d '[:space:]')
 
 # dist.sh: the same commit gives the same bytes
 sh "$ROOT/scripts/dist.sh" "$tmp/a" > "$tmp/a.sums"
@@ -39,7 +40,8 @@ tar tzf "$tmp/c/30ops-$V-rc.1.tar.gz" | head -n1 | grep -q "^30ops-$V-rc.1/" || 
 # release-check.sh on a copy of the checkout's VERSION and CHANGELOG
 mkdir -p "$tmp/r/scripts"
 cp "$ROOT/scripts/release-check.sh" "$tmp/r/scripts/"
-cp "$ROOT/VERSION" "$ROOT/CHANGELOG.md" "$tmp/r/"
+git -C "$ROOT" show HEAD:VERSION > "$tmp/r/VERSION"
+git -C "$ROOT" show HEAD:CHANGELOG.md > "$tmp/r/CHANGELOG.md"
 rc() { sh "$tmp/r/scripts/release-check.sh" "$@" > "$tmp/out" 2>&1; }
 rc "v$V" "$tmp/notes" || fail "v$V refused: $(cat "$tmp/out")"
 { grep -qx "prerelease=false" "$tmp/out" && grep -qx "name=$V" "$tmp/out"; } || fail "v$V outputs"; ok
