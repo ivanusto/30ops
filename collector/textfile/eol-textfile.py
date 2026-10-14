@@ -48,6 +48,8 @@ from datetime import datetime, timezone
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
 from ops30 import textfile  # noqa: E402
 from ops30.textfile import esc  # noqa: E402
+from ops30.adapters import registry  # noqa: E402
+from ops30.adapters.transport import Http  # noqa: E402
 
 # milestone in the TSV -> field in endoflife.date's v1 release object.
 # endoflife.date's three fields are active support (eoas), end of life (eol)
@@ -160,38 +162,11 @@ def compare(rows, cache, offline, max_age):
 
 
 # ---------- FortiGate licences ----------
+# The FortiGate side (the REST call and the walk over its answer) is the
+# fortigate adapter's licences capability, adapters/firewall/fortigate.
 
-def walk_licences(obj, path=(), parent_exp=None):
-    """Yield (component, status, expires) for every object with a numeric expires.
-
-    Skipped, as seen on a 60F with FortiOS 7.6.7: a free_license (the
-    FortiCloud sandbox tier carries the contract's date but never lapses),
-    and an object nested in a licence with the same expires
-    (iot_detection.definitions repeats iot_detection)."""
-    if isinstance(obj, dict):
-        exp = obj.get("expires")
-        own = None
-        if isinstance(exp, (int, float)) and exp > 0:
-            own = int(exp)
-            status = str(obj.get("status", ""))
-            if status != "free_license" and own != parent_exp:
-                yield ".".join(path) or "licence", status, own
-        for k, v in obj.items():
-            if isinstance(v, (dict, list)):
-                yield from walk_licences(v, path + (str(k),), own if own is not None else parent_exp)
-    elif isinstance(obj, list):
-        for v in obj:
-            yield from walk_licences(v, path, parent_exp)
-
-
-def fortigate_licences(url, token, insecure):
-    import ssl
-    ctx = ssl._create_unverified_context() if insecure else None   # the lab's 60F has a self-signed GUI cert
-    req = urllib.request.Request(url.rstrip("/") + "/api/v2/monitor/license/status",
-                                 headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
-    with urllib.request.urlopen(req, timeout=30, context=ctx) as r:
-        doc = json.load(r)
-    return list(walk_licences(doc.get("results", doc)))
+def fortigate():
+    return registry.module("firewall", "fortigate")
 
 
 # ---------- output ----------
@@ -247,14 +222,14 @@ def main():
     if a.licence_file:
         with open(a.licence_file, encoding="utf-8") as f:
             doc = json.load(f)
-        licences = list(walk_licences(doc.get("results", doc)))
+        licences = fortigate().from_doc(doc)
     elif a.fortigate:
         if not a.token_file:
             sys.exit("--fortigate needs --token-file")
         with open(a.token_file, encoding="utf-8") as f:
             token = f.read().strip()
         try:
-            licences = fortigate_licences(a.fortigate, token, a.insecure)
+            licences = fortigate().licences(Http(timeout=30), a.fortigate, token, a.insecure)
         except Exception as e:
             print(f"eol-textfile: FortiGate licence query failed: {e}", file=sys.stderr)
     body = render(rows, mismatch, ages, licences, a.fortigate_asset, time.time())

@@ -137,7 +137,7 @@ class Textfile(unittest.TestCase):
         doc = {"results": {"a": {"status": "x", "expires": 5, "defs": {"expires": 5}}, "b": {"support": {"hw": {"expires": 7}}},
                            "c": {"expires": 0}, "d": [{"expires": 9}], "e": {"status": "free_license", "expires": 11},
                            "f": {"expires": 13, "defs": {"expires": 15}}}}
-        got = sorted(eol.walk_licences(doc["results"]))
+        got = sorted(eol.fortigate().walk_licences(doc["results"]))
         self.assertEqual(got, [("a", "x", 5), ("b.support.hw", "", 7), ("d", "", 9), ("f", "", 13), ("f.defs", "", 15)])
 
 

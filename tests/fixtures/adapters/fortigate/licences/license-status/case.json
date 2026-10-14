@@ -1,0 +1,4 @@
+{
+ "args": {"url": "https://192.0.2.99:10443/", "token": "x", "insecure": true},
+ "source": "FortiOS 7.6.7 on a 60F, collector/tests/fixtures/eol/fortigate-license-status.json"
+}

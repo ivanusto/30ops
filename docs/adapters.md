@@ -35,6 +35,7 @@ capabilities:
 | face | 意義 | 契約測試檢查 |
 |---|---|---|
 | collect | cron 以 `30ops textfile` 執行，寫 node_exporter textfile | `adapter.py` 有同名函式，每個錄製 case 重放後與 `expected.prom` 完全相同，family 與 label 等於 `schema.FAMILIES` |
+| data | 回傳資料，由 `ref` 指的程式寫成 textfile | `adapter.py` 有同名函式，每個 case 重放後與 `expected.json` 相同 |
 | snmp | 由 snmp_exporter 的模組取得 | `metrics` 列的指標都在 `collector/prometheus/snmp.yml` |
 | render | `30ops render` 產出設定檔 | `adapter.py` 有 `render` 函式 |
 | descriptor | 由既有的程式或文件負責，adapter 只指過去 | `ref` 存在 |
@@ -52,6 +53,24 @@ def health(targets, transport, now):   # -> textfile 文字
 - `transport` 是 `transport.Ssh`、`Local`、`Replay` 或 `Record`，都提供 `run(dest, argv, stdin)` 與 `get(url, headers, insecure)`，回傳 `Result(rc, out, err)`。連不上不丟例外，而是回傳非零 rc，由函式輸出 `*_up 0`。
 - `now` 是 Unix 時間，寫進 `*_last_run_timestamp`。
 - 輸出用 `base.Metrics`，數值是已格式化的字串，和原本 shell 寫入器輸出的文字一致。
+
+## ops30_adapter_info
+
+既有指標不加 `vendor` label（加了會變成新序列，切換時 TSDB 斷開），改由 render 產出靜態的 `<textfile_dir>/30ops-adapters.prom`，每台主機每個 kind 一筆：
+
+```
+ops30_adapter_info{name="nas-primary",kind="nas",vendor="qnap",version="1",nas="primary"} 1
+```
+
+最後一個 label 是該 kind 既有序列用來指主機的 label（nas 用 `nas`，hypervisor 用 `cluster`，firewall 用 `host`，os 用 `instance`），需要 vendor 時以它 join，例如 `nas_up * on (nas) group_left (vendor) ops30_adapter_info{kind="nas"}`。
+
+## data 函式
+
+FortiGate 的 licences 不自己寫 textfile，由 `eol-textfile.py` 合併進 `eol.prom`，所以 face 是 `data`：函式回傳資料，case 的 `case.json` 以 `args` 給參數，結果與 `expected.json` 比對；預期失敗的 case 寫 `raises`（例外訊息的 regex）。
+
+```python
+def licences(transport, url, token, insecure=False):   # -> [(component, status, expires)]
+```
 
 ## 錄製 fixture
 

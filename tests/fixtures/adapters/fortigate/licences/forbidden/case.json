@@ -1,0 +1,8 @@
+{
+ "args": {
+  "url": "https://192.0.2.99:10443",
+  "token": "x"
+ },
+ "source": "synthetic: a token without the licence read permission",
+ "raises": "HTTP 403"
+}

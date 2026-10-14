@@ -23,7 +23,7 @@ KINDS = {
 }
 
 # how a capability is delivered
-FACES = ("collect", "snmp", "render", "descriptor", "install")
+FACES = ("collect", "data", "snmp", "render", "descriptor", "install")
 STATUSES = ("implemented", "planned")
 
 FAMILIES = {

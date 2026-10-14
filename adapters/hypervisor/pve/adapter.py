@@ -13,14 +13,19 @@ and is restricted on the node with
 On PVE /root/.ssh/authorized_keys is a symlink into /etc/pve/priv, shared
 by every node, so one line covers the cluster.
 
-The output is the one pve-quorum-textfile.sh printed
+exporter_config: pve.yml for prometheus-pve-exporter (render), from
+site.yaml pve.exporter; the token is an @secret: placeholder install fills.
+
+The quorum output is the one pve-quorum-textfile.sh printed
 (tests/golden/textfile/pve-quorum.prom). With more than one cluster the
 samples are now grouped per family; the shell version interleaved them per
 cluster, which the text format does not allow.
 """
 import re
 
+from ops30 import yamlio
 from ops30.adapters.base import Metrics
+from ops30.render import SECRET, Output, header
 
 FAMILIES = [
     ("pve_quorum_up", "1 when pvecm status was read", "gauge"),
@@ -110,3 +115,13 @@ def quorum_from_text(text, now):
     m = Metrics(FAMILIES)
     parse(text, "", m)
     return _emit(m, now)
+
+
+def render(site, sha):
+    ex = (site.get("pve") or {}).get("exporter")
+    if not ex:
+        return {}
+    doc = {"default": {"user": ex["user"], "token_name": ex["token_name"],
+                       "token_value": SECRET + ex["token"], "verify_ssl": ex.get("verify_ssl", False)}}
+    # the exporter container runs as uid 101
+    return {"etc/30ops/prometheus/pve.yml": Output(header(sha) + yamlio.dumps(doc), 0o640, "root:101", True)}

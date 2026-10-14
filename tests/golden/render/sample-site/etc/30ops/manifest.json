@@ -352,6 +352,13 @@
       "owner": "root:root",
       "sha256": "X",
       "secret": false
+    },
+    {
+      "path": "var/lib/node_exporter/textfile/30ops-adapters.prom",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
     }
   ]
 }

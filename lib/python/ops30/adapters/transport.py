@@ -56,6 +56,10 @@ class Ssh:
         return _http_get(url, headers, insecure, self.timeout)
 
 
+class Http(Ssh):
+    """The same transport, named for callers that only use get()."""
+
+
 class Local(Ssh):
     """Runs argv on this host and ignores dest (on the device itself)."""
 

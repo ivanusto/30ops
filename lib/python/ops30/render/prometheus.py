@@ -1,4 +1,4 @@
-"""prometheus.yml, targets/*.yml, pve.yml and snmp-auth.yml.
+"""prometheus.yml, targets/*.yml, pve.yml (from the pve adapter) and snmp-auth.yml.
 
 prometheus.yml is the repo's collector/prometheus/prometheus.yml (the job
 definitions are product, not site) with three changes: the site label, the
@@ -6,6 +6,7 @@ jobs that have no target dropped (victorialogs when the site collects no
 logs), and a node job for the plain Linux nodes.
 """
 from .. import site as S, yamlio
+from ..adapters import registry
 from . import SECRET, Output, header
 
 P = "etc/30ops/prometheus"
@@ -78,12 +79,7 @@ def render(site, sha):
     out = {f"{P}/prometheus.yml": Output(header(sha) + yamlio.dumps(prometheus_yml(site, jobs, nas_auth)))}
     for _, (fname, gs) in jobs.items():
         out[f"{P}/targets/{fname}"] = Output(header(sha) + yamlio.dumps(gs))
-    ex = (site.get("pve") or {}).get("exporter")
-    if ex:
-        doc = {"default": {"user": ex["user"], "token_name": ex["token_name"],
-                           "token_value": SECRET + ex["token"], "verify_ssl": ex.get("verify_ssl", False)}}
-        # the exporter container runs as uid 101
-        out[f"{P}/pve.yml"] = Output(header(sha) + yamlio.dumps(doc), 0o640, "root:101", True)
+    out.update(registry.module("hypervisor", "pve").render(site, sha))
     auths = (site.get("snmp") or {}).get("auths") or {}
     if auths:
         doc = {"auths": {}}

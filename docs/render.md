@@ -38,7 +38,7 @@ render 不讀任何秘密檔。
 | `etc/30ops/prometheus/prometheus.yml` | site label、沒有主機的 job 拿掉（不收日誌時也拿掉 victorialogs） | 手貼的 scrape 片段 |
 | `etc/30ops/prometheus/rules/*.yml` | 69 條告警規則，門檻代入場域值（[rules.md](rules.md)） | 各模組的規則複本 |
 | `etc/30ops/prometheus/targets/*.yml` | `collector`、`gb10`、`node`、`pve`、`nas-snmp`，同 label 的主機同一組 | 手寫的 targets 檔 |
-| `etc/30ops/prometheus/pve.yml`、`snmp-auth.yml` | exporter 設定，秘密為佔位 | 手寫的 exporter 設定 |
+| `etc/30ops/prometheus/pve.yml`、`snmp-auth.yml` | exporter 設定，秘密為佔位；`pve.yml` 由 pve adapter 的 exporter_config 產生 | 手寫的 exporter 設定 |
 | `etc/30ops/alertmanager/alertmanager.yml` | SMTP 與收件者 | 範本的手改複本 |
 | `etc/30ops/grafana/datasources/*.yml` | Prometheus、Alertmanager、VictoriaLogs | 手放的 VictoriaLogs 資料源 |
 | `etc/30ops/grafana/dashboards/onprem-overview.json` | 儀表板，門檻線依場域值繪製 | repo 內的固定 JSON |
@@ -50,6 +50,7 @@ render 不讀任何秘密檔。
 | `etc/30ops/gate/config.json`、`tools.json` | gate 設定與工具清單 | `/etc/onprem-agent-gate/` |
 | `nodes/<主機>/install.env` | 節點安裝參數：收集端位址、journal-upload 網址、node_exporter 版本、插件 | |
 | `nodes/<主機>/etc/pcap/*.env`、`etc/sudoers.d/pcap` | 擷取設定檔（peer 與介面換成場域值），corosync 只給 hypervisor | `logs/pcap/profiles/` 的手改複本 |
+| `<collector.textfile_dir>/30ops-adapters.prom` | `ops30_adapter_info`：每台主機每個 kind 由哪個 adapter 負責，附該 kind 既有序列用來指主機的 label（[adapters.md](adapters.md)） | |
 | `etc/30ops/manifest.json` | 上列檔案的清單 | |
 
 ## 比對現行收集端

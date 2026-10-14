@@ -7,6 +7,9 @@ its face:
               tests/fixtures/adapters/<vendor>/<capability>/ replays to
               exactly expected.prom, with only the families and labels that
               schema.FAMILIES allows
+  data        adapter.py has the function, and every recorded case replays
+              to exactly expected.json, or raises what case.json names (the
+              textfile is written elsewhere, by the ref)
   snmp        the metrics it names are in collector/prometheus/snmp.yml
   render      adapter.py has the function
   descriptor, install
@@ -86,6 +89,9 @@ class Contract(unittest.TestCase):
                         self.assertTrue(callable(getattr(registry.module(kind, vendor), name, None)), name)
                         self.assertIn("textfile", c, name)
                         self.assertTrue(cases(vendor, name), f"{name}: no recorded case in {FIX / vendor / name}")
+                    if c["face"] == "data":
+                        self.assertTrue(callable(getattr(registry.module(kind, vendor), name, None)), name)
+                        self.assertTrue(cases(vendor, name), f"{name}: no recorded case in {FIX / vendor / name}")
                     if c.get("via"):
                         self.assertEqual(caps[c["via"]]["status"], c["status"], f"{name} via {c['via']}")
 
@@ -103,6 +109,25 @@ class Contract(unittest.TestCase):
                         for fam, labelsets in base.parse_textfile(got).items():
                             self.assertIn(fam, allowed)
                             self.assertEqual(labelsets, {allowed[fam]}, fam)
+
+    def test_data_cases(self):
+        for kind, vendor in registry.available():
+            for name, c in registry.meta(kind, vendor)["capabilities"].items():
+                if c["status"] != "implemented" or c.get("face") != "data":
+                    continue
+                for case in cases(vendor, name):
+                    with self.subTest(adapter=f"{kind}/{vendor}", capability=name, case=case.name):
+                        c = json.loads((case / "case.json").read_text())
+                        t = Replay(case)
+                        fn = getattr(registry.module(kind, vendor), name)
+                        if "raises" in c:
+                            with self.assertRaisesRegex(Exception, c["raises"]):
+                                fn(t, **c["args"])
+                        else:
+                            got = fn(t, **c["args"])
+                            self.assertEqual(json.loads(json.dumps(got)),
+                                             json.loads((case / "expected.json").read_text()))
+                        t.done()
 
 
 if __name__ == "__main__":

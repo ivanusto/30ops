@@ -9,10 +9,11 @@ capabilities:
     status: planned
     milestone: v1.x
   licences:
-    face: collect
-    status: planned
+    face: data
+    status: implemented
     textfile: eol.prom
     ref: collector/textfile/eol-textfile.py
+    note: eol-textfile.py writes the textfile from what this returns
   audit_source:
     face: descriptor
     status: implemented
