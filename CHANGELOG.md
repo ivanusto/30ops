@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.1.0（未發行）
+## v0.1.0（2026-10-14）
 
 - 以保留歷史的方式併入 12 個 repo，對照見 `docs/provenance.md`。
 - 授權統一為 Apache-2.0（gb10-ops 與索引 repo 的部分原為 MIT，見 `NOTICE`）。

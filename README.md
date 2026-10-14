@@ -8,7 +8,7 @@ An on-prem operations platform for small and medium businesses to run themselves
 
 ## Status
 
-**v0.1.0 (in development)**: the code lives in one repository and every module's tests pass at the new paths, but each module is still installed and configured on its own. A single `site.yaml`, the `30ops` command, installers and adapters come in later versions.
+**v0.1.0**: the code lives in one repository and every module's tests pass at the new paths, but each module is still installed and configured on its own. A single `site.yaml`, the `30ops` command, installers and adapters come in later versions.
 
 | Version | Scope |
 |---|---|
