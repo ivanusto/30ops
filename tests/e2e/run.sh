@@ -90,6 +90,20 @@ sh "$R/tests/fakes/changes-repo.sh"
 "$R/tests/e2e/fakes/netns.sh" down >/dev/null 2>&1 || true
 "$R/tests/e2e/fakes/netns.sh" up
 
+# a blob download from a registry can stall without an error (a connection
+# that stays open with nothing on it); install pulls once with a 30 minute
+# timeout, so pull here first, 5 minutes per try, three tries
+step "pull the pinned images"
+sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$R/collector/compose.yml" | sort -u > "$OUT/images.txt"
+while read -r img; do
+  n=0
+  until timeout 300 docker pull -q "$img" >/dev/null; do
+    n=$((n + 1)); [ "$n" -lt 3 ] || fail "docker pull $img: three tries"
+    echo "retry $n: $img"
+  done
+done < "$OUT/images.txt"
+echo "$(wc -l < "$OUT/images.txt") image(s) present"
+
 # ---------------------------------------------------------------------------
 step "install collector, first run"
 ops30 install collector --site "$SITE" --create-volumes | tee "$OUT/install-1.log"
