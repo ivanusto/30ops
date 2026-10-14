@@ -13,6 +13,7 @@ import re
 import zoneinfo
 
 from . import yamlio
+from .adapters import registry, schema
 
 VERSION = 1
 LOCALES = ("zh-TW", "en")
@@ -21,7 +22,6 @@ ROLES = ("collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas",
          "firewall", "audit-source", "webfilter", "admin", "switch", "ap")
 # roles that need a vendor, because something on the collector talks to the host
 MANAGED = {"collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "firewall", "switch", "ap"}
-ROLE_VENDOR = {"hypervisor": ("pve",), "nas": ("qnap",), "firewall": ("fortigate",)}
 PLUGINS = ("gb10-ops", "spark-baseline", "nfs-model-library")
 SNMP_AUTH = ("MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512")
 SNMP_PRIV = ("DES", "AES", "AES192", "AES256", "AES192C", "AES256C")
@@ -292,9 +292,12 @@ def _cross(doc, base, secrets, errs, warns):
         vendor = h.get("vendor")
         if roles & MANAGED and not vendor:
             errs.append(f"{p}.vendor is required for roles {', '.join(sorted(roles & MANAGED))}")
-        for r, ok in ROLE_VENDOR.items():
-            if r in roles and vendor and vendor not in ok:
-                warns.append(f"{p}: role {r} has no adapter for vendor {vendor} yet (v0.3 knows {', '.join(ok)})")
+        if vendor in VENDORS:
+            for r in sorted(roles):
+                if schema.kind_of_role(r) and not registry.for_role(vendor, r):
+                    have = sorted(v for k, v in registry.available() if k == schema.kind_of_role(r))
+                    errs.append(f"{p}: no adapter serves role {r} for vendor {vendor} "
+                                f"(adapters/{schema.kind_of_role(r)}/ has {', '.join(have)})")
         for k, v in (h.get("labels") or {}).items() if isinstance(h.get("labels"), dict) else ():
             if not LABEL_RE.match(str(k)):
                 errs.append(f"{p}.labels.{k} is not a valid Prometheus label name")

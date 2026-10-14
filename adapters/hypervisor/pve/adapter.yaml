@@ -1,0 +1,26 @@
+# Proxmox VE. The node is Debian underneath, so its journal and pcap roles
+# are served by os/linux.
+adapter: 1
+kind: hypervisor
+vendor: pve
+version: 1
+os: linux
+tested: ["Proxmox VE 9.2"]
+capabilities:
+  facts:
+    status: planned
+    milestone: v1.x
+  quorum:
+    face: collect
+    status: planned
+    textfile: pve-quorum.prom
+  backup_jobs:
+    status: planned
+    milestone: v1.x
+  restore_test:
+    face: descriptor
+    status: implemented
+    ref: drills/pve-backup/restore-drill.sh
+  exporter_config:
+    face: render
+    status: planned

@@ -1,0 +1,20 @@
+# Debian and Ubuntu hosts: the collector itself, nodes, the QDevice VM, and
+# the OS side of a PVE node.
+adapter: 1
+kind: os
+vendor: linux
+version: 1
+tested: ["Ubuntu 24.04", "Debian 13", "DGX OS 7"]
+capabilities:
+  journal:
+    face: install
+    status: implemented
+    ref: logs/node/install-journal-upload.sh
+  node_exporter:
+    face: install
+    status: implemented
+    ref: collector/install-node.sh
+  pcap:
+    face: install
+    status: implemented
+    ref: logs/pcap/install-pcap.sh

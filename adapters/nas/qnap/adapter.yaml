@@ -1,0 +1,35 @@
+# QNAP NAS on QuTS hero. Contract: docs/adapters.md.
+adapter: 1
+kind: nas
+vendor: qnap
+version: 1
+tested: ["QuTS hero 6.0.2"]
+capabilities:
+  facts:
+    face: snmp
+    status: implemented
+    metrics: [qnap_firmware_info, qnap_model_info]
+  health:
+    face: collect
+    status: planned
+    textfile: nas.prom
+    note: pools, datasets, HBS and memory over one ssh session; disks, fans and UPS come from snmp_module
+  snapshots:
+    face: collect
+    status: planned
+    textfile: nas.prom
+    via: health
+  share_canary:
+    face: descriptor
+    status: implemented
+    ref: drills/nas-backup/share-canary.sh
+  snmp_module:
+    face: snmp
+    status: implemented
+    ref: collector/prometheus/snmp-build.py
+    module: qnap
+    metrics: [qnap_disk_status, qnap_pool_status_info, qnap_ups_status, qnap_service_telnet_enabled_info]
+  syslog_profile:
+    face: descriptor
+    status: implemented
+    ref: logs/nas/qulog-log-sender.md

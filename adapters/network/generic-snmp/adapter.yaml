@@ -1,0 +1,17 @@
+# Any switch or access point that answers SNMP with the standard MIBs
+# (IF-MIB, HOST-RESOURCES-MIB, ENTITY-SENSOR-MIB).
+adapter: 1
+kind: network
+vendor: generic-snmp
+version: 1
+tested: []
+capabilities:
+  interfaces:
+    status: planned
+    milestone: v0.7
+  sensors:
+    status: planned
+    milestone: v0.7
+  uptime:
+    status: planned
+    milestone: v0.7

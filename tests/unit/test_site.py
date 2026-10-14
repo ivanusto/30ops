@@ -58,6 +58,16 @@ class Validate(unittest.TestCase):
         self.assertIn("site.timezone is required", errs)
         self.assertIn("version must be 1", errs)
 
+    def test_role_needs_an_adapter(self):
+        d = sample()
+        nas = next(i for i, h in enumerate(d["hosts"]) if h["name"] == "nas-secondary")
+        d["hosts"][nas]["vendor"] = "linux"
+        pve = next(i for i, h in enumerate(d["hosts"]) if h["name"] == "pve1")
+        errs, _ = check(d)
+        self.assertIn(f"hosts[{nas}]: no adapter serves role nas for vendor linux (adapters/nas/ has qnap)", errs)
+        # journal and pcap on a PVE node go to os/linux through adapter.yaml os:
+        self.assertFalse([e for e in errs if e.startswith(f"hosts[{pve}]")], errs)
+
     def test_types(self):
         d = sample()
         d["hosts"][0]["roles"] = "collector"

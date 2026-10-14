@@ -1,0 +1,29 @@
+# Fortinet FortiGate on FortiOS, REST API with a read-only token.
+adapter: 1
+kind: firewall
+vendor: fortigate
+version: 1
+tested: ["FortiOS 7.6"]
+capabilities:
+  facts:
+    status: planned
+    milestone: v1.x
+  licences:
+    face: collect
+    status: planned
+    textfile: eol.prom
+    ref: collector/textfile/eol-textfile.py
+  audit_source:
+    face: descriptor
+    status: implemented
+    ref: logs/audit/audit-report.py
+  config_backup:
+    status: planned
+    milestone: v1.x
+  syslog_profile:
+    face: descriptor
+    status: implemented
+    ref: logs/audit/fortigate-syslogd3.md
+  managed_aps:
+    status: planned
+    milestone: v1.x
