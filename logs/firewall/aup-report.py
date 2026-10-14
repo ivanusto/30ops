@@ -29,7 +29,12 @@ every window, written as 0 when they log nothing (AupSilent).
 
 Standard library only. Exit 0 unless the source cannot be read.
 """
-import argparse, collections, datetime as dt, json, os, re, sys, tempfile, urllib.parse, urllib.request
+import argparse, collections, datetime as dt, json, os, re, sys, urllib.parse, urllib.request
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import textfile  # noqa: E402
+from ops30.textfile import esc  # noqa: E402
+
 
 KV_RE = re.compile(r'([A-Za-z0-9_.-]+)=(?:"([^"]*)"|\'([^\']*)\'|([^\s,]+))')
 BLOCKED = {"deny", "block", "blocked", "dropped", "reject", "drop"}
@@ -180,30 +185,24 @@ def render(a, S, stats, now, source):
 
 def write_textfile(path, S, urgent, expect, now):
     L = []
-    def fam(n, h): L.extend([f"# HELP {n} {h}", f"# TYPE {n} gauge"])
     fgts = sorted(set(S["total"]) | set(expect))
-    fam("aup_webfilter_total", "Web-filter log lines in the report window")
-    L += [f'aup_webfilter_total{{fgt="{f}"}} {S["total"][f]}' for f in fgts]
-    fam("aup_webfilter_blocked", "Web-filter lines with a blocking action in the window")
-    L += [f'aup_webfilter_blocked{{fgt="{f}"}} {S["blocked"][f]}' for f in fgts]
-    fam("aup_webfilter_urgent", "Hits on the urgent categories in the window (0 is written for every category so the rule has a series)")
+    textfile.family(L, "aup_webfilter_total", "Web-filter log lines in the report window")
+    L += [f'aup_webfilter_total{{fgt="{esc(f)}"}} {S["total"][f]}' for f in fgts]
+    textfile.family(L, "aup_webfilter_blocked", "Web-filter lines with a blocking action in the window")
+    L += [f'aup_webfilter_blocked{{fgt="{esc(f)}"}} {S["blocked"][f]}' for f in fgts]
+    textfile.family(L, "aup_webfilter_urgent", "Hits on the urgent categories in the window (0 is written for every category so the rule has a series)")
     for f in fgts:
         for c in sorted(urgent):
-            L.append(f'aup_webfilter_urgent{{fgt="{f}",catdesc="{c}"}} {S["urgent"][f][c]}')
-    fam("aup_webfilter_blocked_top_source", "Blocked lines from the single most blocked workstation")
+            L.append(f'aup_webfilter_urgent{{fgt="{esc(f)}",catdesc="{esc(c)}"}} {S["urgent"][f][c]}')
+    textfile.family(L, "aup_webfilter_blocked_top_source", "Blocked lines from the single most blocked workstation")
     for f in fgts:
         best = max(((w, n) for (ff, w), n in S["who_blocked"].items() if ff == f), key=lambda t: (t[1], t[0]), default=None)
         if best:
-            L.append(f'aup_webfilter_blocked_top_source{{fgt="{f}",who="{best[0]}"}} {best[1]}')
-    fam("aup_report_last_run_timestamp", "Unix time of the last aup-report run")
+            L.append(f'aup_webfilter_blocked_top_source{{fgt="{esc(f)}",who="{esc(best[0])}"}} {best[1]}')
+    textfile.family(L, "aup_report_last_run_timestamp", "Unix time of the last aup-report run")
     L.append(f"aup_report_last_run_timestamp {int(now.timestamp())}")
     body = "\n".join(L) + "\n"
-    d = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".aup.")
-    with os.fdopen(fd, "w") as f:
-        f.write(body)
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, path)
+    textfile.write(path, body)
 
 
 def main():

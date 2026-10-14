@@ -41,10 +41,13 @@ import csv
 import json
 import os
 import sys
-import tempfile
 import time
 import urllib.request
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import textfile  # noqa: E402
+from ops30.textfile import esc  # noqa: E402
 
 # milestone in the TSV -> field in endoflife.date's v1 release object.
 # endoflife.date's three fields are active support (eoas), end of life (eol)
@@ -61,10 +64,6 @@ EOL_FIELD = {
     "extended_support_end": "eoesFrom",
 }
 LABELS = ("asset", "component", "kind", "version", "milestone", "basis")
-
-
-def esc(v):
-    return str(v).replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ")
 
 
 def labels(d, extra=None):
@@ -199,41 +198,30 @@ def fortigate_licences(url, token, insecure):
 
 def render(rows, mismatch, ages, licences, fgt_asset, now):
     L = []
-    def fam(n, h, t="gauge"):
-        L.append(f"# HELP {n} {h}"); L.append(f"# TYPE {n} {t}")
-    fam("asset_eol_timestamp_seconds", "Unix time of the support end, licence expiry or end-of-order in eol/assets.tsv")
+    textfile.family(L, "asset_eol_timestamp_seconds", "Unix time of the support end, licence expiry or end-of-order in eol/assets.tsv")
     for r in rows:
         ts = date_ts(r["date"])
         if ts is not None:
             L.append(f"asset_eol_timestamp_seconds{labels(r)} {ts}")
     for comp, status, exp in licences:
         L.append(f'asset_eol_timestamp_seconds{labels({"asset": fgt_asset, "component": comp, "kind": "licence", "version": "-", "milestone": "expires", "basis": "licence"})} {exp}')
-    fam("asset_eol_unknown", "1 for an asset whose end date is not published or not yet looked up (date ? in the TSV)")
+    textfile.family(L, "asset_eol_unknown", "1 for an asset whose end date is not published or not yet looked up (date ? in the TSV)")
     for r in rows:
         if r["date"] == "?" and r["basis"] != "licence":
             L.append(f"asset_eol_unknown{labels(r)} 1")
-    fam("asset_eol_source_mismatch", "1 when endoflife.date disagrees with the date in the TSV (--refresh), 0 when it agrees")
+    textfile.family(L, "asset_eol_source_mismatch", "1 when endoflife.date disagrees with the date in the TSV (--refresh), 0 when it agrees")
     for i, v in sorted(mismatch.items()):
         L.append(f"asset_eol_source_mismatch{labels(rows[i])} {v}")
-    fam("asset_eol_source_age_seconds", "Age of the cached endoflife.date answer per product")
+    textfile.family(L, "asset_eol_source_age_seconds", "Age of the cached endoflife.date answer per product")
     for p, age in sorted(ages.items()):
         if age is not None:
             L.append(f'asset_eol_source_age_seconds{{product="{esc(p)}"}} {int(age)}')
-    fam("asset_licence_status", "1 per licence the FortiGate reports, with its status label")
+    textfile.family(L, "asset_licence_status", "1 per licence the FortiGate reports, with its status label")
     for comp, status, _ in licences:
         L.append(f'asset_licence_status{{asset="{esc(fgt_asset)}",component="{esc(comp)}",status="{esc(status)}"}} 1')
-    fam("eol_textfile_last_run_timestamp", "Unix time of the last eol-textfile run")
+    textfile.family(L, "eol_textfile_last_run_timestamp", "Unix time of the last eol-textfile run")
     L.append(f"eol_textfile_last_run_timestamp {int(now)}")
     return "\n".join(L) + "\n"
-
-
-def write_atomic(path, body):
-    d = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".eol.")
-    with os.fdopen(fd, "w") as f:
-        f.write(body)
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, path)
 
 
 def main():
@@ -271,7 +259,7 @@ def main():
             print(f"eol-textfile: FortiGate licence query failed: {e}", file=sys.stderr)
     body = render(rows, mismatch, ages, licences, a.fortigate_asset, time.time())
     if a.out:
-        write_atomic(a.out, body)
+        textfile.write(a.out, body)
     else:
         sys.stdout.write(body)
 

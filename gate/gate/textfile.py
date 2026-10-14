@@ -9,14 +9,11 @@
     agent_gate_textfile_last_run_timestamp
 """
 import os
-import tempfile
 import time
 
-from core import parse_time  # noqa: E402
-
-
-def esc(v):
-    return str(v).replace("\\", "\\\\").replace('"', '\\"')
+from core import parse_time  # noqa: E402  (core puts lib/python on sys.path)
+from ops30 import textfile  # noqa: E402
+from ops30.textfile import esc  # noqa: E402
 
 
 def render(gate, now_ts):
@@ -58,11 +55,5 @@ def write(gate, out):
     text = render(gate, time.time())
     if not out:
         return text
-    d = os.path.dirname(os.path.abspath(out))
-    os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".agent-gate.")
-    os.fchmod(fd, 0o644)
-    with os.fdopen(fd, "w") as f:
-        f.write(text)
-    os.replace(tmp, out)
+    textfile.write(out, text)
     return text

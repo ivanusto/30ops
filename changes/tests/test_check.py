@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import check  # noqa: E402
-import frontmatter  # noqa: E402
+from ops30 import frontmatter  # noqa: E402  (check puts lib/python on sys.path)
 import render  # noqa: E402
 
 # A frozen copy of the first record as it stood when scheduled. The live
@@ -197,6 +197,8 @@ class Index(unittest.TestCase):
                 {"id": "CR-2026-0002", "_file": "y.md", "title": "t", "status": "done", "risk": "low", "approver": "x"}]
         t = render.table(rows, "en", d)
         self.assertIn("| Rollback drill |", t)
-        self.assertIn("| 2026-10-12 OK ([CR-2026-0011](drills/drills.md)) |", t)
+        # drills/drills.md is site data, not in this repository: plain text, no dead link
+        self.assertIn("| 2026-10-12 OK (CR-2026-0011) |", t)
+        self.assertEqual(render.link("x", "README.md"), "[x](README.md)")
         self.assertIn("| - | x | - |", t)        # no window, no drill
         self.assertEqual(render.drills(str(FIX / "nope.jsonl")), {})

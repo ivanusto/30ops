@@ -34,10 +34,10 @@ import glob
 import os
 import re
 import sys
-from datetime import datetime
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from frontmatter import FrontMatterError, parse, sections  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30.frontmatter import FrontMatterError, parse, sections  # noqa: E402
+from ops30.rfc3339 import parse as rfc3339  # noqa: E402
 
 STATUSES = ["draft", "approved", "scheduled", "in_progress", "done", "rolled_back", "cancelled"]
 NEEDS_APPROVAL = {"approved", "scheduled", "in_progress", "done", "rolled_back"}
@@ -49,14 +49,6 @@ ID_RE = re.compile(r"^CR-(\d{4})-(\d{4})$")
 AGENT_RE = re.compile(r"^agent:[a-z0-9][a-z0-9_-]*$")
 FILE_RE = re.compile(r"^(CR-\d{4}-\d{4})-[a-z0-9][a-z0-9-]*\.md$")
 TEMPLATE_PLACEHOLDERS = ("CR-YYYY-NNNN",)
-
-
-def rfc3339(s):
-    try:
-        d = datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        return None
-    return d if d.tzinfo is not None else None
 
 
 def load_assets(path):

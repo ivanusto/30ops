@@ -68,7 +68,7 @@ The Grafana token belongs to a service account of its own with the Editor role: 
 | `scripts/render.py` | rebuilds the index table in both READMEs; the 回退演練 column comes from `drills/drills.jsonl` |
 | `scripts/changes-textfile.py` | `change_record`, `change_window_*`, `change_records{status}` for node_exporter; from `drills/drills.jsonl`, `change_rollback_last_drill_timestamp`, `change_rollback_last_drill_result` and `change_rollback_drills_total` per record (Day 28) |
 | `scripts/change-mark.sh` | the three things at begin and end: journal, Grafana annotation, Alertmanager silence |
-| `scripts/frontmatter.py` | the small front matter reader, no YAML library |
+| `../lib/python/ops30/frontmatter.py` | the small front matter reader, no YAML library (shared with gate/ since 30ops v0.2) |
 | `prometheus/changes.yml` | six rules, a copy; the one Prometheus loads lives in onprem-metrics. `ChangeWindowOverrun` is a window closed an hour ago with the record still open; `ChangeRollbackUndrilled` is a done high-risk record whose rollback was never drilled, `ChangeRollbackDrillStale` a drill older than 90 days |
 | `drills/` | rollback drills (Day 28): `drill.sh` times one rollback and appends to `drills.jsonl`, `drills.md` is the table in Day 15's format. See [drills/README.md](drills/README.md) |
 | `collector.cron` | pull and textfile on the collector |

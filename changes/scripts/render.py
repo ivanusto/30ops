@@ -12,16 +12,17 @@ this record's rollback section, "-" when none has.
 """
 import argparse
 import glob
-import json
 import os
 import sys
 from datetime import datetime, timezone
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from frontmatter import parse  # noqa: E402
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import drills as ops30_drills  # noqa: E402
+from ops30.frontmatter import parse  # noqa: E402
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 START, END = "<!-- INDEX:START -->", "<!-- INDEX:END -->"
+RESULT = {"pass": "OK", "fail": "FAIL", "partial": "PARTIAL"}   # how the index has always shown it
 
 
 def records():
@@ -37,20 +38,14 @@ def records():
 def drills(path=os.path.join(ROOT, "drills", "drills.jsonl")):
     """{rollback_of: (t0 datetime, result, drill cr)} for the latest drill per record."""
     out = {}
-    try:
-        fh = open(path, encoding="utf-8")
-    except OSError:
-        return out
-    with fh:
-        for line in fh:
-            try:
-                r = json.loads(line)
-                t0 = datetime.strptime(r["t0"], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
-                of = str(r["rollback_of"])
-            except (ValueError, KeyError, TypeError):
-                continue
-            if of not in out or t0 >= out[of][0]:
-                out[of] = (t0, str(r.get("result", "")).upper(), str(r.get("cr", "")))
+    recs, _ = ops30_drills.load(path, "changes")
+    for r in recs:
+        of = r["rollback_of"]
+        if not of:
+            continue
+        t0 = datetime.fromtimestamp(ops30_drills.epoch(r), timezone.utc)
+        if of not in out or t0 >= out[of][0]:
+            out[of] = (t0, RESULT.get(r["result"], r["result"].upper()), r["cr"] or "")
     return out
 
 
@@ -65,9 +60,15 @@ def table(rows, lang, drilled=None):
         win = f"{m.get('window_start', '')[:16]} to {m.get('window_end', '')[11:16]}" if m.get("window_start") else "-"
         appr = m.get("approver", "") + (" (exception)" if m.get("approval_exception") else "")
         d = drilled.get(m["id"])
-        drill = f"{d[0].strftime('%Y-%m-%d')} {d[1]} ([{d[2]}](drills/drills.md))" if d else "-"
+        drill = f"{d[0].strftime('%Y-%m-%d')} {d[1]} ({link(d[2], 'drills/drills.md')})" if d else "-"
         h.append(f"| [{m['id']}]({m['_file']}) | {m['title']} | `{m['status']}` | {m['risk']} | {assets} | {win} | {appr} | {drill} |")
     return "\n".join(h)
+
+
+def link(text, rel):
+    """A markdown link when the target exists in this checkout, plain text otherwise
+    (drills/drills.md is site data and lives in the site repository)."""
+    return f"[{text}]({rel})" if os.path.exists(os.path.join(ROOT, rel)) else text
 
 
 def splice(text, block):

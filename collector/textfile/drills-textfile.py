@@ -3,19 +3,14 @@
 onprem-logs (Day 21) adds a fourth, the daily archive verify, as source=logs;
 a source whose file does not exist yet is skipped.
 
-Each drill repo appends one JSON object per drill. The three formats differ
-a little, so this script normalises them:
-
-    field    pve-backup-drill   nas-backup-drill   cloud-offload-drill
-    label    label              label              label
-    t0       t0 (ISO UTC)       t0                 t0
-    result   result OK/FAIL     result             result
-    rto      rto_s (int)        rto ("69", "-")    seconds (int)
-    rpo      rpo_s ("784")      rpo                rpo ("-")
-    rate     -                  rate_mbs ("297")   rate ("58.2 MiB/s")
+Every drill tool appends one JSON object per drill. Since 30ops v0.2 they
+write drills.jsonl v1 (docs/drills-jsonl.md); files written before that
+keep their old per-tool fields and are read through ops30.drills.normalise,
+so old and new lines can sit in the same file. The source name is also the
+hint for which tool wrote an old line.
 
 The JSONL is what the tool printed at the time. Corrections made by hand
-later in each repo's drill-log.md do not flow back here.
+later in a drill log do not flow back here.
 
 For every (source, label) it exposes the most recent drill only. A
 dashboard then shows "last successful restore N days ago" per drill and
@@ -38,73 +33,35 @@ Metrics
     drills_textfile_last_run_timestamp
 """
 import argparse
-import json
 import os
 import sys
-import tempfile
 import time
-from datetime import datetime, timezone
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import drills, textfile  # noqa: E402
+from ops30.textfile import esc  # noqa: E402
 
-def parse_t0(s):
-    try:
-        return int(datetime.strptime(s, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc).timestamp())
-    except (TypeError, ValueError):
-        return None
-
-
-def num(v):
-    """'118', '118s', 118, '-', '?', '47.7 MiB/s' -> float or None."""
-    if v is None:
-        return None
-    if isinstance(v, (int, float)):
-        return float(v)
-    s = str(v).strip()
-    for suffix in (" MiB/s", "MiB/s", " MB/s", "MB/s", "s"):
-        if s.endswith(suffix):
-            s = s[: -len(suffix)].strip()
-    try:
-        return float(s)
-    except ValueError:
-        return None
-
-
-def first(rec, *keys):
-    for k in keys:
-        if k in rec:
-            return rec[k]
-    return None
+MIB = drills.MIB
 
 
 def normalise(rec):
-    t0 = parse_t0(rec.get("t0"))
-    if t0 is None:
-        return None
-    rate = rec.get("rate_mbs", rec.get("rate"))
+    """A v1 record (ops30.drills.normalise) -> the fields this script exposes."""
+    rate = rec.get("rate_bps")
     return {
-        "label": str(rec.get("label", "")).strip() or "unlabeled",
-        "t0": t0,
-        "ok": 1 if str(rec.get("result", "")).upper() == "OK" else 0,
-        "rto": num(first(rec, "rto", "rto_s", "seconds")),
-        "rpo": num(first(rec, "rpo", "rpo_s")),
-        "rate": num(rate),
+        "label": rec["label"],
+        "t0": drills.epoch(rec),
+        "ok": 1 if rec["result"] == "pass" else 0,
+        "rto": float(rec["rto_s"]) if rec.get("rto_s") is not None else None,
+        "rpo": float(rec["rpo_s"]) if rec.get("rpo_s") is not None else None,
+        "rate": rate / MIB if rate is not None else None,
     }
 
 
-def read_jsonl(path):
-    out = []
-    with open(path, encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = normalise(json.loads(line))
-            except ValueError:
-                continue
-            if rec:
-                out.append(rec)
-    return out
+def read_jsonl(path, source=None):
+    """Any drills.jsonl version; lines that are not JSON objects or have no
+    usable t0 are skipped. A missing file is no records."""
+    recs, _ = drills.load(path, source)
+    return [normalise(r) for r in recs]
 
 
 def latest_per_label(recs):
@@ -115,10 +72,6 @@ def latest_per_label(recs):
         if r["ok"]:
             last_ok[r["label"]] = r["t0"]
     return last, last_ok, count
-
-
-def esc(s):
-    return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
 HELP = [
@@ -136,7 +89,7 @@ def render(sources, now):
     rows = {name: [] for name, _, _ in HELP}
     for source, path in sources:
         try:
-            recs = read_jsonl(path)
+            recs = read_jsonl(path, source)
         except OSError:
             continue
         last, last_ok, count = latest_per_label(recs)
@@ -156,10 +109,10 @@ def render(sources, now):
     lines = []
     for name, hlp, typ in HELP:
         if rows[name]:
-            lines += [f"# HELP {name} {hlp}", f"# TYPE {name} {typ}"] + rows[name]
-    lines += ["# HELP drills_textfile_last_run_timestamp Unix time of the last run",
-              "# TYPE drills_textfile_last_run_timestamp gauge",
-              f"drills_textfile_last_run_timestamp {int(now)}"]
+            textfile.family(lines, name, hlp, typ)
+            lines += rows[name]
+    textfile.family(lines, "drills_textfile_last_run_timestamp", "Unix time of the last run")
+    lines.append(f"drills_textfile_last_run_timestamp {int(now)}")
     return "\n".join(lines) + "\n"
 
 
@@ -175,14 +128,7 @@ def main(argv=None):
         sources.append(tuple(s.split("=", 1)))
     text = render(sources, time.time())
     if a.out:
-        d = os.path.dirname(a.out) or "."
-        os.makedirs(d, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=d, prefix=".prom.")
-        # mkstemp makes 0600; node_exporter runs as another user and must read it
-        os.fchmod(fd, 0o644)
-        with os.fdopen(fd, "w") as fh:
-            fh.write(text)
-        os.replace(tmp, a.out)
+        textfile.write(a.out, text)
     else:
         sys.stdout.write(text)
     return 0

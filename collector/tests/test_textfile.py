@@ -175,7 +175,7 @@ class Drills(unittest.TestCase):
         self.assertIn('drill_last_rto_seconds{source="cloud",label="2. 還原 Music"} 92', text)
         self.assertIn('drill_last_rate_mib_per_second{source="cloud",label="2. 還原 Music"} 52', text)
         self.assertIn('drill_count_total{source="cloud",label="2. 還原 Music"} 2', text)
-        self.assertIn('drill_last_success_timestamp{source="cloud",label="2. 還原 Music"} %d' % drills.parse_t0("2026-10-01T23:43:59Z"), text)
+        self.assertIn('drill_last_success_timestamp{source="cloud",label="2. 還原 Music"} 1790898239', text)   # 2026-10-01T23:43:59Z
         ok, msg = promtool_ok(text)
         self.assertTrue(ok, msg)
 
@@ -192,11 +192,19 @@ class Drills(unittest.TestCase):
         drills.main(["--out", out, "x=" + os.path.join(self.tmp, "none.jsonl")])
         self.assertEqual(os.stat(out).st_mode & 0o777, 0o644)
 
-    def test_num(self):
-        self.assertEqual(drills.num("118s"), 118.0)
-        self.assertEqual(drills.num("47.7 MiB/s"), 47.7)
-        self.assertIsNone(drills.num("-"))
-        self.assertIsNone(drills.num("?"))
+    def test_v1_records_and_non_objects(self):
+        # v1 (30ops v0.2) next to an old line in the same file; a JSON line that
+        # is not an object used to raise AttributeError
+        p = self.write("mixed.jsonl", [
+            {"t0": "2026-10-01T23:43:59Z", "label": "2. 還原 Music", "mib": 4808, "seconds": 92, "rate": "52 MiB/s", "result": "OK"},
+            {"v": 1, "t0": "2026-10-02T00:00:00Z", "kind": "cloud-offload", "label": "2. 還原 Music", "result": "pass",
+             "rto_s": 80, "rate_bps": 47.5 * 1048576},
+            [1, 2], 7,
+        ])
+        text = drills.render([("cloud", p)], 5)
+        self.assertIn('drill_last_rto_seconds{source="cloud",label="2. 還原 Music"} 80', text)
+        self.assertIn('drill_last_rate_mib_per_second{source="cloud",label="2. 還原 Music"} 47.5', text)
+        self.assertIn('drill_count_total{source="cloud",label="2. 還原 Music"} 2', text)
 
 
 if __name__ == "__main__":

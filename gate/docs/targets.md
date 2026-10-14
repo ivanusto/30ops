@@ -23,7 +23,9 @@ sudo install -m 0644 tools.json /etc/onprem-agent-gate/tools.json
 sudo install -m 0644 config.json.example /etc/onprem-agent-gate/config.json   # then edit targets
 sudo -u agent-gate ssh-keygen -t ed25519 -N '' -f /var/lib/onprem-agent-gate/.ssh/id_gate -C agent-gate@collector
 sudo -u agent-gate ssh-keyscan pve1 qdevice | sudo -u agent-gate tee /var/lib/onprem-agent-gate/.ssh/known_hosts   # StrictHostKeyChecking=yes
-sudo install -d -o root -g root -m 0755 /opt/onprem-agent-gate && sudo cp -r bin gate /opt/onprem-agent-gate/
+sudo install -d -o root -g root -m 0755 /opt/onprem-agent-gate
+(cd .. && sudo cp -r --parents gate/bin gate/gate lib/python /opt/onprem-agent-gate/)   # the gate imports lib/python/ops30
+sudo ln -s gate/bin /opt/onprem-agent-gate/bin
 sudo ln -s /opt/onprem-agent-gate/bin/gatectl /usr/local/bin/gatectl
 ```
 

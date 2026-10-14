@@ -42,7 +42,12 @@ Textfile
 
 Standard library only.
 """
-import argparse, collections, datetime as dt, glob, json, os, re, sys, tempfile, urllib.parse, urllib.request
+import argparse, collections, datetime as dt, glob, json, os, re, sys, urllib.parse, urllib.request
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import frontmatter, rfc3339, textfile  # noqa: E402
+from ops30.textfile import esc  # noqa: E402
+
 
 SOURCES = {
     # FortiGate event log, config changes: every line that carries cfgpath
@@ -148,7 +153,11 @@ def time_filter(a):
 
 
 def parse_time(s):
-    return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+    """RFC 3339 -> aware UTC datetime; ValueError for junk or no offset."""
+    d = rfc3339.parse(s)
+    if d is None:
+        raise ValueError(f"not RFC 3339 with an offset: {s!r}")
+    return d
 
 
 def fetch(a):
@@ -207,23 +216,14 @@ def mark_quiet(rows, quiet, a, lo, hi):
 
 # ---------- change records ----------
 
-KEY_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):(.*)$")
-
-
 def front_matter(path):
-    meta, inside = {}, False
+    """The record's front matter, or {} when it does not parse (changes/
+    check.py reports those; the audit report skips them)."""
     with open(path, encoding="utf-8") as f:
-        for i, line in enumerate(f):
-            if i == 0:
-                if line.strip() != "---":
-                    return {}
-                inside = True
-                continue
-            if line.strip() == "---":
-                break
-            m = KEY_RE.match(line)
-            if m and inside:
-                meta[m.group(1)] = m.group(2).strip()
+        try:
+            meta, _, _ = frontmatter.parse(f.read())
+        except frontmatter.FrontMatterError:
+            return {}
     return meta
 
 
@@ -345,27 +345,21 @@ def render(a, rows, ignored, wins, missing, now, lo, hi):
 
 def write_textfile(path, rows, missing, now):
     L = []
-    def fam(n, h): L.extend([f"# HELP {n} {h}", f"# TYPE {n} gauge"])
-    fam("audit_actions", "Administrative actions seen in the report window, ignore list applied")
+    textfile.family(L, "audit_actions", "Administrative actions seen in the report window, ignore list applied")
     for s in SOURCES:
-        L.append(f'audit_actions{{source="{s}"}} {sum(1 for r in rows if r["source"] == s)}')
-    fam("audit_unattributed", "Administrative actions outside every change window, admin workstations left out")
+        L.append(f'audit_actions{{source="{esc(s)}"}} {sum(1 for r in rows if r["source"] == s)}')
+    textfile.family(L, "audit_unattributed", "Administrative actions outside every change window, admin workstations left out")
     for s in SOURCES:
-        L.append(f'audit_unattributed{{source="{s}"}} {sum(1 for r in rows if r["source"] == s and not r["cr"] and not r["quiet"])}')
-    fam("audit_unattributed_quiet", "Administrative actions outside every change window from an admin workstation (--quiet-from)")
+        L.append(f'audit_unattributed{{source="{esc(s)}"}} {sum(1 for r in rows if r["source"] == s and not r["cr"] and not r["quiet"])}')
+    textfile.family(L, "audit_unattributed_quiet", "Administrative actions outside every change window from an admin workstation (--quiet-from)")
     for s in SOURCES:
-        L.append(f'audit_unattributed_quiet{{source="{s}"}} {sum(1 for r in rows if r["source"] == s and r["quiet"])}')
-    fam("audit_changes_without_marks", "Done change records in the window with no change-mark begin line")
+        L.append(f'audit_unattributed_quiet{{source="{esc(s)}"}} {sum(1 for r in rows if r["source"] == s and r["quiet"])}')
+    textfile.family(L, "audit_changes_without_marks", "Done change records in the window with no change-mark begin line")
     L.append(f"audit_changes_without_marks {len(missing)}")
-    fam("audit_report_last_run_timestamp", "Unix time of the last audit-report run")
+    textfile.family(L, "audit_report_last_run_timestamp", "Unix time of the last audit-report run")
     L.append(f"audit_report_last_run_timestamp {int(now.timestamp())}")
     body = "\n".join(L) + "\n"
-    d = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".audit.")
-    with os.fdopen(fd, "w") as f:
-        f.write(body)
-    os.chmod(tmp, 0o644)
-    os.replace(tmp, path)
+    textfile.write(path, body)
 
 
 def main():

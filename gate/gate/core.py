@@ -34,8 +34,11 @@ import sys
 import time
 from datetime import datetime, timezone
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from frontmatter import parse, FrontMatterError  # noqa: E402
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "lib", "python"))
+sys.path.insert(0, HERE)
+from ops30 import jsonl, rfc3339 as _rfc3339  # noqa: E402
+from ops30.frontmatter import parse, FrontMatterError  # noqa: E402
 
 LEVELS = ("L1", "L2", "L3")
 L1_STATUSES = ("approved", "scheduled", "in_progress")
@@ -76,20 +79,15 @@ def now():
     """UTC now, or GATE_NOW (RFC 3339) for tests."""
     s = os.environ.get("GATE_NOW")
     if s:
-        return datetime.fromisoformat(s.replace("Z", "+00:00")).astimezone(timezone.utc)
-    return datetime.now(timezone.utc)
+        d = _rfc3339.parse(s)
+        if d is None:
+            raise ValueError(f"GATE_NOW is not RFC 3339 with an offset: {s!r}")
+        return d
+    return _rfc3339.now()
 
 
-def rfc3339(d):
-    return d.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def parse_time(s):
-    try:
-        d = datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
-        return d.astimezone(timezone.utc) if d.tzinfo else None
-    except (ValueError, AttributeError):
-        return None
+rfc3339 = _rfc3339.format
+parse_time = _rfc3339.parse
 
 
 def load_config(path):
@@ -314,17 +312,18 @@ class Gate:
             return None
 
     def audit(self, fields):
-        """Append one chained record; returns it (with seq and hash)."""
-        last = self.last()
-        rec = {"seq": (last["seq"] + 1) if last else 1, "ts": rfc3339(now()),
-               "prev": last["hash"] if last else "0" * 64}
-        rec.update(fields)
-        rec["hash"] = sha256(rec["prev"] + "\n" + canonical({k: v for k, v in rec.items() if k != "hash"}))
-        os.makedirs(os.path.dirname(os.path.abspath(self.cfg["audit"])), exist_ok=True)
-        with open(self.cfg["audit"], "a", encoding="utf-8") as f:
-            f.write(canonical(rec) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
+        """Append one chained record; returns it (with seq and hash).
+
+        Reading the last record and writing the next happen under one flock,
+        so two callers (gate-mcp and gatectl approve) cannot both take the
+        same seq and prev."""
+        with jsonl.lock(self.cfg["audit"]) as f:
+            last = self.last()
+            rec = {"seq": (last["seq"] + 1) if last else 1, "ts": rfc3339(now()),
+                   "prev": last["hash"] if last else "0" * 64}
+            rec.update(fields)
+            rec["hash"] = sha256(rec["prev"] + "\n" + canonical({k: v for k, v in rec.items() if k != "hash"}))
+            jsonl.write_line(f, canonical(rec))
         self.journal(rec)
         return rec
 

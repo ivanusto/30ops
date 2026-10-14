@@ -29,7 +29,12 @@ Standard library only. Exit 0 always unless VictoriaLogs is unreachable;
 the report is a review aid, the alerting is done by the textfile metrics
 and Day 20's rules.
 """
-import argparse, datetime as dt, json, os, re, sys, tempfile, urllib.parse, urllib.request
+import argparse, datetime as dt, json, os, re, sys, urllib.parse, urllib.request
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import textfile  # noqa: E402
+from ops30.textfile import esc  # noqa: E402
+
 
 # Each source: a LogsQL filter that selects its drop lines, the host field,
 # and the pipes that leave src, dst, proto and dpt on every row. "<...>" is
@@ -180,20 +185,18 @@ def parse_expect(spec):
 
 def write_textfile(path, results, new_sources, nas, now, expect=()):
     lines = []
-    def fam(name, hlp, typ="gauge"):
-        lines.append(f"# HELP {name} {hlp}"); lines.append(f"# TYPE {name} {typ}")
-    fam("fw_blocked", "Blocked packets logged in the report window")
+    textfile.family(lines, "fw_blocked", "Blocked packets logged in the report window")
     for name, r in results.items():
         seen = set()
         for x in r["total"]:
             h = x.get(r["host_field"], "")
             seen.add(h)
-            lines.append(f'fw_blocked{{source="{name}",host="{h}"}} {x["n"]}')
+            lines.append(f'fw_blocked{{source="{esc(name)}",host="{esc(h)}"}} {x["n"]}')
         # an expected host that dropped nothing has no row; say 0 so that
         # FwSilent has a series to look at
         for h in sorted(h for n, h in expect if n == name and h not in seen):
-            lines.append(f'fw_blocked{{source="{name}",host="{h}"}} 0')
-    fam("fw_top_source_blocked", "Blocked packets from the single busiest source in the window")
+            lines.append(f'fw_blocked{{source="{esc(name)}",host="{esc(h)}"}} 0')
+    textfile.family(lines, "fw_top_source_blocked", "Blocked packets from the single busiest source in the window")
     for name, r in results.items():
         seen = set()
         for x in r["by_src"]:
@@ -201,36 +204,31 @@ def write_textfile(path, results, new_sources, nas, now, expect=()):
             if h in seen:
                 continue
             seen.add(h)
-            lines.append(f'fw_top_source_blocked{{source="{name}",host="{h}",src="{x.get("src", "")}"}} {x["n"]}')
-    fam("fw_new_sources", "Sources seen in the window but not in the baseline")
+            lines.append(f'fw_top_source_blocked{{source="{esc(name)}",host="{esc(h)}",src="{esc(x.get("src", ""))}"}} {x["n"]}')
+    textfile.family(lines, "fw_new_sources", "Sources seen in the window but not in the baseline")
     for name, s in new_sources.items():
         per = {}
         for h, _ in s:
             per[h] = per.get(h, 0) + 1
         for h, n in per.items():
-            lines.append(f'fw_new_sources{{source="{name}",host="{h}"}} {n}')
-    fam("nas_login_failed", "Failed logins in QuLog connection log in the window")
+            lines.append(f'fw_new_sources{{source="{esc(name)}",host="{esc(h)}"}} {n}')
+    textfile.family(lines, "nas_login_failed", "Failed logins in QuLog connection log in the window")
     per = {}
     for (h, _), n in nas["fails_by_ip"].items():
         per[h] = per.get(h, 0) + n
     for h, n in per.items():
-        lines.append(f'nas_login_failed{{nas="{h}"}} {n}')
-    fam("nas_login_failed_top_source", "Failed logins from the single busiest source")
+        lines.append(f'nas_login_failed{{nas="{esc(h)}"}} {n}')
+    textfile.family(lines, "nas_login_failed_top_source", "Failed logins from the single busiest source")
     best = {}
     for (h, ip), n in nas["fails_by_ip"].items():
         if n > best.get(h, ("", 0))[1]:
             best[h] = (ip, n)
     for h, (ip, n) in best.items():
-        lines.append(f'nas_login_failed_top_source{{nas="{h}",src="{ip}"}} {n}')
-    fam("fw_report_last_run_timestamp", "Unix time of the last fw-report run")
+        lines.append(f'nas_login_failed_top_source{{nas="{esc(h)}",src="{esc(ip)}"}} {n}')
+    textfile.family(lines, "fw_report_last_run_timestamp", "Unix time of the last fw-report run")
     lines.append(f"fw_report_last_run_timestamp {int(now.timestamp())}")
     body = "\n".join(lines) + "\n"
-    d = os.path.dirname(os.path.abspath(path))
-    fd, tmp = tempfile.mkstemp(dir=d, prefix=".fw.")
-    with os.fdopen(fd, "w") as f:
-        f.write(body)
-    os.chmod(tmp, 0o644)   # Day 19: mkstemp gives 0600, node_exporter is not root
-    os.replace(tmp, path)
+    textfile.write(path, body)
 
 
 def main():
