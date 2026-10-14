@@ -1,0 +1,7 @@
+#!/bin/sh
+# 30ops command line. Runs the ops30 package from this checkout with
+# python3 -I, so PYTHONPATH and the current directory play no part.
+set -eu
+here=$(dirname "$(readlink -f "$0")")
+exec python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from ops30.cli import main; sys.exit(main(sys.argv[2:]))' \
+  "$here/../lib/python" "$@"
