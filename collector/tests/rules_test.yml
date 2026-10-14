@@ -1,0 +1,353 @@
+# promtool test rules tests/rules_test.yml
+# Each case feeds a synthetic series and asserts which alert fires when.
+# Scrape interval below matches gb10 (15 s); NAS/PVE/drill cases use 60 s.
+# promtool steps every group at this evaluation_interval and ignores the
+# group's own interval, so it cannot see that prometheus.yml evaluates at
+# 60 s. tests/test_rules_config.py checks the gb10 group's 15 s instead.
+rule_files:
+  - ../prometheus/rules/thresholds.yml
+  - ../prometheus/rules/staleness.yml
+  - ../prometheus/rules/firewall.yml
+
+evaluation_interval: 15s
+
+tests:
+  # Soak: Day 19 saw the guard trip at 240 while Prometheus held 227. The
+  # alert must be firing before the guard acts, so it fires at the first
+  # sample at or above 180 with no "for".
+  - interval: 15s
+    input_series:
+      - series: 'gb10_soak_seconds{job="gb10",node="192.168.2.131",instance="192.168.2.131:9100"}'
+        values: "0 21 36 51 66 81 96 111 126 141 156 171 186 201 216 227 0"
+    alert_rule_test:
+      - eval_time: 2m45s
+        alertname: Gb10SoakNearBudget
+        exp_alerts: []
+      - eval_time: 3m             # 13th sample = 186
+        alertname: Gb10SoakNearBudget
+        exp_alerts:
+          - exp_labels: {severity: warning, job: gb10, node: "192.168.2.131", instance: "192.168.2.131:9100"}
+            exp_annotations:
+              summary: "192.168.2.131 hottest zone above threshold for 186 s, guard trips at 240"
+              runbook: "Day 12: the guard will kill the hottest process; move or pause the workload first"
+      - eval_time: 4m             # back to 0 after the guard
+        alertname: Gb10SoakNearBudget
+        exp_alerts: []
+
+  # Memory: 6 GiB warning needs a minute, 3 GiB critical is immediate.
+  - interval: 15s
+    input_series:
+      - series: 'gb10_mem_available_bytes{job="gb10",node="n1",instance="n1:9100"}'
+        values: "8e9 5e9 5e9 5e9 5e9 5e9 2e9"
+    alert_rule_test:
+      - eval_time: 15s
+        alertname: Gb10MemAvailableLow
+        exp_alerts: []
+      - eval_time: 1m15s
+        alertname: Gb10MemAvailableLow
+        exp_alerts:
+          - exp_labels: {severity: warning, job: gb10, node: n1, instance: "n1:9100"}
+            exp_annotations: {summary: "n1 MemAvailable 4.657GiB, guard warns at 6 GiB"}
+      - eval_time: 1m30s
+        alertname: Gb10MemAvailableCritical
+        exp_alerts:
+          - exp_labels: {severity: critical, job: gb10, node: n1, instance: "n1:9100"}
+            exp_annotations: {summary: "n1 MemAvailable 1.863GiB, guard acts at 3 GiB"}
+
+  # NV_ERR_NO_MEMORY counter moves once.
+  - interval: 15s
+    input_series:
+      - series: 'gb10_nv_err_no_memory_total{job="gb10",node="n1",instance="n1:9100"}'
+        values: "0x10 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: Gb10NvErrNoMemory
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: Gb10NvErrNoMemory
+        exp_alerts:
+          - exp_labels: {severity: critical, job: gb10, node: n1, instance: "n1:9100"}
+            exp_annotations: {summary: "n1 logged NV_ERR_NO_MEMORY in the last 10m (unified memory exhaustion, precedes livelock)"}
+
+  # Pool capacity crosses the 80 line and stays for 30 minutes.
+  - interval: 1m
+    input_series:
+      - series: 'nas_zpool_capacity_percent{job="collector-host",nas="primary",pool="zpool1"}'
+        values: "79 81x40"
+    alert_rule_test:
+      - eval_time: 20m
+        alertname: NasPoolAbove80
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: NasPoolAbove80
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, nas: primary, pool: zpool1}
+            exp_annotations: {summary: "primary pool zpool1 at 81 %, ZFS fragmentation line is 80 (Day 14)"}
+      - eval_time: 32m
+        alertname: NasPoolAbove90
+        exp_alerts: []
+
+  # Pool state label other than ONLINE.
+  - interval: 1m
+    input_series:
+      - series: 'nas_zpool_health{job="collector-host",nas="primary",pool="zpool1",state="DEGRADED"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: NasPoolNotOnline
+        exp_alerts:
+          - exp_labels: {severity: critical, job: collector-host, nas: primary, pool: zpool1, state: DEGRADED}
+            exp_annotations: {summary: "primary pool zpool1 is DEGRADED"}
+
+  # Fragmentation: no free block of order 7 or larger at any point in 6h.
+  # primary goes from a fresh boot to the fragmented host (none from order
+  # 7 up) and fires once the last nonzero sample leaves the window.
+  # secondary is healthy: 0 during every job, 150 blocks when idle, never
+  # fires. tertiary has none but under 1 GiB free: never fires.
+  - interval: 1m
+    input_series:
+      - series: 'nas_buddyinfo_free_blocks{job="collector-host",nas="primary",node="0",zone="Normal",order="7"}'
+        values: "155 0x720"
+      - series: 'nas_buddyinfo_free_blocks{job="collector-host",nas="primary",node="0",zone="Normal",order="10"}'
+        values: "7278 0x720"
+      - series: 'nas_memory_free_bytes{job="collector-host",nas="primary",zone="Normal"}'
+        values: "30000000000 4500000000x720"
+      - series: 'nas_buddyinfo_free_blocks{job="collector-host",nas="secondary",node="0",zone="Normal",order="7"}'
+        values: "150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19 150x9 0x19"
+      - series: 'nas_buddyinfo_free_blocks{job="collector-host",nas="secondary",node="0",zone="Normal",order="10"}'
+        values: "0x720"
+      - series: 'nas_memory_free_bytes{job="collector-host",nas="secondary",zone="Normal"}'
+        values: "9500000000x720"
+      - series: 'nas_buddyinfo_free_blocks{job="collector-host",nas="tertiary",node="0",zone="Normal",order="7"}'
+        values: "0x720"
+      - series: 'nas_memory_free_bytes{job="collector-host",nas="tertiary",zone="Normal"}'
+        values: "500000000x720"
+      # DMA32 blocks never count
+      - series: 'nas_buddyinfo_free_blocks{job="collector-host",nas="primary",node="0",zone="DMA32",order="9"}'
+        values: "50x720"
+    alert_rule_test:
+      - eval_time: 5h
+        alertname: NasMemoryFragmented
+        exp_alerts: []
+      - eval_time: 7h
+        alertname: NasMemoryFragmented
+        exp_alerts:
+          - exp_labels: {severity: warning, nas: primary}
+            exp_annotations:
+              summary: "primary has had no free block of 512 KiB or larger in the Normal zone for 6h"
+              runbook: "GPU containers may fail to start (NV_ERR_NO_MEMORY). Reboot the NAS in a quiet window before the next GPU container restart or upgrade"
+      - eval_time: 11h
+        alertname: NasMemoryFragmented
+        exp_alerts:
+          - exp_labels: {severity: warning, nas: primary}
+            exp_annotations:
+              summary: "primary has had no free block of 512 KiB or larger in the Normal zone for 6h"
+              runbook: "GPU containers may fail to start (NV_ERR_NO_MEMORY). Reboot the NAS in a quiet window before the next GPU container restart or upgrade"
+
+  # Day 15 table row 2: NAS reboots, QDevice vote gone, still quorate.
+  - interval: 1m
+    input_series:
+      - series: 'pve_quorum_expected_votes{job="collector-host",cluster="lab"}'
+        values: "3x5"
+      - series: 'pve_quorum_total_votes{job="collector-host",cluster="lab"}'
+        values: "3 2 2 2 2 2"
+      - series: 'pve_quorum_qdevice_votes{job="collector-host",cluster="lab"}'
+        values: "1 0 0 0 0 0"
+      - series: 'pve_up{job="pve",instance="192.168.2.9",id="cluster/lab"}'
+        values: "1x5"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PveVoteMissing
+        exp_alerts: []
+      - eval_time: 3m
+        alertname: PveVoteMissing
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, cluster: lab}
+            exp_annotations: {summary: "lab is missing 1 vote(s) but still quorate, nothing else may fail now (Day 15 check.sh rc=1)"}
+      - eval_time: 3m
+        alertname: PveQdeviceAbsent
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, cluster: lab}
+            exp_annotations: {summary: "lab QDevice is not voting (NAS reboot or qnetd down)"}
+      - eval_time: 3m
+        alertname: PveQuorumLost
+        exp_alerts: []
+
+  # Day 15 table row 4: quorum lost.
+  - interval: 1m
+    input_series:
+      - series: 'pve_up{job="pve",instance="192.168.2.9",id="cluster/lab"}'
+        values: "1 0 0"
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: PveQuorumLost
+        exp_alerts:
+          - exp_labels: {severity: critical, job: pve, id: "cluster/lab"}
+            exp_annotations: {summary: "cluster cluster/lab not quorate, HA nodes will self-fence (Day 15 drill 3)"}
+
+  # Drill freshness: a pve drill that last passed 31 days ago.
+  - interval: 1m
+    input_series:
+      - series: 'drill_last_success_timestamp{job="collector-host",source="pve",label="d3-full"}'
+        values: "-2592000x3"   # promtool time() starts at 0, so 30 days before that
+      - series: 'drill_last_result{job="collector-host",source="pve",label="d3-full"}'
+        values: "0x3"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DrillStale
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, source: pve, label: d3-full}
+            exp_annotations: {summary: "pve drill d3-full last passed 30d 0h 2m 0s ago, policy is monthly"}
+      - eval_time: 2m
+        alertname: DrillFailed
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, source: pve, label: d3-full}
+            exp_annotations: {summary: "last pve drill d3-full failed"}
+
+  # Status strings as the field NAS report them (first walk, Day 19).
+  # Disks say "Good", pools "ready" under an _info metric, Telnet "no",
+  # and the UPS string is "-1" when no UPS is attached.
+  - interval: 1m
+    input_series:
+      - series: 'qnap_disk_status{job="nas-snmp",instance="192.168.2.2",nas="primary",diskIndex="1",diskModel="m1",qnap_disk_status="Good"}'
+        values: "1x10"
+      - series: 'qnap_disk_status{job="nas-snmp",instance="192.168.2.2",nas="primary",diskIndex="2",diskModel="m2",qnap_disk_status="Warning"}'
+        values: "1x10"
+      - series: 'qnap_pool_status_info{job="nas-snmp",instance="192.168.2.2",nas="primary",storagepoolID="1",qnap_pool_status="ready"}'
+        values: "1x10"
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.168.2.2",nas="primary",qnap_ups_status="-1"}'
+        values: "1x10"
+      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.168.2.2",nas="primary",qnap_service_telnet_enabled="no"}'
+        values: "1x10"
+      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.168.2.22",nas="secondary",qnap_service_telnet_enabled="yes"}'
+        values: "1x10"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NasDiskNotGood
+        exp_alerts:
+          - exp_labels: {severity: critical, job: nas-snmp, instance: "192.168.2.2", nas: primary, diskIndex: "2", diskModel: m2, qnap_disk_status: Warning}
+            exp_annotations: {summary: "primary disk 2 m2 is Warning"}
+      - eval_time: 6m
+        alertname: NasPoolStatusNotReady
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: NasUpsNotOnline
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: NasTelnetEnabled
+        exp_alerts:
+          - exp_labels: {severity: warning, job: nas-snmp, instance: "192.168.2.22", nas: secondary, qnap_service_telnet_enabled: "yes"}
+            exp_annotations: {summary: "secondary has Telnet enabled (Day 11 hardening regression)"}
+
+  # pve-exporter is scraped through both nodes; one storage down is one
+  # alert, not two.
+  - interval: 1m
+    input_series:
+      - series: 'pve_up{job="pve",instance="192.168.2.9",id="storage/n1/pbs"}'
+        values: "0x5"
+      - series: 'pve_up{job="pve",instance="192.168.2.5",id="storage/n1/pbs"}'
+        values: "0x5"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PveStorageUnavailable
+        exp_alerts:
+          - exp_labels: {severity: critical, job: pve, id: "storage/n1/pbs"}
+            exp_annotations: {summary: "storage/n1/pbs unavailable (NFS on the NAS?)"}
+
+  # The 900 s RTO target is for PVE restores; a long cloud upload is not
+  # a missed target.
+  - interval: 1m
+    input_series:
+      - series: 'drill_last_rto_seconds{job="collector-host",source="cloud",label="1c-upload"}'
+        values: "15842x3"
+      - series: 'drill_last_rto_seconds{job="collector-host",source="pve",label="d3-full"}'
+        values: "1000x3"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: DrillRtoOverTarget
+        exp_alerts:
+          - exp_labels: {severity: info, job: collector-host, source: pve, label: d3-full}
+            exp_annotations: {summary: "pve drill d3-full RTO 1000 s, target 900 s"}
+
+  # The quorum textfile cannot reach any node.
+  - interval: 1m
+    input_series:
+      - series: 'pve_quorum_up{job="collector-host",cluster="lab"}'
+        values: "0x8"
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: PveQuorumUnreadable
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, cluster: lab}
+            exp_annotations: {summary: "pve-quorum-textfile cannot read pvecm status for lab on any listed node (key, from= or node down)"}
+
+  # Day 22 firewall. fw-report runs every 10 minutes but node_exporter is
+  # scraped every minute, so the series has a sample every minute. An
+  # expected wall that drops nothing is written as 0 and goes silent after
+  # 2 hours; one that keeps dropping stays quiet.
+  - interval: 1m
+    input_series:
+      - series: 'fw_blocked{job="collector-host",source="fortigate",host="fgt-edge"}'
+        values: "2500 0x150"
+      - series: 'fw_blocked{job="collector-host",source="docker-user",host="metrics"}'
+        values: "4x150"
+    alert_rule_test:
+      - eval_time: 1h50m
+        alertname: FwSilent
+        exp_alerts: []
+      - eval_time: 2h10m
+        alertname: FwSilent
+        exp_alerts:
+          - exp_labels: {severity: info, job: collector-host, source: fortigate, host: fgt-edge}
+            exp_annotations: {summary: "fgt-edge logged no dropped packets for 2 hours, check that logging and the syslog target are on (fortigate)"}
+
+  # The burst threshold depends on the wall: 150 an hour is a pinned ufw
+  # limit, and below the FortiGate's 1,200 (its busiest camera logs ~550).
+  - interval: 1m
+    input_series:
+      - series: 'fw_top_source_blocked{job="collector-host",source="ufw",host="spark02",src="192.168.2.50"}'
+        values: "150x20"
+      - series: 'fw_top_source_blocked{job="collector-host",source="fortigate",host="fgt-edge",src="192.168.2.126"}'
+        values: "150x20"
+    alert_rule_test:
+      - eval_time: 15m
+        alertname: FwSourceBurst
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, source: ufw, host: spark02, src: "192.168.2.50"}
+            exp_annotations: {summary: "spark02 dropped 150 packets from 192.168.2.50 in the last hour (ufw)"}
+
+  # Slow guessing under the NAS ban: 10 an hour warns, 50 is critical.
+  - interval: 1m
+    input_series:
+      - series: 'nas_login_failed_top_source{job="collector-host",nas="nas-primary",src="192.168.2.88"}'
+        values: "4x9 12x10 60x10"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: NasLoginFailures
+        exp_alerts: []
+      - eval_time: 15m
+        alertname: NasLoginFailures
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host, nas: nas-primary, src: "192.168.2.88"}
+            exp_annotations: {summary: "nas-primary: 12 failed logins from 192.168.2.88 in the last hour"}
+      - eval_time: 25m
+        alertname: NasLoginFailuresCritical
+        exp_alerts:
+          - exp_labels: {severity: critical, job: collector-host, nas: nas-primary, src: "192.168.2.88"}
+            exp_annotations: {summary: "nas-primary: 60 failed logins from 192.168.2.88 in the last hour, the ban is not holding; block the source upstream"}
+
+  # fw-report itself stopped (timestamp stuck at 0): stale after 30 minutes
+  # plus the 10 minute hold.
+  - interval: 1m
+    input_series:
+      - series: 'fw_report_last_run_timestamp{job="collector-host"}'
+        values: "0x60"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: FwReportStale
+        exp_alerts: []
+      - eval_time: 50m
+        alertname: FwReportStale
+        exp_alerts:
+          - exp_labels: {severity: warning, job: collector-host}
+            exp_annotations: {summary: "fw-report has not run for 30 minutes, firewall metrics are stale"}

@@ -1,0 +1,9 @@
+prometheus/targets/*.yml
+prometheus/pve.yml
+prometheus/snmp-auth.yml
+*.prom
+*.mib
+__pycache__/
+*.pyc
+alertmanager/alertmanager.yml
+grafana/admin_password

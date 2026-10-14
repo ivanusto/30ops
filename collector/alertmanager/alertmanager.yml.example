@@ -1,0 +1,92 @@
+# Alertmanager for the collector VM. Copy to alertmanager.yml (gitignored)
+# and fill the SMTP block. One route tree, three ideas:
+#   critical pages now, warning batches for 30 seconds, info goes to a
+#   daily digest; and an inhibit tree so a dead pipeline does not also
+#   page for every number it stopped reporting.
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: "smtp.example.net:587"
+  smtp_from: "alerts@example.net"
+  smtp_auth_username: "alerts@example.net"
+  smtp_auth_password: "CHANGE_ME"
+  smtp_require_tls: true
+
+route:
+  receiver: ops-warning
+  group_by: [alertname, cluster, nas, node]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 12h
+  routes:
+    # The soak alert is a warning, but it is only useful before the guard
+    # acts (15 to 60 s later), so it skips the 30 s batching.
+    - matchers: [alertname="Gb10SoakNearBudget"]
+      receiver: ops-warning
+      group_wait: 0s
+    - matchers: [severity="critical"]
+      receiver: ops-critical
+      group_wait: 0s
+      repeat_interval: 2h
+    - matchers: [severity="info"]
+      receiver: ops-digest
+      group_wait: 1h
+      group_interval: 24h
+      repeat_interval: 7d
+
+receivers:
+  - name: ops-critical
+    email_configs:
+      - to: "oncall@example.net"
+        send_resolved: true
+  - name: ops-warning
+    email_configs:
+      - to: "ops@example.net"
+        send_resolved: true
+  - name: ops-digest
+    email_configs:
+      - to: "ops@example.net"
+        send_resolved: false
+
+inhibit_rules:
+  # Pipeline dead: do not page for every number the pipeline stopped reporting.
+  - source_matchers: [alertname="TargetDown"]
+    target_matchers: [severity=~"warning|info"]
+    equal: [instance]
+  - source_matchers: [alertname="Gb10TextfileStale"]
+    target_matchers: [alertname=~"Gb10.*"]
+    equal: [instance]
+  # fw-report stopped: its numbers are old, do not alert on them (Day 22).
+  - source_matchers: [alertname="FwReportStale"]
+    target_matchers: [alertname=~"Fw.*|NasLogin.*"]
+  # aup-report stopped: same shape (Day 24).
+  - source_matchers: [alertname="AupReportStale"]
+    target_matchers: [alertname=~"Aup(UrgentCategoryHit|BlockedBurst|Silent)"]
+  # eol-textfile stopped: the dates it last wrote are still true, but a
+  # new "within 90 days" would come from stale data (Day 25).
+  - source_matchers: [alertname="EolTextfileStale"]
+    target_matchers: [alertname=~"Asset(Eol|Licence).*"]
+  # changes-textfile stopped: windows and statuses are old (Day 26).
+  - source_matchers: [alertname="ChangesTextfileStale"]
+    target_matchers: [alertname=~"Change(WindowOverrun|InProgress|StartsSoon|RollbackUndrilled|RollbackDrillStale)"]
+  # audit-report stopped (Day 27).
+  - source_matchers: [alertname="AuditReportStale"]
+    target_matchers: [alertname=~"Audit(Unattributed.*|ChangeWithoutMarks)"]
+  # gatectl textfile stopped (Day 29): the agent gate numbers are old.
+  - source_matchers: [alertname="AgentGateTextfileStale"]
+    target_matchers: [alertname=~"AgentGate(ApprovalWaiting|Stopped|ChainBroken|Denials)"]
+  - source_matchers: [alertname="NasUnreachable"]
+    target_matchers: [alertname=~"Nas(Pool|Snapshot).*"]
+    equal: [nas]
+  - source_matchers: [alertname="NasSnmpNoData"]
+    target_matchers: [alertname=~"Nas(Disk|Ups|Telnet|PoolStatus).*"]
+    equal: [instance]
+  # Quorum lost already says everything PveVoteMissing and PveQdeviceAbsent would.
+  - source_matchers: [alertname="PveQuorumLost"]
+    target_matchers: [alertname=~"PveVoteMissing|PveQdeviceAbsent|PveHaResourceError|PveStorageUnavailable"]
+  # A critical memory line makes the warning line noise.
+  - source_matchers: [alertname="Gb10MemAvailableCritical"]
+    target_matchers: [alertname="Gb10MemAvailableLow"]
+    equal: [node]
+  - source_matchers: [alertname="NasPoolAbove90"]
+    target_matchers: [alertname="NasPoolAbove80"]
+    equal: [nas, pool]

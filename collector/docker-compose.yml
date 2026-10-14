@@ -1,0 +1,91 @@
+# Collector stack for the PVE VM. Images pinned by digest the Day 3 way
+# (multi-arch index digest, checked 2026-10-03 with
+# `docker buildx imagetools inspect IMAGE`); the tag stays for readability.
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=90d
+      - --web.enable-lifecycle
+    # Day 20: Grafana is the front door; Prometheus UI stays reachable for
+    # promtool-style debugging but only from the collector host itself.
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits: {memory: 2g}
+
+  pve-exporter:
+    image: prompve/prometheus-pve-exporter:3.5.5@sha256:79a5598906697b1a5a006d09f0200528a77c6ff1568faf018539ac65824454df
+    volumes:
+      - ./prometheus/pve.yml:/etc/prometheus/pve.yml:ro
+    # loopback only: Prometheus reaches it over the compose network, and the
+    # host can curl it for debugging without exposing it to the LAN
+    ports: ["127.0.0.1:9221:9221"]
+    restart: unless-stopped
+
+  snmp-exporter:
+    image: prom/snmp-exporter:v0.29.0@sha256:272ff087c314fb1e384b7ba7e555f020cc0c072fb23f0dc1d1cb51b48067efdc
+    command:
+      - --config.file=/etc/snmp_exporter/snmp.yml
+      - --config.file=/etc/snmp_exporter/snmp-auth.yml
+    volumes:
+      - ./prometheus/snmp.yml:/etc/snmp_exporter/snmp.yml:ro
+      - ./prometheus/snmp-auth.yml:/etc/snmp_exporter/snmp-auth.yml:ro
+    # loopback only, so the first walk can be read with
+    # curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=...'
+    ports: ["127.0.0.1:9116:9116"]
+    restart: unless-stopped
+
+  # Day 20. Pinned the Day 3 way, digests from `docker buildx imagetools
+  # inspect` (multi-arch index). Grafana ships as grafana/grafana; the
+  # grafana/grafana-oss repository has no plain 12.2.0 tag and stopped
+  # receiving releases, so this is the last 12.2 patch.
+  alertmanager:
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=http://localhost:9093
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    ports: ["127.0.0.1:9093:9093"]
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.2.10@sha256:d2ac2dae86601550e941f7e1c0b4b7e1f21fadebfa5956ba06fe0b3a64de7cf4
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      # Grafana 12 preinstalls four app plugins from the catalog at every
+      # start and keeps them auto-updated, which unpins what the digest
+      # above pins (seen on the collector, Day 21). Plugins this stack needs
+      # are baked into an image instead (onprem-logs/grafana/Dockerfile).
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    secrets: [grafana_admin]
+    ports: ["3000:3000"]
+    restart: unless-stopped
+    depends_on: [prometheus]
+
+secrets:
+  grafana_admin:
+    file: ./grafana/admin_password   # gitignored, `openssl rand -base64 24 > grafana/admin_password`
+
+volumes:
+  prometheus-data:
+  alertmanager-data:
+  grafana-data:

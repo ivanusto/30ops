@@ -1,0 +1,215 @@
+# Day 20: alerts on the numbers themselves. Day 19's staleness.yml says
+# whether the pipeline is alive; these say whether the site is.
+#
+# Every threshold has a source. The soak budget is 240 s (gb10-ops, Day 12).
+# What Prometheus sees lags the guard: the textfile is up to 10 s old, the
+# scrape sees it in 10 or 20 s steps (10 s writes, 15 s scrapes), and the
+# rule is evaluated up to 15 s after the scrape. Day 20 measured it: with
+# "> 200" the series sat at exactly 200, the next sample was 220, and the
+# alert fired 10.1 s before the guard. Worst case that threshold fires 5 s
+# after the guard, so the alert is ">= 180": 15 to 60 s ahead of it.
+# Memory lines are gb10-ops warn 6 GiB / act 3 GiB.
+# The ZFS 80 % line is Day 14. Drill ages are the policy.md of each repo.
+#
+# Rule groups inherit the global evaluation_interval (60 s in
+# prometheus.yml). The gb10 group evaluates every 15 s instead: with 60 s
+# the soak alert would fire after the guard far more often than not.
+#
+# pve-exporter is scraped through both nodes and each one reports the
+# whole cluster, so every pve_up series exists twice (instance .9 and .5).
+# The pve rules aggregate the instance label away to alert once per object.
+groups:
+  - name: gb10
+    interval: 15s
+    rules:
+      - alert: Gb10SoakNearBudget
+        expr: gb10_soak_seconds >= 180
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.node }} hottest zone above threshold for {{ $value }} s, guard trips at 240"
+          runbook: "Day 12: the guard will kill the hottest process; move or pause the workload first"
+      - alert: Gb10HotFlag
+        expr: gb10_hot == 1
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.node }} HOT flag set by hw-sample for 2m"}
+      - alert: Gb10MemAvailableLow
+        expr: gb10_mem_available_bytes < 6 * 1024 * 1024 * 1024
+        for: 1m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, guard warns at 6 GiB"}
+      - alert: Gb10MemAvailableCritical
+        expr: gb10_mem_available_bytes < 3 * 1024 * 1024 * 1024
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, guard acts at 3 GiB"}
+      - alert: Gb10NvErrNoMemory
+        expr: increase(gb10_nv_err_no_memory_total[10m]) > 0
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.node }} logged NV_ERR_NO_MEMORY in the last 10m (unified memory exhaustion, precedes livelock)"}
+      - alert: Gb10TextfileErrors
+        expr: gb10_textfile_errors > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.node }} gb10-textfile has {{ $value }} failing sources"}
+
+  - name: nas
+    rules:
+      - alert: NasPoolAbove80
+        expr: nas_zpool_capacity_percent > 80
+        for: 30m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} at {{ $value }} %, ZFS fragmentation line is 80 (Day 14)"}
+      - alert: NasPoolAbove90
+        expr: nas_zpool_capacity_percent > 90
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} at {{ $value }} %"}
+      - alert: NasPoolNotOnline
+        expr: nas_zpool_health{state!="ONLINE"} == 1
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} is {{ $labels.state }}"}
+      # snmp-build.py exposes status strings as a label named after the
+      # metric (value 1). DisplayString columns keep the metric name;
+      # EnumAsInfo columns get an _info suffix from snmp_exporter. The
+      # healthy strings below were read from the first walk on both field
+      # NAS (QuTS hero 6.0.2): disks "Good", pools "ready", Telnet "no".
+      # Label matching is case sensitive, so the disk rule ignores case.
+      # A new string shows up as an alert, which is the point.
+      - alert: NasDiskNotGood
+        expr: qnap_disk_status{qnap_disk_status!~"(?i)good"} == 1
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.nas }} disk {{ $labels.diskIndex }} {{ $labels.diskModel }} is {{ $labels.qnap_disk_status }}"}
+      - alert: NasPoolStatusNotReady
+        expr: qnap_pool_status_info{qnap_pool_status!="ready"} == 1
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.nas }} pool {{ $labels.storagepoolID }} is {{ $labels.qnap_pool_status }}"}
+      - alert: NasDiskHot
+        expr: qnap_disk_temperature_celsius > 50
+        for: 15m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.nas }} disk {{ $labels.diskIndex }} at {{ $value }} °C for 15m"}
+      - alert: NasSnapshotStale
+        expr: (time() - nas_zfs_snapshot_newest_timestamp) > 2 * 86400 and nas_zfs_snapshots > 0
+        for: 1h
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.nas }} {{ $labels.dataset }} newest snapshot is {{ $value | humanizeDuration }} old"}
+      # upsStatus is a free string in QTS-MIB. Both field NAS answer "-1",
+      # which is what QuTS hero returns with no UPS attached, so -1 is not an
+      # alert. The healthy string of a connected UPS has not been seen on
+      # this site yet; check it against the first walk after one is plugged in.
+      - alert: NasUpsNotOnline
+        expr: qnap_ups_status{qnap_ups_status!~"(?i)online.*|-1"} == 1
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.nas }} UPS reports {{ $labels.qnap_ups_status }}"}
+      - alert: NasTelnetEnabled
+        expr: qnap_service_telnet_enabled_info{qnap_service_telnet_enabled="yes"} == 1
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.nas }} has Telnet enabled (Day 11 hardening regression)"}
+      # Host memory fragmentation on a NAS with a GPU. The NVIDIA driver
+      # needs physically contiguous blocks; when the Normal zone runs out
+      # of high orders, restarting a GPU container fails with
+      # NV_ERR_NO_MEMORY although MemFree is in the gigabytes. On the field
+      # NAS that happened twice: once with every order from 7 up at 0, once
+      # with order 10 at 0 and order 9 at 2. Empty high orders are a
+      # precondition, not a certainty: containers have also restarted fine
+      # in that state, so this is a warning to plan a reboot, not a page.
+      # drop_caches plus compact_memory did not bring the blocks back; a
+      # reboot did.
+      #
+      # What separates the two states on this host is whether any block of
+      # order 7 (512 KiB) or larger is ever free. Order 9 and up, and the
+      # share of free memory they hold, turned out to be too strict: on a
+      # healthy host 2.4 hours after a reboot they sat at 0 whenever
+      # ComfyUI had models loaded, idle included, and only came back when
+      # the container was recreated. Order 7 and up also drop to 0 while a
+      # job runs, but the same idle host still had 155 blocks of order 7
+      # and 42 of order 8. The fragmented host (1.8 days up) had none from
+      # order 6 up in any sample, idle or busy, and the first GPU failure
+      # on record had none from order 7 up. Hence: no order 7+ block at any
+      # point in 6 hours, with more than 1 GiB free (below that the counts
+      # reflect usage, not fragmentation). Few data points; revisit as the
+      # curve grows.
+      - alert: NasMemoryFragmented
+        expr: |
+          max_over_time((sum by (nas) (nas_buddyinfo_free_blocks{zone="Normal",order=~"7|8|9|10"}))[6h:1m]) == 0
+            and on (nas) nas_memory_free_bytes{zone="Normal"} > 1024 * 1024 * 1024
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "{{ $labels.nas }} has had no free block of 512 KiB or larger in the Normal zone for 6h"
+          runbook: "GPU containers may fail to start (NV_ERR_NO_MEMORY). Reboot the NAS in a quiet window before the next GPU container restart or upgrade"
+
+  - name: pve
+    rules:
+      - alert: PveQuorumLost
+        expr: min without (instance) (pve_up{id=~"cluster/.*"}) == 0
+        labels: {severity: critical}
+        annotations: {summary: "cluster {{ $labels.id }} not quorate, HA nodes will self-fence (Day 15 drill 3)"}
+      - alert: PveNodeOffline
+        expr: max without (instance) (pve_up{id=~"node/.*"}) == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.id }} offline"}
+      # From textfile/pve-quorum-textfile.sh, the metric form of Day 15
+      # check.sh exit 1: quorate, but one more loss ends it.
+      - alert: PveVoteMissing
+        expr: pve_quorum_expected_votes - pve_quorum_total_votes > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.cluster }} is missing {{ $value }} vote(s) but still quorate, nothing else may fail now (Day 15 check.sh rc=1)"}
+      - alert: PveQdeviceAbsent
+        expr: pve_quorum_qdevice_votes == 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.cluster }} QDevice is not voting (NAS reboot or qnetd down)"}
+      - alert: PveQuorumUnreadable
+        expr: pve_quorum_up == 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "pve-quorum-textfile cannot read pvecm status for {{ $labels.cluster }} on any listed node (key, from= or node down)"}
+      - alert: PveHaResourceError
+        expr: max without (instance) (pve_ha_state{state=~"error|fence|recovery"}) == 1
+        labels: {severity: critical}
+        annotations: {summary: "HA resource {{ $labels.id }} in state {{ $labels.state }}"}
+      - alert: PveStorageUnavailable
+        expr: max without (instance) (pve_up{id=~"storage/.*"}) == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.id }} unavailable (NFS on the NAS?)"}
+      - alert: PveReplicationFailing
+        expr: max without (instance) (pve_replication_failed_syncs) > 0
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "replication {{ $labels.id }} has {{ $value }} failed syncs"}
+      - alert: PveGuestLockedLong
+        expr: max without (instance) (pve_lock_state{state!="suspended"}) == 1
+        for: 30m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.id }} locked ({{ $labels.state }}) for 30m, a backup or migrate may be stuck"}
+
+  - name: drills
+    rules:
+      - alert: DrillFailed
+        expr: drill_last_result == 0
+        labels: {severity: warning}
+        annotations: {summary: "last {{ $labels.source }} drill {{ $labels.label }} failed"}
+      - alert: DrillStale
+        expr: (time() - drill_last_success_timestamp{source=~"pve|nas"}) > 30 * 86400
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.source }} drill {{ $labels.label }} last passed {{ $value | humanizeDuration }} ago, policy is monthly"}
+      - alert: CloudDrillStale
+        expr: (time() - drill_last_success_timestamp{source="cloud"}) > 90 * 86400
+        labels: {severity: warning}
+        annotations: {summary: "cloud drill {{ $labels.label }} last passed {{ $value | humanizeDuration }} ago, policy is quarterly"}
+      # The 900 s target is a PVE restore (Day 16 measured 569 s). NAS and
+      # cloud drill labels include uploads and whole-folder rollbacks with
+      # their own scale, so the target applies to source="pve" only.
+      - alert: DrillRtoOverTarget
+        expr: drill_last_rto_seconds{source="pve"} > 900
+        labels: {severity: info}
+        annotations: {summary: "{{ $labels.source }} drill {{ $labels.label }} RTO {{ $value }} s, target 900 s"}
