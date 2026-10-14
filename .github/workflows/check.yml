@@ -58,8 +58,7 @@ jobs:
           curl -fsSL -o p.tgz "https://github.com/prometheus/prometheus/releases/download/v${PROMETHEUS_VERSION}/prometheus-${PROMETHEUS_VERSION}.linux-amd64.tar.gz"
           echo "${PROMETHEUS_SHA256}  p.tgz" | sha256sum -c
           tar xzf p.tgz && sudo install -m 0755 "prometheus-${PROMETHEUS_VERSION}.linux-amd64/promtool" /usr/local/bin/promtool
-      - run: shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh tests/fake-nas.sh grafana/build.sh
-      - run: promtool check config prometheus/prometheus.yml
+      - run: shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh tests/fake-nas.sh tests/compose-smoke.sh grafana/build.sh
       - name: render the sample site
         run: |
           sudo apt-get install -y -qq python3-yaml
@@ -84,7 +83,10 @@ jobs:
           "./snmp_exporter-${SNMP_EXPORTER_VERSION}.linux-amd64/snmp_exporter" --config.file=prometheus/snmp.yml --config.file=../build/etc/30ops/prometheus/snmp-auth.yml --dry-run
       - run: python3 -m unittest discover -s tests -v
       - run: sh tests/fake-nas.sh
-      - run: docker compose config -q
+      - name: compose config on the rendered sample site
+        run: docker compose --env-file ../build/etc/30ops/compose.env -f compose.yml config -q
+      - name: compose smoke (the merged stack on the rendered sample site)
+        run: sh tests/compose-smoke.sh
 
   logs:
     runs-on: ubuntu-latest
@@ -97,7 +99,6 @@ jobs:
       - run: python3 -m py_compile firewall/fw-report.py firewall/aup-report.py firewall/fortigate-export-load.py pcap/pcap-stat.py audit/audit-report.py
       - run: systemd-analyze verify pcap/pcap@.service || true   # the runner has no /etc/pcap/*.env
       - run: sudo visudo -cf pcap/sudoers-pcap
-      - run: docker compose -f docker-compose.yml config -q || true   # external network is absent in CI until the stacks merge (v0.4)
       - name: smoke (VictoriaLogs in docker, syslog + journald in, archive + verify out)
         run: sh tests/smoke.sh
       - name: smoke-firewall

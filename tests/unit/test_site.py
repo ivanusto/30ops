@@ -127,6 +127,20 @@ class Validate(unittest.TestCase):
         d["gate"]["targets"].append({"asset": "nas-primary/QTS", "ssh": "gate@nas"})
         self.assertErr(d, "gate.targets[3].asset 'nas-primary/QTS' is not a row of assets.tsv")
 
+    def test_collector_volumes_and_retention(self):
+        d = sample()
+        d["collector"]["volumes"]["grafana"] = "onprem-metrics_prometheus-data"
+        d["collector"]["volumes"]["alertmanager"] = "-bad"
+        d["collector"]["retention"] = {"metrics": "90 days", "logs_max_disk": "12G"}
+        d["collector"]["grafana_port"] = 70000
+        errs, _ = check(d)
+        for e in ("collector.volumes: onprem-metrics_prometheus-data is used twice",
+                  "collector.volumes.alertmanager '-bad' is not a docker volume name",
+                  "collector.retention.metrics '90 days' must be a number and h, d, w or y (90d)",
+                  "collector.retention.logs_max_disk '12G' must be bytes or KiB, MiB, GiB, TiB (12GiB)",
+                  "collector.grafana_port 70000 is not a port"):
+            self.assertIn(e, errs)
+
     def test_warnings_and_strict(self):
         d = sample()
         d["alerting"]["thresholds"] = {"nas_pool_warn_pct": 85}

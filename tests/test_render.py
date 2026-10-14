@@ -103,8 +103,6 @@ class Render(unittest.TestCase):
             else:
                 want = (ROOT / srcs[0]).read_text()
             self.assertEqual(got, want, f"{fx} is no longer a copy of {', '.join(srcs)}")
-        prom = (LEGACY / "opt/onprem-metrics/prometheus/prometheus.yml").read_text()
-        self.assertTrue(prom.startswith((ROOT / "collector/prometheus/prometheus.yml").read_text()))
 
     def test_import_round_trip(self):
         tmp = tempfile.mkdtemp()

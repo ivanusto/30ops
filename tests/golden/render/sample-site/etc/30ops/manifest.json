@@ -1,7 +1,7 @@
 {
   "version": 1,
   "tool": "30ops X.Y.Z",
-  "site_sha256": "919434bd9368be3c4c7a295072654da933f684cdaf09b57658282ccf642dc7d5",
+  "site_sha256": "8dc85ab8dc8b1d1178dd68426f14c9d49650ed1f606b13a2f9fb67c083570e44",
   "files": [
     {
       "path": "etc/30ops/alertmanager/alertmanager.yml",
@@ -12,6 +12,13 @@
     },
     {
       "path": "etc/30ops/assets.tsv",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/compose.env",
       "mode": "0644",
       "owner": "root:root",
       "sha256": "X",

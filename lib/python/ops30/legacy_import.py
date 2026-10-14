@@ -352,6 +352,21 @@ def draft(root):
     col = next((h["name"] for h in d.hosts if "collector" in h["roles"]), None)
     if not col:
         d.todo.append("collector.host: no collector-host target found")
+    cs = L.compose_settings(root)
+    if cs:
+        dc = S.DEFAULTS["collector"]
+        vols = {k: v for k, v in cs["volumes"].items() if v != dc["volumes"][k]}
+        if vols:
+            collector["volumes"] = vols
+        ret = {k: v for k, v in cs["retention"].items() if v != dc["retention"][k]}
+        if ret:
+            collector["retention"] = ret
+        if cs.get("grafana_port", dc["grafana_port"]) != dc["grafana_port"]:
+            collector["grafana_port"] = cs["grafana_port"]
+        tz = doc.get("site", {}).get("timezone")
+        if cs.get("timezone") and tz and cs["timezone"] != tz:
+            d.todo.append(f"site.timezone: the host is {tz} but VictoriaLogs reads syslog as {cs['timezone']}; "
+                          "30ops uses site.timezone for both")
     doc["collector"] = {"host": col or "collector", **collector}
     if creds:
         doc["credentials"] = dict(sorted(creds.items()))

@@ -13,6 +13,14 @@ site:
 
 collector:
   host: collector
+  # The collector moved from the pre-30ops stacks (onprem-metrics and
+  # onprem-logs) and keeps their docker volumes. A new site leaves this
+  # out and gets 30ops_<name>-data.
+  volumes:
+    prometheus: onprem-metrics_prometheus-data
+    alertmanager: onprem-metrics_alertmanager-data
+    grafana: onprem-metrics_grafana-data
+    victorialogs: onprem-logs_victorialogs-data
 
 # Secrets never live in this file: each entry names a file on the collector
 # (0600, owner root or metrics) and the rest of site.yaml refers to it by name.

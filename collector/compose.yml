@@ -1,0 +1,169 @@
+# The 30ops collector: one compose project for metrics, alerts, dashboards
+# and logs. Everything site-specific comes from `30ops render`:
+#   - files under /etc/30ops (prometheus.yml, targets, rules, exporter
+#     configs, alertmanager.yml, Grafana datasources and dashboard);
+#   - /etc/30ops/compose.env (project name, volume names, retention, the
+#     time zone, the Grafana port, the secret files, which profiles run).
+# Start it with
+#   docker compose --env-file /etc/30ops/compose.env -f /opt/30ops/collector/compose.yml up -d
+# A variable set in the environment wins over compose.env (CI points
+# OPS30_ETC at a render output that way).
+#
+# Images are pinned by multi-arch index digest (`docker buildx imagetools
+# inspect IMAGE`); the tag stays for readability. Dependabot proposes
+# updates; scripts/check-ci-pins.sh refuses an image without a digest.
+#
+# Volumes are external: compose never creates an empty one in place of a
+# missing one, so a typo in a volume name stops the start instead of
+# starting from a blank TSDB. `30ops install collector` (v0.5) creates them
+# on a new site.
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  prometheus:
+    <<: *restart
+    image: prom/prometheus:v3.5.0@sha256:63805ebb8d2b3920190daf1cb14a60871b16fd38bed42b857a3182bc621f4996
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${OPS30_RETENTION_METRICS:?set in compose.env}
+      - --web.enable-lifecycle
+    # Grafana is the front door; the Prometheus UI stays reachable from the
+    # collector host itself for debugging
+    ports: ["127.0.0.1:9090:9090"]
+    volumes:
+      - ${OPS30_ETC:?run with --env-file /etc/30ops/compose.env}/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    deploy:
+      resources:
+        limits: {memory: 2g}
+
+  pve-exporter:
+    <<: *restart
+    profiles: [pve]
+    image: prompve/prometheus-pve-exporter:3.5.5@sha256:79a5598906697b1a5a006d09f0200528a77c6ff1568faf018539ac65824454df
+    volumes:
+      - ${OPS30_ETC:?}/prometheus/pve.yml:/etc/prometheus/pve.yml:ro
+    # loopback only: Prometheus reaches it over the compose network, and the
+    # host can curl it for debugging without exposing it to the LAN
+    ports: ["127.0.0.1:9221:9221"]
+
+  snmp-exporter:
+    <<: *restart
+    profiles: [snmp]
+    image: prom/snmp-exporter:v0.29.0@sha256:272ff087c314fb1e384b7ba7e555f020cc0c072fb23f0dc1d1cb51b48067efdc
+    command:
+      - --config.file=/etc/snmp_exporter/snmp.yml
+      - --config.file=/etc/snmp_exporter/snmp-auth.yml
+    volumes:
+      - ./prometheus/snmp.yml:/etc/snmp_exporter/snmp.yml:ro    # product: built from QTS-MIB by snmp-build.py
+      - ${OPS30_ETC:?}/prometheus/snmp-auth.yml:/etc/snmp_exporter/snmp-auth.yml:ro
+    # loopback only, so a walk can be read with
+    # curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=...'
+    ports: ["127.0.0.1:9116:9116"]
+
+  alertmanager:
+    <<: *restart
+    image: prom/alertmanager:v0.28.1@sha256:27c475db5fb156cab31d5c18a4251ac7ed567746a2483ff264516437a39b15ba
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+      - --web.external-url=http://localhost:9093
+    volumes:
+      - ${OPS30_ETC:?}/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager-data:/alertmanager
+    # alertmanager.yml reads it as smtp_auth_password_file; the container
+    # runs as nobody (65534), so the file is owned by 65534, mode 0400
+    secrets: [smtp]
+    ports: ["127.0.0.1:9093:9093"]
+
+  grafana:
+    <<: *restart
+    # collector/grafana/Dockerfile: Grafana with the VictoriaLogs datasource
+    # baked in, built and attested by .github/workflows/grafana-image.yml
+    image: ghcr.io/ivanusto/30ops-grafana:12.2.10-vlogs0.32.0@sha256:afef4d4e1916a810bb653994edcf5e2d08b5872fe98e1ed41510abab57ab34bb
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD__FILE: /run/secrets/grafana_admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3000
+      # Grafana 12 preinstalls four app plugins from the catalog at every
+      # start and keeps them auto-updated, which unpins what the digest
+      # above pins. Plugins this stack needs are baked into the image.
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    volumes:
+      - ${OPS30_ETC:?}/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ${OPS30_ETC:?}/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    # owned by 472 (grafana), mode 0400
+    secrets: [grafana_admin]
+    ports: ["${OPS30_GRAFANA_PORT:?}:3000"]
+    depends_on: [prometheus]
+
+  victorialogs:
+    <<: *restart
+    profiles: [logs]
+    image: victoriametrics/victoria-logs:v1.52.0@sha256:47b820890d64c4575a2a0a46415dcd8a4fd59a0f1fcd6a377693d7aea639442e
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=${OPS30_RETENTION_LOGS:?}           # hot copy; the archive lives on the WORM share
+      - -retention.maxDiskSpaceUsageBytes=${OPS30_LOGS_MAX_DISK:?}
+      - -httpListenAddr=:9428
+      # journald from the nodes (systemd-journal-upload)
+      - -journald.streamFields=_HOSTNAME,_SYSTEMD_UNIT
+      - -journald.ignoreFields=_CAP_EFFECTIVE,_SYSTEMD_INVOCATION_ID,_SOURCE_MONOTONIC_TIMESTAMP,__MONOTONIC_TIMESTAMP,_BOOT_ID
+      - -journald.useRemoteIP=true
+      # syslog (RFC 3164/5424) on 514; a FortiGate's event log (config
+      # changes, admin logins) on 515. The second listener stamps
+      # audit="fortigate" on every line, so the audit trail is its own
+      # stream and its own archive source (audit-<devname>) while the
+      # traffic log on 514 can stay out of the WORM share (logs.archive.skip).
+      # One value per listener, in listener order.
+      - -syslog.listenAddr.tcp=:514,:515
+      - -syslog.listenAddr.udp=:514
+      - -syslog.streamFields.tcp=["hostname","app_name"],["hostname","audit"]
+      - -syslog.extraFields.tcp={},{"audit":"fortigate"}
+      - -syslog.streamFields.udp=["hostname","app_name"]
+      # RFC 3164 carries no zone; senders such as QuLog use local time
+      - -syslog.timezone=${OPS30_TZ:?}
+      - -loggerFormat=json
+    ports:
+      # reachable from the nodes and the NAS. ufw does not see published
+      # ports; logs/collector/docker-user-allowlist.sh limits who gets through
+      - "0.0.0.0:9428:9428"   # IPv4 only: a [::] listener is served by docker-proxy
+                                 # through INPUT and would skip DOCKER-USER
+      - "0.0.0.0:514:514/tcp"
+      - "0.0.0.0:514:514/udp"
+      - "0.0.0.0:515:515/tcp"   # FortiGate event log only (logs/audit/fortigate-syslogd3.md)
+    volumes:
+      - victorialogs-data:/victoria-logs-data
+    deploy:
+      resources:
+        limits: {memory: 1g}
+    # no healthcheck: the image is FROM scratch (no shell, no wget); the
+    # victorialogs scrape job and TargetDown watch it from outside
+
+secrets:
+  grafana_admin:
+    file: ${OPS30_GRAFANA_ADMIN_FILE:?}
+  smtp:
+    file: ${OPS30_SMTP_PASSWORD_FILE:?}   # /dev/null when the site sends no mail
+
+volumes:
+  prometheus-data:
+    external: true
+    name: ${OPS30_VOL_PROMETHEUS:?}
+  alertmanager-data:
+    external: true
+    name: ${OPS30_VOL_ALERTMANAGER:?}
+  grafana-data:
+    external: true
+    name: ${OPS30_VOL_GRAFANA:?}
+  victorialogs-data:
+    external: true
+    name: ${OPS30_VOL_VICTORIALOGS:?}

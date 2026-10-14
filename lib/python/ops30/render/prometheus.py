@@ -2,17 +2,14 @@
 
 prometheus.yml is the repo's collector/prometheus/prometheus.yml (the job
 definitions are product, not site) with three changes: the site label, the
-jobs that have no target dropped, and the victorialogs job from
-logs/collector/prometheus-scrape.yml added when the site collects logs.
+jobs that have no target dropped (victorialogs when the site collects no
+logs), and a node job for the plain Linux nodes.
 """
-import textwrap
-
 from .. import site as S, yamlio
 from . import SECRET, Output, header
 
 P = "etc/30ops/prometheus"
 BASE = f"{S.REPO}/collector/prometheus/prometheus.yml"
-LOGS_JOB = f"{S.REPO}/logs/collector/prometheus-scrape.yml"
 NODE_JOB = {"job_name": "node", "scrape_interval": "60s", "file_sd_configs": [{"files": ["targets/node.yml"]}]}
 
 
@@ -63,14 +60,15 @@ def prometheus_yml(site, jobs, nas_auth):
         sd = [f for c in j.get("file_sd_configs", []) for f in c.get("files", [])]
         if sd and not any(f in files for f in sd):
             continue
+        if j["job_name"] == "victorialogs" and not logs_enabled(site):
+            continue
         if j["job_name"] == "nas-snmp" and nas_auth:
             j["params"]["auth"] = [nas_auth]
         keep.append(j)
     if "node" in jobs:
-        keep.append(NODE_JOB)
-    if logs_enabled(site):
-        with open(LOGS_JOB, encoding="utf-8") as f:
-            keep += yamlio.loads(textwrap.dedent(f.read()), LOGS_JOB)
+        # before victorialogs, where v0.3 put it
+        at = next((i for i, j in enumerate(keep) if j["job_name"] == "victorialogs"), len(keep))
+        keep.insert(at, NODE_JOB)
     doc["scrape_configs"] = keep
     return doc
 

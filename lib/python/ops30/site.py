@@ -28,6 +28,11 @@ SNMP_PRIV = ("DES", "AES", "AES192", "AES256", "AES192C", "AES256C")
 SNMP_LEVEL = ("noAuthNoPriv", "authNoPriv", "authPriv")
 RECEIVERS = ("ops-critical", "ops-warning", "ops-digest")   # the route tree in alertmanager.yml.example
 DRILL_SOURCES = ("pve", "nas", "cloud", "logs")
+VOLUMES = ("prometheus", "alertmanager", "grafana", "victorialogs")
+VOLUME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]+$")
+# a duration both Prometheus and VictoriaLogs read the same way
+RETENTION_RE = re.compile(r"^[1-9][0-9]*[hdwy]$")
+SIZE_RE = re.compile(r"^[1-9][0-9]*([KMGT]i?B)?$")
 # keys whose value is a secret: in site.yaml they name an entry of credentials
 SECRET_KEYS = {"password", "priv_password", "token", "passphrase", "secret", "key"}
 
@@ -44,6 +49,13 @@ DEFAULTS = {
         "reports_dir": "/srv/reports",
         "eol_cache": "/var/lib/onprem-metrics/eol",
         "victorialogs": "http://127.0.0.1:9428",
+        # docker volumes of the compose project, always external: compose
+        # never creates an empty one in place of a missing one. A collector
+        # that moves from the pre-30ops stacks names its old volumes here.
+        "volumes": {"prometheus": "30ops_prometheus-data", "alertmanager": "30ops_alertmanager-data",
+                    "grafana": "30ops_grafana-data", "victorialogs": "30ops_victorialogs-data"},
+        "retention": {"metrics": "90d", "logs": "90d", "logs_max_disk": "12GiB"},
+        "grafana_port": 3000,
         # the drills.jsonl each drill writes; the paths the drills used before
         # 30ops, so a cutover does not move history
         "drills": {
@@ -107,6 +119,9 @@ SCHEMA = {
     "collector": _f({"host": _f(S, True), "root": _f(S), "user": _f(S),
                      "textfile_dir": _f(S), "log_dir": _f(S), "reports_dir": _f(S), "eol_cache": _f(S),
                      "victorialogs": _f(S),
+                     "volumes": _f({k: _f(S) for k in VOLUMES}),
+                     "retention": _f({"metrics": _f(S), "logs": _f(S), "logs_max_disk": _f(S)}),
+                     "grafana_port": _f(I),
                      "drills": _f({k: _f(S) for k in DRILL_SOURCES})}, True),
     "credentials": _f(("map", {"file": _f(S, True), "note": _f(S)})),
     "hosts": _f(("list", HOST), True),
@@ -352,10 +367,27 @@ def _cross(doc, base, secrets, errs, warns):
     if isinstance(sid, str) and not NAME_RE.match(sid):
         errs.append(f"site.id {sid!r} must be lower case letters, digits and -")
 
+    col = doc.get("collector") or {}
     for k in ("root", "textfile_dir", "log_dir", "reports_dir", "eol_cache"):
-        v = (doc.get("collector") or {}).get(k)
+        v = col.get(k)
         if isinstance(v, str) and not os.path.isabs(v):
             errs.append(f"collector.{k} must be an absolute path")
+    vols = col.get("volumes") if isinstance(col.get("volumes"), dict) else {}
+    for k, v in vols.items():
+        if isinstance(v, str) and not VOLUME_RE.match(v):
+            errs.append(f"collector.volumes.{k} {v!r} is not a docker volume name")
+    names = [v for v in vols.values() if isinstance(v, str)]
+    for v in sorted({v for v in names if names.count(v) > 1}):
+        errs.append(f"collector.volumes: {v} is used twice")
+    ret = col.get("retention") if isinstance(col.get("retention"), dict) else {}
+    for k in ("metrics", "logs"):
+        if isinstance(ret.get(k), str) and not RETENTION_RE.match(ret[k]):
+            errs.append(f"collector.retention.{k} {ret[k]!r} must be a number and h, d, w or y (90d)")
+    if isinstance(ret.get("logs_max_disk"), str) and not SIZE_RE.match(ret["logs_max_disk"]):
+        errs.append(f"collector.retention.logs_max_disk {ret['logs_max_disk']!r} must be bytes or KiB, MiB, GiB, TiB (12GiB)")
+    gp = col.get("grafana_port")
+    if isinstance(gp, int) and not isinstance(gp, bool) and not 0 < gp < 65536:
+        errs.append(f"collector.grafana_port {gp} is not a port")
 
     worm = doc.get("worm")
     if isinstance(worm, dict):

@@ -34,6 +34,15 @@ FILES = {
     "tools": "etc/onprem-agent-gate/tools.json",
 }
 CRON_FILES = ("onprem-metrics", "onprem-logs", "onprem-changes", "onprem-agent-gate")
+# the two compose projects; the project name (and so the volume prefix) was
+# the directory name
+COMPOSE_FILES = (("onprem-metrics", f"{M}/docker-compose.yml"),
+                 ("onprem-logs", "opt/onprem-logs/docker-compose.yml"))
+# compose volume key -> collector.volumes key
+VOLUME_KEYS = {"prometheus-data": "prometheus", "alertmanager-data": "alertmanager",
+               "grafana-data": "grafana", "victorialogs-data": "victorialogs"}
+# collector/compose.yml profile -> the service it starts
+PROFILE_SERVICES = {"pve": "pve-exporter", "snmp": "snmp-exporter", "logs": "victorialogs"}
 # file-level cron variables and the script that reads each; the variable
 # belongs to that script's lines, wherever in the file it was set
 FILE_ENV = {"AUDIT_QUIET_FROM": "audit-report.py", "FW_EXPECT": "fw-report.py", "AUP_EXPECT": "aup-report.py"}
@@ -178,6 +187,77 @@ def _mask(v):
     if isinstance(v, list):
         return [_mask(x) for x in v]
     return v
+
+
+def _flag(cmd, name):
+    for c in cmd or []:
+        if isinstance(c, str) and c.startswith(name + "="):
+            return c.split("=", 1)[1]
+    return None
+
+
+def compose_settings(root):
+    """What the old compose files say that site.yaml now carries: services,
+    effective volume names, retention, the syslog time zone and the Grafana
+    port. None when neither file is there."""
+    out, found = {"services": [], "volumes": {}, "retention": {}}, False
+    for project, rel in COMPOSE_FILES:
+        try:
+            with open(os.path.join(root, rel), encoding="utf-8") as f:
+                doc = yamlio.loads(f.read(), rel) or {}
+        except OSError:
+            continue
+        found = True
+        vols = doc.get("volumes") or {}
+        for name, svc in (doc.get("services") or {}).items():
+            out["services"].append(name)
+            for v in svc.get("volumes") or []:
+                key = v.split(":", 1)[0] if isinstance(v, str) else None
+                if key in VOLUME_KEYS:
+                    out["volumes"][VOLUME_KEYS[key]] = (vols.get(key) or {}).get("name") or f"{project}_{key}"
+            cmd = svc.get("command")
+            if name == "prometheus" and _flag(cmd, "--storage.tsdb.retention.time"):
+                out["retention"]["metrics"] = _flag(cmd, "--storage.tsdb.retention.time")
+            if name == "victorialogs":
+                for k, flag in (("logs", "-retentionPeriod"), ("logs_max_disk", "-retention.maxDiskSpaceUsageBytes")):
+                    if _flag(cmd, flag):
+                        out["retention"][k] = _flag(cmd, flag)
+                if _flag(cmd, "-syslog.timezone"):
+                    out["timezone"] = _flag(cmd, "-syslog.timezone")
+            if name == "grafana":
+                for p in svc.get("ports") or []:
+                    parts = str(p).split(":")
+                    if len(parts) >= 2 and parts[-1] == "3000":
+                        out["grafana_port"] = int(parts[-2])
+    if not found:
+        return None
+    out["services"] = sorted(out["services"])
+    return out
+
+
+def compose_env(text):
+    env = {}
+    for line in (text or "").splitlines():
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            env[k] = v
+    return env
+
+
+def rendered_compose_settings(text):
+    """compose_settings() for a rendered compose.env and collector/compose.yml."""
+    env = compose_env(text)
+    profiles = [p for p in env.get("COMPOSE_PROFILES", "").split(",") if p]
+    out = {"services": sorted(["prometheus", "alertmanager", "grafana"] + [PROFILE_SERVICES[p] for p in profiles]),
+           "volumes": {k: env[f"OPS30_VOL_{k.upper()}"] for k in ("prometheus", "alertmanager", "grafana")},
+           "retention": {"metrics": env["OPS30_RETENTION_METRICS"]},
+           "grafana_port": int(env["OPS30_GRAFANA_PORT"])}
+    if "logs" in profiles:
+        out["volumes"]["victorialogs"] = env["OPS30_VOL_VICTORIALOGS"]
+        out["retention"]["logs"] = env["OPS30_RETENTION_LOGS"]
+        out["retention"]["logs_max_disk"] = env["OPS30_LOGS_MAX_DISK"]
+        out["timezone"] = env["OPS30_TZ"]
+    return out
 
 
 def _diff(a, b, path=""):
@@ -359,4 +439,11 @@ def compare(tree, legacy, site):
             raise ValueError(f"{n}: {e}") from None
     pair("gate config.json", lread(FILES["gate"]), R("etc/30ops/gate/config.json"), jload, lambda x: remap(x, pm))
     pair("gate tools.json", lread(FILES["tools"]), R("etc/30ops/gate/tools.json"), jload)
+
+    # compose: the settings, not the files (the images and mounts are product)
+    lc, renv = compose_settings(legacy), R("etc/30ops/compose.env")
+    if lc is not None and renv is not None:
+        diffs.extend(f"compose: {d}" for d in _diff(lc, rendered_compose_settings(renv)))
+    elif lc is not None or renv is not None:
+        diffs.append("compose: " + ("legacy has no compose files" if lc is None else "render does not write compose.env"))
     return diffs
