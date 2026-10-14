@@ -8,3 +8,4 @@
 - `scripts/hygiene.py`：破折號、私有 IP、家目錄路徑、`.pii-patterns`。
 - `scripts/check-ci-pins.sh`：action、下載、映像都要鎖定。
 - 範例位址改用文件保留段，場域樣本移到 `examples/sample-site/`，真實變更單不在本 repo。
+- `change_rollback_drills_total` 的 TYPE 由 gauge 改為 counter，名稱不變。原 repo 的 CI 在 unittest 之後才裝 promtool，`promtool check metrics` 從未實際執行。

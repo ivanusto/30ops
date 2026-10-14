@@ -80,7 +80,7 @@ def read_drills(path):
 def render(files, now, drills=None):
     drills = drills or {}
     L = []
-    def fam(n, h): L.extend([f"# HELP {n} {h}", f"# TYPE {n} gauge"])
+    def fam(n, h, t="gauge"): L.extend([f"# HELP {n} {h}", f"# TYPE {n} {t}"])
     recs = []
     for f in files:
         with open(f, encoding="utf-8") as fh:
@@ -112,7 +112,7 @@ def render(files, now, drills=None):
     for of, (_, ok, _) in sorted(drills.items()):
         if of in ids:
             L.append(f'change_rollback_last_drill_result{{id="{esc(of)}"}} {ok}')
-    fam("change_rollback_drills_total", "Rollback drills recorded for this record")
+    fam("change_rollback_drills_total", "Rollback drills recorded for this record", "counter")
     for of, (_, _, n) in sorted(drills.items()):
         if of in ids:
             L.append(f'change_rollback_drills_total{{id="{esc(of)}"}} {n}')
