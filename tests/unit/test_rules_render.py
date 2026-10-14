@@ -86,6 +86,13 @@ class Rules(unittest.TestCase):
         t = 'summary: "{{ $labels.nas }} {{ $value }} ${a}"'
         self.assertEqual(rules.fill(t, {"a": 2}), 'summary: "{{ $labels.nas }} {{ $value }} 2"')
 
+    def test_documented(self):
+        doc = (ROOT / "docs" / "rules.md").read_text()
+        for name in alerts(rules.render(resolved(), "x")):
+            self.assertIn(f"| {name} |", doc)
+        for k in site.threshold_catalogue():
+            self.assertIn(f"| `{k}` |", doc)
+
     def test_no_day_references(self):
         for src in rules.sources():
             self.assertIsNone(re.search(r"\bDay \d+", Path(src).read_text()), src)
