@@ -13,14 +13,16 @@
 #   4. doctor must exit 0
 #   5. install node --bundle twice: the same sha256; the bundle run twice
 #      on the VM: the node-side files do not change on the second run
-# Output and the two states go to $OUT (default ./vm-run).
+# Output and the two states go to $OUT (default ./vm-run); SSH_OPTS adds ssh options.
 set -eu
 DEST=${1:?usage: run.sh USER@VM [REV]}
 REV=${2:-HEAD}
 here=$(cd "$(dirname "$0")/../.." && pwd)
 OUT=${OUT:-./vm-run}
 mkdir -p "$OUT"
-r() { ssh -o BatchMode=yes "$DEST" "$@"; }
+# SSH_OPTS: more ssh options, e.g. -o UserKnownHostsFile=... for a VM whose address had another host
+# shellcheck disable=SC2086
+r() { ssh -o BatchMode=yes ${SSH_OPTS:-} "$DEST" "$@"; }
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*"; exit 1; }
 addr=${DEST#*@}
