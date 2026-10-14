@@ -101,7 +101,7 @@ up() {
 
 down() {
   for p in http sshd snmpd; do
-    [ -f "$STATE/$p.pid" ] && kill "$(cat "$STATE/$p.pid")" 2>/dev/null || true
+    if [ -f "$STATE/$p.pid" ]; then kill "$(cat "$STATE/$p.pid")" 2>/dev/null || true; fi
   done
   ip netns del "$NS" 2>/dev/null || true
   ip link del e2e0 2>/dev/null || true
