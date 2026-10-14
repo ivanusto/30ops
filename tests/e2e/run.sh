@@ -92,12 +92,13 @@ sh "$R/tests/fakes/changes-repo.sh"
 
 # a blob download from a registry can stall without an error (a connection
 # that stays open with nothing on it); install pulls once with a 30 minute
-# timeout, so pull here first, 5 minutes per try, three tries
+# timeout, so pull here first, 15 minutes per try, three tries (a slow CDN
+# edge has served the 111 MB Grafana layer at 400 kB/s)
 step "pull the pinned images"
 sed -n 's/^[[:space:]]*image:[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$R/collector/compose.yml" | sort -u > "$OUT/images.txt"
 while read -r img; do
   n=0
-  until timeout 300 docker pull -q "$img" >/dev/null; do
+  until timeout 900 docker pull -q "$img" >/dev/null; do
     n=$((n + 1)); [ "$n" -lt 3 ] || fail "docker pull $img: three tries"
     echo "retry $n: $img"
   done
