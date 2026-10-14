@@ -1,0 +1,13 @@
+#!/bin/sh
+# Fake QuTS hero zfs: two datasets, two hourly snapshots on the first.
+now=$(date +%s)
+case "$*" in
+  *"-t snapshot"*)
+    printf 'zpool1/zfs263@snapshot:init:\t%s\t0\n' $((now-8640000))
+    printf 'zpool1/zfs263@GMT-2026.10.01-01.00.00\t%s\t123456789\n' $((now-7200))
+    printf 'zpool1/zfs263@GMT-2026.10.01-02.00.00\t%s\t2345678\n' $((now-3600))
+    printf 'zpool1/zfs264@snapshot:init:\t%s\t0\n' $((now-8640000)) ;;
+  *"-t filesystem,volume"*)
+    printf 'zpool1/zfs263\t3640000000000\n'
+    printf 'zpool1/zfs264\t24000000000\n' ;;
+esac

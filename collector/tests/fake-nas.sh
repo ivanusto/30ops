@@ -1,32 +1,11 @@
 #!/bin/sh
-# nas-textfile.sh against fake zfs/zpool/getcfg, then promtool.
+# nas-textfile.sh against fake zfs/zpool/getcfg (tests/fakes/qnap/bin), then promtool.
 set -eu
 HERE=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
+# zpool, zfs and getcfg are shared with the e2e fake NAS
 mkdir -p "$T/bin"
-now=$(date +%s)
-cat > "$T/bin/zpool" <<EOT
-#!/bin/sh
-printf 'zpool1\t24855000000000\t6500000000000\t26%%\tONLINE\n'
-EOT
-cat > "$T/bin/zfs" <<EOT
-#!/bin/sh
-case "\$*" in
-  *"-t snapshot"*)
-    printf 'zpool1/zfs263@snapshot:init:\t$((now-8640000))\t0\n'
-    printf 'zpool1/zfs263@GMT-2026.10.01-01.00.00\t$((now-7200))\t123456789\n'
-    printf 'zpool1/zfs263@GMT-2026.10.01-02.00.00\t$((now-3600))\t2345678\n'
-    printf 'zpool1/zfs264@snapshot:init:\t$((now-8640000))\t0\n' ;;
-  *"-t filesystem,volume"*)
-    printf 'zpool1/zfs263\t3640000000000\n'
-    printf 'zpool1/zfs264\t24000000000\n' ;;
-esac
-EOT
-cat > "$T/bin/getcfg" <<'EOT'
-#!/bin/sh
-[ "$1 $2" = "HybridBackup Version" ] && echo 26.4.4.788
-EOT
-chmod +x "$T"/bin/*
+cp "$HERE/../tests/fakes/qnap/bin/"* "$T/bin/"
 cat > "$T/buddyinfo" <<'EOT'
 Node 0, zone      DMA      0      0      0      0      0      0      0      0      1      1      3
 Node 0, zone    DMA32    313    255    172    113     55   2180    611    207     50      1      0

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Fake QuTS hero zpool for collector/tests/fake-nas.sh and the e2e fake NAS.
+# A file "degraded" in $FAKE_NAS_STATE turns the pool DEGRADED.
+health=ONLINE
+[ -n "${FAKE_NAS_STATE:-}" ] && [ -e "$FAKE_NAS_STATE/degraded" ] && health=DEGRADED
+printf 'zpool1\t24855000000000\t6500000000000\t26%%\t%s\n' "$health"
