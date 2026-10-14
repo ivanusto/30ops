@@ -1,0 +1,26 @@
+30ops
+Copyright 2026 ivanusto
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository merges, with their git history, the following repositories by
+the same author. Each was Apache-2.0 unless noted. The last released tag and
+commit of each are listed in docs/provenance.md, and the original
+repositories keep those tags unchanged.
+
+  ivanusto/onprem-metrics       collector/
+  ivanusto/onprem-logs          logs/
+  ivanusto/onprem-changes       changes/
+  ivanusto/onprem-agent-gate    gate/
+  ivanusto/pve-backup-drill     drills/pve-backup/
+  ivanusto/nas-backup-drill     drills/nas-backup/
+  ivanusto/cloud-offload-drill  drills/cloud-offload/
+  ivanusto/pve-qdevice-on-qnap  checks/qdevice/
+  ivanusto/gb10-ops             plugins/gb10-ops/           (MIT up to v0.2.0)
+  ivanusto/spark-baseline       plugins/spark-baseline/
+  ivanusto/nfs-model-library    plugins/nfs-model-library/
+  ivanusto/onprem-ops-30days    checks/readiness/checklist.md, inventory/  (MIT up to v1.0.0)
+
+The author, sole copyright holder of the MIT-licensed parts, relicenses them
+under Apache-2.0 in this repository. Copies obtained from the original
+repositories remain available under MIT.

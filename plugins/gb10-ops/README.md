@@ -185,7 +185,7 @@ in a buffer is lost.
 
 ## License
 
-MIT. See `LICENSE`.
+Apache-2.0, see `LICENSE` at the repository root. Released as MIT in ivanusto/gb10-ops up to v0.2.0, see `NOTICE`.
 
 ## Status
 
