@@ -1,0 +1,25 @@
+# HELP pve_quorum_up 1 when pvecm status was read
+# TYPE pve_quorum_up gauge
+# HELP pve_quorum_expected_votes Expected votes from pvecm status
+# TYPE pve_quorum_expected_votes gauge
+# HELP pve_quorum_total_votes Total votes currently present
+# TYPE pve_quorum_total_votes gauge
+# HELP pve_quorum_quorum Votes needed for quorum
+# TYPE pve_quorum_quorum gauge
+# HELP pve_quorum_quorate 1 when the Quorate flag is set
+# TYPE pve_quorum_quorate gauge
+# HELP pve_quorum_qdevice_votes Votes contributed by the QDevice, 0 when absent
+# TYPE pve_quorum_qdevice_votes gauge
+# HELP pve_quorum_node_votes Votes per member node
+# TYPE pve_quorum_node_votes gauge
+pve_quorum_expected_votes{cluster="lab"} 3
+pve_quorum_node_votes{cluster="lab",node="192.0.2.5"} 1
+pve_quorum_node_votes{cluster="lab",node="192.0.2.9"} 1
+pve_quorum_qdevice_votes{cluster="lab"} 0
+pve_quorum_quorate{cluster="lab"} 1
+pve_quorum_quorum{cluster="lab"} 2
+pve_quorum_total_votes{cluster="lab"} 2
+pve_quorum_up{cluster="lab"} 1
+# HELP pve_quorum_textfile_last_run_timestamp Unix time of the last run
+# TYPE pve_quorum_textfile_last_run_timestamp gauge
+pve_quorum_textfile_last_run_timestamp X

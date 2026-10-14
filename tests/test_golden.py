@@ -6,7 +6,9 @@ change in v1 (TSDB continuity), so a refactor that moves code into
 lib/python/ops30 has to leave these files byte for byte the same.
 
 Values that depend on the wall clock (*_last_run_timestamp, cache ages) are
-masked. Regenerate after an intended change with:
+masked. Writers in SORTED print the samples of one family in an order that
+depends on awk's hash order (nas, pve-quorum), so their samples are sorted
+within each family before the comparison. Regenerate after an intended change with:
 
     GOLDEN_UPDATE=1 python3 -m unittest tests/test_golden.py
 """
@@ -135,7 +137,99 @@ def gate(tmp):
                 os.environ[k] = v
 
 
-WRITERS = {"changes": changes, "drills": drills, "eol": eol, "aup": aup, "fw": fw, "audit": audit, "gate": gate}
+def _exe(path, text):
+    path.write_text(text)
+    path.chmod(0o755)
+
+
+def nas(tmp):
+    """Two NAS through a fake ssh that runs the piped script locally, and a
+    third that does not answer. Snapshot times are fixed, not relative."""
+    t = Path(tmp)
+    b = t / "bin"
+    b.mkdir()
+    now = int(NOW.timestamp())
+    _exe(b / "zpool", "#!/bin/sh\nprintf 'zpool1\\t24855000000000\\t6500000000000\\t26%%\\tONLINE\\n'\n")
+    _exe(b / "zfs", f"""#!/bin/sh
+case "$*" in
+  *"-t snapshot"*)
+    printf 'zpool1/zfs263@snapshot:init:\\t{now - 8640000}\\t0\\n'
+    printf 'zpool1/zfs263@GMT-2026.10.01-01.00.00\\t{now - 7200}\\t123456789\\n'
+    printf 'zpool1/zfs263@GMT-2026.10.01-02.00.00\\t{now - 3600}\\t2345678\\n'
+    printf 'zpool1/zfs264@snapshot:init:\\t{now - 8640000}\\t0\\n'
+    printf 'zpool1/zfs265@daily-1\\t{now - 86400}\\t4096\\n' ;;
+  *"-t filesystem,volume"*)
+    printf 'zpool1/zfs263\\t3640000000000\\n'
+    printf 'zpool1/zfs264\\t24000000000\\n'
+    printf 'zpool1/zfs265\\t8192\\n' ;;
+esac
+""")
+    _exe(b / "getcfg", '#!/bin/sh\n[ "$1 $2" = "HybridBackup Version" ] && echo 26.4.4.788\n')
+    _exe(b / "ssh", """#!/bin/sh
+while [ $# -gt 0 ]; do case "$1" in -o) shift 2 ;; *@down) exit 255 ;; sh) shift 2; break ;; *) shift ;; esac; done
+exec sh -s "$@"
+""")
+    (t / "buddyinfo").write_text(
+        "Node 0, zone      DMA      0      0      0      0      0      0      0      0      1      1      3\n"
+        "Node 0, zone    DMA32    313    255    172    113     55   2180    611    207     50      1      0\n"
+        "Node 0, zone   Normal 425257  74031  93543  77921  12561  30507    259      0      0      0      0\n")
+    (t / "stat").write_text("cpu  1 2 3 4\nbtime 1791196320\nprocesses 5\n")
+    env = {**os.environ, "PATH": f"{b}:{os.environ['PATH']}",
+           "NAS_BUDDYINFO": str(t / "buddyinfo"), "NAS_PROC_STAT": str(t / "stat")}
+    p = subprocess.run(["sh", str(ROOT / "collector/textfile/nas-textfile.sh"),
+                        "primary=ops30@nas1", "secondary=ops30@nas2", "third=ops30@down"],
+                       capture_output=True, text=True, env=env)
+    if p.returncode != 0:
+        raise AssertionError(f"nas-textfile rc={p.returncode}\n{p.stderr}")
+    return p.stdout
+
+
+def pve_quorum(tmp):
+    """Cluster lab from the field transcript, first node down so the second
+    is tried; cluster dr has the QDevice stopped. One cluster per run, which
+    is what the field has."""
+    fx = ROOT / "collector" / "tests"
+    fake = Path(tmp) / "ssh"
+    _exe(fake, f"""#!/bin/sh
+for a; do host=$a; done
+while [ $# -gt 0 ]; do case $1 in root@*) host=$1;; esac; shift; done
+case $host in root@n2) cat {fx / "pvecm-status.txt"} ;; *) exit 255 ;; esac
+""")
+    env = {**os.environ, "SSH": str(fake)}
+    p = subprocess.run(["sh", str(ROOT / "collector/textfile/pve-quorum-textfile.sh"), "lab=root@n1,root@n2"],
+                       capture_output=True, text=True, env=env)
+    if p.returncode != 0:
+        raise AssertionError(f"pve-quorum-textfile rc={p.returncode}\n{p.stderr}")
+    return p.stdout
+
+
+def pve_quorum_qdevice_down(tmp):
+    fx = ROOT / "collector" / "tests" / "pvecm-status-qdevice-down.txt"
+    p = subprocess.run(["sh", str(ROOT / "collector/textfile/pve-quorum-textfile.sh")],
+                       input=fx.read_text(), capture_output=True, text=True)
+    if p.returncode != 0:
+        raise AssertionError(f"pve-quorum-textfile rc={p.returncode}\n{p.stderr}")
+    return p.stdout
+
+
+def sort_families(text):
+    """Sort the sample lines inside each run of samples; HELP and TYPE lines
+    and the order of the families stay where they are."""
+    out, run_ = [], []
+    for line in text.splitlines(keepends=True):
+        if line.startswith("#"):
+            out.extend(sorted(run_))
+            run_ = []
+            out.append(line)
+        else:
+            run_.append(line)
+    out.extend(sorted(run_))
+    return "".join(out)
+
+
+WRITERS = {"changes": changes, "drills": drills, "eol": eol, "aup": aup, "fw": fw, "audit": audit, "gate": gate,
+           "nas": nas, "pve-quorum": pve_quorum, "pve-quorum-qdevice-down": pve_quorum_qdevice_down}
+SORTED = {"nas", "pve-quorum", "pve-quorum-qdevice-down"}
 
 
 class Golden(unittest.TestCase):
@@ -146,6 +240,8 @@ class Golden(unittest.TestCase):
                 tmp = tempfile.mkdtemp()
                 try:
                     got = MASK.sub(r"\1 X", fn(tmp))
+                    if name in SORTED:
+                        got = sort_families(got)
                 finally:
                     shutil.rmtree(tmp)
                 path = GOLDEN / f"{name}.prom"
