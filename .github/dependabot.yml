@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: {interval: weekly}
+  - package-ecosystem: docker-compose
+    directories: [/collector, /logs]
+    schedule: {interval: weekly}
+  - package-ecosystem: docker
+    directory: /logs/grafana
+    schedule: {interval: weekly}
