@@ -66,7 +66,8 @@ get "$G/api/plugins/victoriametrics-logs-datasource/settings" > /dev/null || fai
 uids=$(get "$G/api/datasources" | python3 -c 'import json, sys; print(" ".join(sorted(d["uid"] for d in json.load(sys.stdin))))')
 [ "$uids" = "alertmanager prometheus victorialogs" ] || fail "datasources: $uids"
 wait_for 30 get "$G/api/datasources/uid/victorialogs/health" || fail "VictoriaLogs datasource health check failed"
-get "$G/api/dashboards/uid/onprem-overview" > /dev/null || fail "dashboard onprem-overview not provisioned"
+# provisioning finishes after /api/health already answers
+wait_for 30 get "$G/api/dashboards/uid/onprem-overview" || fail "dashboard onprem-overview not provisioned"
 echo "grafana: plugin, datasources ($uids), dashboard"
 
 vl_up() {
