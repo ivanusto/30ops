@@ -41,9 +41,9 @@ def manifest(tree, sha):
 
 
 def render(site, sha):
-    from . import adapters, alertmanager, compose, cron, gate, grafana, logs, nodes, prometheus, rules
+    from . import adapters, alertmanager, compose, cron, gate, grafana, logs, nodes, prometheus, rules, status
     tree = {}
-    for mod in (prometheus, rules, alertmanager, grafana, compose, cron, logs, gate, nodes, adapters):
+    for mod in (prometheus, rules, status, alertmanager, grafana, compose, cron, logs, gate, nodes, adapters):
         for path, out in mod.render(site, sha).items():
             if path in tree:
                 raise AssertionError(f"two renderers write {path}")

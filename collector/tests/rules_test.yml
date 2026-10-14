@@ -5,11 +5,15 @@
 # group's own interval, so it cannot see that prometheus.yml evaluates at
 # 60 s. tests/test_rules_config.py checks the gb10 group's 15 s instead.
 rule_files:
+  - rules/status.yml
   - rules/thresholds.yml
   - rules/staleness.yml
   - rules/firewall.yml
 
 evaluation_interval: 15s
+# the status recording rules first, as a step later would hold the NAS
+# alerts that read them back by one evaluation (Telnet at 10m, for: 10m)
+group_eval_order: [status, gb10, nas, pve, drills, pipeline, firewall]
 
 tests:
   # Soak: Day 19 saw the guard trip at 240 while Prometheus held 227. The

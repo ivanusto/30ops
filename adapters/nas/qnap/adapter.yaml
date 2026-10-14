@@ -33,3 +33,16 @@ capabilities:
     face: descriptor
     status: implemented
     ref: logs/nas/qulog-log-sender.md
+# Status strings, as the field NAS report them (QuTS hero 6.0.2, first walk):
+# disks "Good", pools "ready", Telnet "no", and the UPS "-1" when none is
+# attached. render turns each entry into a recording rule <record> that is
+# 1 when the string is healthy and 0 otherwise, keeping every label of the
+# source series, and the alert compares that with 0. `ok` fails closed (a
+# string nobody has seen yet raises the alert, which is the point); `bad`
+# fails open (only the listed string raises it). Regexes are anchored, as
+# PromQL anchors them; (?i) ignores case.
+status:
+  - {record: "nas:qnap_disk_status:ok", metric: qnap_disk_status, label: qnap_disk_status, ok: "(?i)good", alert: NasDiskNotGood}
+  - {record: "nas:qnap_pool_status_info:ok", metric: qnap_pool_status_info, label: qnap_pool_status, ok: "ready", alert: NasPoolStatusNotReady}
+  - {record: "nas:qnap_ups_status:ok", metric: qnap_ups_status, label: qnap_ups_status, ok: "(?i)online.*|-1", alert: NasUpsNotOnline}
+  - {record: "nas:qnap_service_telnet_enabled_info:ok", metric: qnap_service_telnet_enabled_info, label: qnap_service_telnet_enabled, bad: "yes", alert: NasTelnetEnabled}

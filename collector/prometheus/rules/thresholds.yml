@@ -74,19 +74,17 @@ groups:
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} pool {{ $labels.pool }} is {{ $labels.state }}"}
       # snmp-build.py exposes status strings as a label named after the
-      # metric (value 1). DisplayString columns keep the metric name;
-      # EnumAsInfo columns get an _info suffix from snmp_exporter. The
-      # healthy strings below were read from the first walk on both field
-      # NAS (QuTS hero 6.0.2): disks "Good", pools "ready", Telnet "no".
-      # Label matching is case sensitive, so the disk rule ignores case.
-      # A new string shows up as an alert, which is the point.
+      # metric (value 1). Which strings are healthy is the qnap adapter's
+      # (adapters/nas/qnap/adapter.yaml, status:); render turns that into
+      # the nas:*:ok recording rules in rules/status.yml, 1 when healthy
+      # and 0 otherwise, with every label of the source series kept.
       - alert: NasDiskNotGood
-        expr: qnap_disk_status{qnap_disk_status!~"(?i)good"} == 1
+        expr: nas:qnap_disk_status:ok == 0
         for: 5m
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} disk {{ $labels.diskIndex }} {{ $labels.diskModel }} is {{ $labels.qnap_disk_status }}"}
       - alert: NasPoolStatusNotReady
-        expr: qnap_pool_status_info{qnap_pool_status!="ready"} == 1
+        expr: nas:qnap_pool_status_info:ok == 0
         for: 5m
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} pool {{ $labels.storagepoolID }} is {{ $labels.qnap_pool_status }}"}
@@ -101,16 +99,17 @@ groups:
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.nas }} {{ $labels.dataset }} newest snapshot is {{ $value | humanizeDuration }} old"}
       # upsStatus is a free string in QTS-MIB. Both field NAS answer "-1",
-      # which is what QuTS hero returns with no UPS attached, so -1 is not an
-      # alert. The healthy string of a connected UPS has not been seen on
-      # this site yet; check it against the first walk after one is plugged in.
+      # which is what QuTS hero returns with no UPS attached, so -1 counts
+      # as healthy in the status map. The healthy string of a connected UPS
+      # has not been seen on this site yet; check it against the first walk
+      # after one is plugged in.
       - alert: NasUpsNotOnline
-        expr: qnap_ups_status{qnap_ups_status!~"(?i)online.*|-1"} == 1
+        expr: nas:qnap_ups_status:ok == 0
         for: 1m
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} UPS reports {{ $labels.qnap_ups_status }}"}
       - alert: NasTelnetEnabled
-        expr: qnap_service_telnet_enabled_info{qnap_service_telnet_enabled="yes"} == 1
+        expr: nas:qnap_service_telnet_enabled_info:ok == 0
         for: 10m
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.nas }} has Telnet enabled (a hardening regression)"}

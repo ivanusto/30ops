@@ -1,0 +1,55 @@
+# The qnap status map (adapters/nas/qnap/adapter.yaml status:), rendered as
+# rules/status.yml: which strings count as healthy, and that the alerts keep
+# every label of the source series. rules_test.yml has the field strings.
+rule_files:
+  - rules/status.yml
+  - rules/thresholds.yml
+
+evaluation_interval: 1m
+group_eval_order: [status, gb10, nas, pve, drills]
+
+tests:
+  - interval: 1m
+    input_series:
+      # case does not matter for disks
+      - series: 'qnap_disk_status{job="nas-snmp",instance="192.0.2.2",nas="primary",diskIndex="1",diskModel="m1",qnap_disk_status="GOOD"}'
+        values: "1x10"
+      # a pool string never seen before fails closed
+      - series: 'qnap_pool_status_info{job="nas-snmp",instance="192.0.2.2",nas="primary",storagepoolID="1",qnap_pool_status="rebuilding"}'
+        values: "1x10"
+      # "online" and anything after it is healthy, so is -1 (no UPS)
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.0.2.2",nas="primary",qnap_ups_status="Online on battery"}'
+        values: "1x10"
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.0.2.22",nas="secondary",qnap_ups_status="Low battery"}'
+        values: "1x10"
+      # Telnet fails open: only "yes" raises it
+      - series: 'qnap_service_telnet_enabled_info{job="nas-snmp",instance="192.0.2.2",nas="primary",qnap_service_telnet_enabled="unknown"}'
+        values: "1x12"
+    promql_expr_test:
+      - expr: nas:qnap_disk_status:ok
+        eval_time: 1m
+        exp_samples:
+          - labels: 'nas:qnap_disk_status:ok{job="nas-snmp",instance="192.0.2.2",nas="primary",diskIndex="1",diskModel="m1",qnap_disk_status="GOOD"}'
+            value: 1
+      - expr: nas:qnap_pool_status_info:ok
+        eval_time: 1m
+        exp_samples:
+          - labels: 'nas:qnap_pool_status_info:ok{job="nas-snmp",instance="192.0.2.2",nas="primary",storagepoolID="1",qnap_pool_status="rebuilding"}'
+            value: 0
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: NasDiskNotGood
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: NasPoolStatusNotReady
+        exp_alerts:
+          - exp_labels: {severity: critical, job: nas-snmp, instance: "192.0.2.2", nas: primary, storagepoolID: "1", qnap_pool_status: rebuilding}
+            exp_annotations: {summary: "primary pool 1 is rebuilding"}
+      - eval_time: 2m
+        alertname: NasUpsNotOnline
+        exp_alerts:
+          - exp_labels: {severity: critical, job: nas-snmp, instance: "192.0.2.22", nas: secondary, qnap_ups_status: "Low battery"}
+            exp_annotations: {summary: "secondary UPS reports Low battery"}
+      - eval_time: 11m
+        alertname: NasTelnetEnabled
+        exp_alerts: []

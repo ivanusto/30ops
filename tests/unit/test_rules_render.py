@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib" / "python"))
 
 from ops30 import site, yamlio  # noqa: E402
-from ops30.render import rules  # noqa: E402
+from ops30.render import rules, status  # noqa: E402
 
 SAMPLE = ROOT / "examples" / "sample-site"
 
@@ -57,7 +57,9 @@ class Rules(unittest.TestCase):
 
     def test_defaults_match_v030(self):
         """With no override the rules mean what v0.3.0 shipped (expr, for,
-        labels); only the comments and the annotation text moved."""
+        labels); only the comments and the annotation text moved. The four
+        status alerts compare a recording rule with 0 since v0.5; their
+        status map must be exactly what the v0.3.0 matcher said."""
         if git_show("v0.3.0", "VERSION") is None:
             self.skipTest("tag v0.3.0 not in this clone")
         old = {}
@@ -65,7 +67,16 @@ class Rules(unittest.TestCase):
             name = os.path.basename(src)
             text = git_show("v0.3.0", f"collector/prometheus/rules/{name}")
             old[name] = rules.Output(text)
-        self.assertEqual(alerts(rules.render(resolved(), "x")), alerts(old))
+        new, was = alerts(rules.render(resolved(), "x")), alerts(old)
+        for _, _, e in status.entries():
+            name, m, lab = e["alert"], e["metric"], e["label"]
+            g, iv, ex, f, labels = was[name]
+            norm = re.sub(r'(\w+)="', r'\1=~"', re.sub(r'(\w+)!="', r'\1!~"', ex))
+            want = f'{m}{{{lab}!~"{e["ok"]}"}} == 1' if "ok" in e else f'{m}{{{lab}=~"{e["bad"]}"}} == 1'
+            self.assertEqual(norm, want, name)
+            self.assertEqual(new[name][2], f'{e["record"]} == 0', name)
+            new[name] = new[name][:2] + (ex,) + new[name][3:]
+        self.assertEqual(new, was)
 
     def test_override_changes_only_its_alert(self):
         a = alerts(rules.render(resolved(), "x"))
@@ -74,6 +85,18 @@ class Rules(unittest.TestCase):
         self.assertEqual(diff, {"NasPoolAbove80", "FwSourceBurst"})
         self.assertIn("nas_zpool_capacity_percent > 85", b["NasPoolAbove80"][2])
         self.assertIn('{source="ufw"} > 150', b["FwSourceBurst"][2])
+
+    def test_status_rules(self):
+        """One recording rule per status entry, both sides of `or` disjoint."""
+        doc = yamlio.loads(status.render(resolved(), "x")[status.PATH].text)
+        self.assertEqual([g["name"] for g in doc["groups"]], ["status"])
+        recs = {r["record"]: r["expr"] for r in doc["groups"][0]["rules"]}
+        self.assertEqual(recs["nas:qnap_disk_status:ok"],
+                         'qnap_disk_status{qnap_disk_status=~"(?i)good"} * 0 + 1 or '
+                         'qnap_disk_status{qnap_disk_status!~"(?i)good"} * 0')
+        self.assertEqual(recs["nas:qnap_service_telnet_enabled_info:ok"],
+                         'qnap_service_telnet_enabled_info{qnap_service_telnet_enabled=~"yes"} * 0 or '
+                         'qnap_service_telnet_enabled_info{qnap_service_telnet_enabled!~"yes"} * 0 + 1')
 
     def test_number_format(self):
         self.assertEqual([rules.number(v) for v in (80, 80.0, 0.5, 1e3)], ["80", "80", "0.5", "1000"])

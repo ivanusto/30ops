@@ -54,6 +54,20 @@ def health(targets, transport, now):   # -> textfile 文字
 - `now` 是 Unix 時間，寫進 `*_last_run_timestamp`。
 - 輸出用 `base.Metrics`，數值是已格式化的字串，和原本 shell 寫入器輸出的文字一致。
 
+## 狀態對照
+
+SNMP 回傳的狀態字串因廠商與韌體而異，adapter.yaml 的 `status:` 宣告哪些字串算健康：
+
+```yaml
+status:
+  - {record: "nas:qnap_disk_status:ok", metric: qnap_disk_status, label: qnap_disk_status, ok: "(?i)good", alert: NasDiskNotGood}
+  - {record: "nas:qnap_service_telnet_enabled_info:ok", metric: qnap_service_telnet_enabled_info, label: qnap_service_telnet_enabled, bad: "yes", alert: NasTelnetEnabled}
+```
+
+- `ok` 是 fail closed（沒列到的字串算異常），`bad` 是 fail open（只有列到的字串算異常），兩者擇一。regex 照 PromQL 規則整串比對。
+- render 產出 `rules/status.yml`，每項一條 recording rule `<kind>:<metric>:ok`（[rules.md](rules.md)）。
+- 契約測試檢查：metric 在 `snmp.yml` 裡、`alert` 存在，而且它的 expr 正好是 `<record> == 0`。
+
 ## ops30_adapter_info
 
 既有指標不加 `vendor` label（加了會變成新序列，切換時 TSDB 斷開），改由 render 產出靜態的 `<textfile_dir>/30ops-adapters.prom`，每台主機每個 kind 一筆：

@@ -1,6 +1,6 @@
 # 告警規則
 
-規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 69 條告警，沒有 recording rule。
+規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 69 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
 
 - 告警名稱、等級與標籤是 Alertmanager 路由與抑制規則的依據（`collector/alertmanager/alertmanager.base.yml`），也是告警歷史的鍵，所以 v1 不改名。`NasPoolAbove80` 在門檻改成 85 之後仍叫這個名字。
 - 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。
@@ -93,7 +93,12 @@ alerting:
 | NasTelnetEnabled | warning | 10m | | Telnet 被打開，屬於強化設定回退 |
 | NasMemoryFragmented | warning | 10m | | 帶 GPU 的 NAS，Normal zone 6 小時內都沒有 512 KiB 以上的空閒區塊；GPU 容器可能無法啟動，在空檔重開 NAS |
 
-狀態字串的比對（NasDiskNotGood、NasPoolStatusNotReady、NasUpsNotOnline、NasTelnetEnabled）目前綁定 QuTS hero 6.0.2 的回傳值。新出現的字串會觸發告警，這是刻意的設計。v0.5 的 qnap adapter 會先正規化字串，再交給規則比對。
+狀態字串（NasDiskNotGood、NasPoolStatusNotReady、NasUpsNotOnline、NasTelnetEnabled）先由 qnap adapter 正規化，告警只比對結果：
+
+- `adapters/nas/qnap/adapter.yaml` 的 `status:` 列出哪些字串算健康，值取自 QuTS hero 6.0.2 的第一次 walk：硬碟 `Good`（不分大小寫）、儲存池 `ready`、UPS `online` 開頭或 `-1`（沒接 UPS）。
+- render 把每一項轉成 `rules/status.yml` 的 recording rule `nas:<metric>:ok`，健康為 1、其他為 0，保留來源序列的所有 label（含狀態字串），所以告警的 label 與 annotation 不變。告警是 `nas:<metric>:ok == 0`。
+- 硬碟、儲存池、UPS 是 fail closed：沒見過的字串會觸發告警，這是刻意的設計。Telnet 是 fail open：只有 `yes` 會觸發。
+- 換韌體或換廠商時只改 adapter.yaml 的對照，規則不動。recording rule 與告警在不同群組，告警最多晚一個評估間隔（60 秒）看到結果。
 
 ### pve
 

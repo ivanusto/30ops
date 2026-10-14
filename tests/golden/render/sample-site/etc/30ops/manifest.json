@@ -123,6 +123,13 @@
       "secret": false
     },
     {
+      "path": "etc/30ops/prometheus/rules/status.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "etc/30ops/prometheus/rules/thresholds.yml",
       "mode": "0644",
       "owner": "root:root",

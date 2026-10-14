@@ -37,6 +37,7 @@ render 不讀任何秘密檔。
 |---|---|---|
 | `etc/30ops/prometheus/prometheus.yml` | site label、沒有主機的 job 拿掉（不收日誌時也拿掉 victorialogs） | 手貼的 scrape 片段 |
 | `etc/30ops/prometheus/rules/*.yml` | 69 條告警規則，門檻代入場域值（[rules.md](rules.md)） | 各模組的規則複本 |
+| `etc/30ops/prometheus/rules/status.yml` | adapter 狀態字串正規化的 recording rule（`nas:<metric>:ok`） | 規則裡寫死的 QuTS 字串 |
 | `etc/30ops/prometheus/targets/*.yml` | `collector`、`gb10`、`node`、`pve`、`nas-snmp`，同 label 的主機同一組 | 手寫的 targets 檔 |
 | `etc/30ops/prometheus/pve.yml`、`snmp-auth.yml` | exporter 設定，秘密為佔位；`pve.yml` 由 pve adapter 的 exporter_config 產生 | 手寫的 exporter 設定 |
 | `etc/30ops/alertmanager/alertmanager.yml` | SMTP 與收件者 | 範本的手改複本 |
