@@ -1,0 +1,30 @@
+# HELP change_record One per change record in changes/, with its status
+# TYPE change_record gauge
+change_record{id="CR-2026-0001",status="scheduled",type="standard",risk="medium",implementer="ivan",approver="ivan"} 1
+# HELP change_window_start_timestamp Unix time the change window opens
+# TYPE change_window_start_timestamp gauge
+change_window_start_timestamp{id="CR-2026-0001",status="scheduled"} 1791727200
+# HELP change_window_end_timestamp Unix time the change window closes
+# TYPE change_window_end_timestamp gauge
+change_window_end_timestamp{id="CR-2026-0001",status="scheduled"} 1791730800
+# HELP change_records Number of records per status (every status is written, 0 included)
+# TYPE change_records gauge
+change_records{status="draft"} 0
+change_records{status="approved"} 0
+change_records{status="scheduled"} 1
+change_records{status="in_progress"} 0
+change_records{status="done"} 0
+change_records{status="rolled_back"} 0
+change_records{status="cancelled"} 0
+# HELP change_rollback_last_drill_timestamp Unix time of the last drill that rolled this record back (drills/drills.jsonl)
+# TYPE change_rollback_last_drill_timestamp gauge
+change_rollback_last_drill_timestamp{id="CR-2026-0001"} 1791786000
+# HELP change_rollback_last_drill_result 1 when the last rollback drill of this record passed
+# TYPE change_rollback_last_drill_result gauge
+change_rollback_last_drill_result{id="CR-2026-0001"} 1
+# HELP change_rollback_drills_total Rollback drills recorded for this record
+# TYPE change_rollback_drills_total counter
+change_rollback_drills_total{id="CR-2026-0001"} 2
+# HELP changes_textfile_last_run_timestamp Unix time of the last changes-textfile run
+# TYPE changes_textfile_last_run_timestamp gauge
+changes_textfile_last_run_timestamp X

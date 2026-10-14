@@ -1,0 +1,87 @@
+# HELP asset_eol_timestamp_seconds Unix time of the support end, licence expiry or end-of-order in eol/assets.tsv
+# TYPE asset_eol_timestamp_seconds gauge
+asset_eol_timestamp_seconds{asset="fgt-edge",component="FortiOS",kind="firmware",version="7.6.7",milestone="end_of_engineering",basis="vendor"} 1848096000
+asset_eol_timestamp_seconds{asset="fgt-edge",component="FortiOS",kind="firmware",version="7.6.7",milestone="end_of_support",basis="vendor"} 1895529600
+asset_eol_timestamp_seconds{asset="fap-01",component="FortiAP 221E",kind="hardware",version="221E",milestone="end_of_support",basis="vendor"} 1924819200
+asset_eol_timestamp_seconds{asset="spark01",component="Ubuntu (DGX OS base)",kind="os",version="24.04",milestone="security_support_end",basis="estimate"} 1874880000
+asset_eol_timestamp_seconds{asset="spark02",component="Ubuntu (DGX OS base)",kind="os",version="24.04",milestone="security_support_end",basis="estimate"} 1874880000
+asset_eol_timestamp_seconds{asset="pve1",component="Proxmox VE",kind="os",version="9.2",milestone="end_of_support",basis="estimate"} 1849392000
+asset_eol_timestamp_seconds{asset="pve1",component="Debian (PVE base)",kind="os",version="13",milestone="security_support_end",basis="vendor"} 1849392000
+asset_eol_timestamp_seconds{asset="pve2",component="Proxmox VE",kind="os",version="9.2",milestone="end_of_support",basis="estimate"} 1849392000
+asset_eol_timestamp_seconds{asset="pve2",component="Debian (PVE base)",kind="os",version="13",milestone="security_support_end",basis="vendor"} 1849392000
+asset_eol_timestamp_seconds{asset="qdevice",component="Debian",kind="os",version="13",milestone="security_support_end",basis="vendor"} 1849392000
+asset_eol_timestamp_seconds{asset="qdevice",component="Debian",kind="os",version="13",milestone="lts_end",basis="vendor"} 1909008000
+asset_eol_timestamp_seconds{asset="collector",component="Ubuntu",kind="os",version="24.04",milestone="security_support_end",basis="vendor"} 1874880000
+asset_eol_timestamp_seconds{asset="viewer",component="Node.js (build image)",kind="runtime",version="22",milestone="end_of_support",basis="vendor"} 1809043200
+asset_eol_timestamp_seconds{asset="fgt-edge",component="antivirus",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="mobile_malware",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="ai_malware_detection",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="ips",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="appctrl",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="genai_app",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="device_os_id",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="botnet_domain",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="psirt_security_rating",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="outbreak_security_rating",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="icdb",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="inline_casb",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="local_in_virtual_patching",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="malicious_urls",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="blacklisted_certificates",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="firmware_updates",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="web_filtering",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="outbreak_prevention",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="antispam",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+asset_eol_timestamp_seconds{asset="fgt-edge",component="iot_detection",kind="licence",version="-",milestone="expires",basis="licence"} 1758326400
+# HELP asset_eol_unknown 1 for an asset whose end date is not published or not yet looked up (date ? in the TSV)
+# TYPE asset_eol_unknown gauge
+asset_eol_unknown{asset="fgt-edge",component="FortiGate 60F",kind="hardware",version="60F",milestone="end_of_order",basis="unknown"} 1
+asset_eol_unknown{asset="spark01",component="DGX OS",kind="os",version="7.6.0",milestone="end_of_support",basis="unknown"} 1
+asset_eol_unknown{asset="spark02",component="DGX OS",kind="os",version="7.6.0",milestone="end_of_support",basis="unknown"} 1
+asset_eol_unknown{asset="nas-primary",component="QuTS hero",kind="os",version="6.0.2",milestone="end_of_support",basis="unknown"} 1
+asset_eol_unknown{asset="nas-secondary",component="QuTS hero",kind="os",version="6.0.2",milestone="end_of_support",basis="unknown"} 1
+asset_eol_unknown{asset="nas-secondary",component="TS-464",kind="hardware",version="TS-464",milestone="end_of_support",basis="unknown"} 1
+# HELP asset_eol_source_mismatch 1 when endoflife.date disagrees with the date in the TSV (--refresh), 0 when it agrees
+# TYPE asset_eol_source_mismatch gauge
+asset_eol_source_mismatch{asset="fgt-edge",component="FortiOS",kind="firmware",version="7.6.7",milestone="end_of_engineering",basis="vendor"} 0
+asset_eol_source_mismatch{asset="fgt-edge",component="FortiOS",kind="firmware",version="7.6.7",milestone="end_of_support",basis="vendor"} 0
+asset_eol_source_mismatch{asset="spark01",component="Ubuntu (DGX OS base)",kind="os",version="24.04",milestone="security_support_end",basis="estimate"} 0
+asset_eol_source_mismatch{asset="spark02",component="Ubuntu (DGX OS base)",kind="os",version="24.04",milestone="security_support_end",basis="estimate"} 0
+asset_eol_source_mismatch{asset="pve1",component="Debian (PVE base)",kind="os",version="13",milestone="security_support_end",basis="vendor"} 0
+asset_eol_source_mismatch{asset="pve2",component="Debian (PVE base)",kind="os",version="13",milestone="security_support_end",basis="vendor"} 0
+asset_eol_source_mismatch{asset="qdevice",component="Debian",kind="os",version="13",milestone="security_support_end",basis="vendor"} 0
+asset_eol_source_mismatch{asset="qdevice",component="Debian",kind="os",version="13",milestone="lts_end",basis="vendor"} 0
+asset_eol_source_mismatch{asset="collector",component="Ubuntu",kind="os",version="24.04",milestone="security_support_end",basis="vendor"} 0
+asset_eol_source_mismatch{asset="viewer",component="Node.js (build image)",kind="runtime",version="22",milestone="end_of_support",basis="vendor"} 0
+# HELP asset_eol_source_age_seconds Age of the cached endoflife.date answer per product
+# TYPE asset_eol_source_age_seconds gauge
+asset_eol_source_age_seconds{product="debian"} X
+asset_eol_source_age_seconds{product="fortios"} X
+asset_eol_source_age_seconds{product="nodejs"} X
+asset_eol_source_age_seconds{product="proxmox-ve"} X
+asset_eol_source_age_seconds{product="ubuntu"} X
+# HELP asset_licence_status 1 per licence the FortiGate reports, with its status label
+# TYPE asset_licence_status gauge
+asset_licence_status{asset="fgt-edge",component="antivirus",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="mobile_malware",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="ai_malware_detection",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="ips",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="appctrl",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="genai_app",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="device_os_id",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="botnet_domain",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="psirt_security_rating",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="outbreak_security_rating",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="icdb",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="inline_casb",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="local_in_virtual_patching",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="malicious_urls",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="blacklisted_certificates",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="firmware_updates",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="web_filtering",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="outbreak_prevention",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="antispam",status="expired"} 1
+asset_licence_status{asset="fgt-edge",component="iot_detection",status="expired"} 1
+# HELP eol_textfile_last_run_timestamp Unix time of the last eol-textfile run
+# TYPE eol_textfile_last_run_timestamp gauge
+eol_textfile_last_run_timestamp X

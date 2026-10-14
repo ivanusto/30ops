@@ -1,0 +1,2 @@
+{"t0":"2026-10-01T13:30:25Z","label":"2. 整個共享資料夾回復到快照","path":"/mnt/drill/share","kind":"snapshot","restore_point":"2026-10-01T13:00:26Z","appear":"-","canary":"1198","manifest":"-","rto":"1198","rpo":"1799","payload":"ok","size_mb":20480,"rate_mbs":"17","result":"OK","code":0}
+{"t0":"2026-10-01T14:22:55Z","label":"3. 從次要 NAS 還原回主 NAS","path":"/mnt/drill/canary","kind":"frozen","restore_point":"2026-10-01T14:14:01Z","appear":"68","canary":"99","manifest":"99","rto":"-","rpo":"534","payload":"ok","size_mb":55,"rate_mbs":"-","result":"FAIL","code":4}

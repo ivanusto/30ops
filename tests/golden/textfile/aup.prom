@@ -1,0 +1,22 @@
+# HELP aup_webfilter_total Web-filter log lines in the report window
+# TYPE aup_webfilter_total gauge
+aup_webfilter_total{fgt="fgt-edge"} 4
+aup_webfilter_total{fgt="fgt-silent"} 0
+# HELP aup_webfilter_blocked Web-filter lines with a blocking action in the window
+# TYPE aup_webfilter_blocked gauge
+aup_webfilter_blocked{fgt="fgt-edge"} 2
+aup_webfilter_blocked{fgt="fgt-silent"} 0
+# HELP aup_webfilter_urgent Hits on the urgent categories in the window (0 is written for every category so the rule has a series)
+# TYPE aup_webfilter_urgent gauge
+aup_webfilter_urgent{fgt="fgt-edge",catdesc="Malicious Websites"} 0
+aup_webfilter_urgent{fgt="fgt-edge",catdesc="Phishing"} 1
+aup_webfilter_urgent{fgt="fgt-edge",catdesc="Spam URLs"} 0
+aup_webfilter_urgent{fgt="fgt-silent",catdesc="Malicious Websites"} 0
+aup_webfilter_urgent{fgt="fgt-silent",catdesc="Phishing"} 0
+aup_webfilter_urgent{fgt="fgt-silent",catdesc="Spam URLs"} 0
+# HELP aup_webfilter_blocked_top_source Blocked lines from the single most blocked workstation
+# TYPE aup_webfilter_blocked_top_source gauge
+aup_webfilter_blocked_top_source{fgt="fgt-edge",who="192.0.2.23"} 2
+# HELP aup_report_last_run_timestamp Unix time of the last aup-report run
+# TYPE aup_report_last_run_timestamp gauge
+aup_report_last_run_timestamp X

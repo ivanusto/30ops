@@ -1,0 +1,23 @@
+# HELP fw_blocked Blocked packets logged in the report window
+# TYPE fw_blocked gauge
+fw_blocked{source="pve",host="pve1"} 42
+fw_blocked{source="pve",host="pve2"} 7
+fw_blocked{source="pve",host="pve3"} 0
+fw_blocked{source="fortigate",host="fgt-edge"} 1200
+# HELP fw_top_source_blocked Blocked packets from the single busiest source in the window
+# TYPE fw_top_source_blocked gauge
+fw_top_source_blocked{source="pve",host="pve1",src="198.51.100.23"} 30
+fw_top_source_blocked{source="pve",host="pve2",src="203.0.113.5"} 7
+fw_top_source_blocked{source="fortigate",host="fgt-edge",src="203.0.113.9"} 800
+# HELP fw_new_sources Sources seen in the window but not in the baseline
+# TYPE fw_new_sources gauge
+fw_new_sources{source="pve",host="pve1"} 2
+# HELP nas_login_failed Failed logins in QuLog connection log in the window
+# TYPE nas_login_failed gauge
+nas_login_failed{nas="nas1"} 9
+# HELP nas_login_failed_top_source Failed logins from the single busiest source
+# TYPE nas_login_failed_top_source gauge
+nas_login_failed_top_source{nas="nas1",src="192.0.2.51"} 6
+# HELP fw_report_last_run_timestamp Unix time of the last fw-report run
+# TYPE fw_report_last_run_timestamp gauge
+fw_report_last_run_timestamp X

@@ -1,0 +1,23 @@
+# HELP agent_gate_decisions_total Gate decisions recorded in audit.jsonl
+# TYPE agent_gate_decisions_total counter
+agent_gate_decisions_total{tool="nope",level="?",decision="DENY"} 1
+agent_gate_decisions_total{tool="pve.quorum_status",level="L1",decision="ALLOW"} 1
+agent_gate_decisions_total{tool="qdevice.reboot",level="L3",decision="PENDING"} 1
+# HELP agent_gate_pending_approvals L3 requests waiting for a human
+# TYPE agent_gate_pending_approvals gauge
+agent_gate_pending_approvals 1
+# HELP agent_gate_stopped 1 when the STOP file is present (every call is denied)
+# TYPE agent_gate_stopped gauge
+agent_gate_stopped 0
+# HELP agent_gate_chain_length Records in the audit chain
+# TYPE agent_gate_chain_length gauge
+agent_gate_chain_length 3
+# HELP agent_gate_chain_ok 1 when every record's hash chains to the previous one
+# TYPE agent_gate_chain_ok gauge
+agent_gate_chain_ok 1
+# HELP agent_gate_last_decision_timestamp Unix time of the last gate decision
+# TYPE agent_gate_last_decision_timestamp gauge
+agent_gate_last_decision_timestamp 1791894600
+# HELP agent_gate_textfile_last_run_timestamp Unix time of the last run
+# TYPE agent_gate_textfile_last_run_timestamp gauge
+agent_gate_textfile_last_run_timestamp X

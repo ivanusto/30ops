@@ -1,0 +1,64 @@
+# HELP drill_last_timestamp Unix time of the last drill
+# TYPE drill_last_timestamp gauge
+drill_last_timestamp{source="pve",label="d1-instant"} 1790780924
+drill_last_timestamp{source="pve",label="d3-full"} 1790783226
+drill_last_timestamp{source="nas",label="2. 整個共享資料夾回復到快照"} 1790861425
+drill_last_timestamp{source="nas",label="3. 從次要 NAS 還原回主 NAS"} 1790864575
+drill_last_timestamp{source="cloud",label="1. 上傳 Music"} 1790892600
+drill_last_timestamp{source="cloud",label="2. 還原 Music"} 1790898239
+drill_last_timestamp{source="logs",label="archive spot check"} 1791428440
+drill_last_timestamp{source="logs",label="daily archive verify"} 1791421512
+drill_last_timestamp{source="logs",label="pcap archive verify"} 1791511205
+drill_last_timestamp{source="changes",label="qdevice-snapshot-revert"} 1791786000
+# HELP drill_last_result 1 when the last drill passed
+# TYPE drill_last_result gauge
+drill_last_result{source="pve",label="d1-instant"} 0
+drill_last_result{source="pve",label="d3-full"} 1
+drill_last_result{source="nas",label="2. 整個共享資料夾回復到快照"} 1
+drill_last_result{source="nas",label="3. 從次要 NAS 還原回主 NAS"} 0
+drill_last_result{source="cloud",label="1. 上傳 Music"} 0
+drill_last_result{source="cloud",label="2. 還原 Music"} 1
+drill_last_result{source="logs",label="archive spot check"} 0
+drill_last_result{source="logs",label="daily archive verify"} 1
+drill_last_result{source="logs",label="pcap archive verify"} 1
+drill_last_result{source="changes",label="qdevice-snapshot-revert"} 1
+# HELP drill_last_rto_seconds RTO of the last drill
+# TYPE drill_last_rto_seconds gauge
+drill_last_rto_seconds{source="pve",label="d1-instant"} 0
+drill_last_rto_seconds{source="pve",label="d3-full"} 569
+drill_last_rto_seconds{source="nas",label="2. 整個共享資料夾回復到快照"} 1198
+drill_last_rto_seconds{source="cloud",label="1. 上傳 Music"} 0
+drill_last_rto_seconds{source="cloud",label="2. 還原 Music"} 92
+drill_last_rto_seconds{source="changes",label="qdevice-snapshot-revert"} 47
+# HELP drill_last_rpo_seconds RPO of the last drill
+# TYPE drill_last_rpo_seconds gauge
+drill_last_rpo_seconds{source="pve",label="d3-full"} 784
+drill_last_rpo_seconds{source="nas",label="2. 整個共享資料夾回復到快照"} 1799
+drill_last_rpo_seconds{source="nas",label="3. 從次要 NAS 還原回主 NAS"} 534
+# HELP drill_last_rate_mib_per_second Transfer rate of the last drill
+# TYPE drill_last_rate_mib_per_second gauge
+drill_last_rate_mib_per_second{source="nas",label="2. 整個共享資料夾回復到快照"} 17
+drill_last_rate_mib_per_second{source="cloud",label="2. 還原 Music"} 52
+# HELP drill_last_success_timestamp Unix time of the last passing drill
+# TYPE drill_last_success_timestamp gauge
+drill_last_success_timestamp{source="pve",label="d3-full"} 1790783226
+drill_last_success_timestamp{source="nas",label="2. 整個共享資料夾回復到快照"} 1790861425
+drill_last_success_timestamp{source="cloud",label="2. 還原 Music"} 1790898239
+drill_last_success_timestamp{source="logs",label="daily archive verify"} 1791421512
+drill_last_success_timestamp{source="logs",label="pcap archive verify"} 1791511205
+drill_last_success_timestamp{source="changes",label="qdevice-snapshot-revert"} 1791786000
+# HELP drill_count_total Drills recorded
+# TYPE drill_count_total counter
+drill_count_total{source="pve",label="d1-instant"} 1
+drill_count_total{source="pve",label="d3-full"} 1
+drill_count_total{source="nas",label="2. 整個共享資料夾回復到快照"} 1
+drill_count_total{source="nas",label="3. 從次要 NAS 還原回主 NAS"} 1
+drill_count_total{source="cloud",label="1. 上傳 Music"} 1
+drill_count_total{source="cloud",label="2. 還原 Music"} 2
+drill_count_total{source="logs",label="archive spot check"} 1
+drill_count_total{source="logs",label="daily archive verify"} 1
+drill_count_total{source="logs",label="pcap archive verify"} 1
+drill_count_total{source="changes",label="qdevice-snapshot-revert"} 2
+# HELP drills_textfile_last_run_timestamp Unix time of the last run
+# TYPE drills_textfile_last_run_timestamp gauge
+drills_textfile_last_run_timestamp X

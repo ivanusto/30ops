@@ -1,0 +1,33 @@
+# HELP audit_actions Administrative actions seen in the report window, ignore list applied
+# TYPE audit_actions gauge
+audit_actions{source="fortigate-config"} 2
+audit_actions{source="fortigate-login"} 0
+audit_actions{source="pve-task"} 0
+audit_actions{source="sudo"} 0
+audit_actions{source="ssh-login"} 0
+audit_actions{source="agent-gate"} 0
+audit_actions{source="nas-event"} 1
+# HELP audit_unattributed Administrative actions outside every change window, admin workstations left out
+# TYPE audit_unattributed gauge
+audit_unattributed{source="fortigate-config"} 1
+audit_unattributed{source="fortigate-login"} 0
+audit_unattributed{source="pve-task"} 0
+audit_unattributed{source="sudo"} 0
+audit_unattributed{source="ssh-login"} 0
+audit_unattributed{source="agent-gate"} 0
+audit_unattributed{source="nas-event"} 0
+# HELP audit_unattributed_quiet Administrative actions outside every change window from an admin workstation (--quiet-from)
+# TYPE audit_unattributed_quiet gauge
+audit_unattributed_quiet{source="fortigate-config"} 0
+audit_unattributed_quiet{source="fortigate-login"} 0
+audit_unattributed_quiet{source="pve-task"} 0
+audit_unattributed_quiet{source="sudo"} 0
+audit_unattributed_quiet{source="ssh-login"} 0
+audit_unattributed_quiet{source="agent-gate"} 0
+audit_unattributed_quiet{source="nas-event"} 1
+# HELP audit_changes_without_marks Done change records in the window with no change-mark begin line
+# TYPE audit_changes_without_marks gauge
+audit_changes_without_marks 1
+# HELP audit_report_last_run_timestamp Unix time of the last audit-report run
+# TYPE audit_report_last_run_timestamp gauge
+audit_report_last_run_timestamp X
