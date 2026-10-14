@@ -1,0 +1,65 @@
+name: release
+
+# On a tag vX.Y.Z (a release) or vX.Y.Z-rc.N (a prerelease): check.yml and
+# e2e.yml on the tagged commit, then the release files, built twice to show
+# they are reproducible, a build provenance attestation for each, and the
+# GitHub Release with the CHANGELOG section as its notes. docs/release.md.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    uses: ./.github/workflows/check.yml
+  e2e:
+    uses: ./.github/workflows/e2e.yml
+
+  release:
+    needs: [check, e2e]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - id: tag
+        name: the tag against VERSION and CHANGELOG.md
+        run: sh scripts/release-check.sh "$GITHUB_REF_NAME" build/release-notes.md
+      - name: release files, built twice
+        env:
+          NAME: ${{ steps.tag.outputs.name }}
+        run: |
+          sh scripts/dist.sh --name "$NAME" build/a
+          sh scripts/dist.sh --name "$NAME" build/b
+          cmp "build/a/30ops-$NAME.tar.gz" "build/b/30ops-$NAME.tar.gz"
+          cmp build/a/images.txt build/b/images.txt
+          mkdir -p dist
+          cp "build/a/30ops-$NAME.tar.gz" build/a/images.txt dist/
+          cd dist && sha256sum "30ops-$NAME.tar.gz" images.txt > SHA256SUMS && cat SHA256SUMS
+      - name: the Grafana image compose pins carries our provenance attestation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          img=$(grep '^ghcr.io/ivanusto/30ops-grafana:' dist/images.txt)
+          gh attestation verify "oci://${img%%:*}@${img##*@}" --owner ivanusto
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/30ops-*.tar.gz
+            dist/images.txt
+            dist/SHA256SUMS
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          name: ${{ github.ref_name }}
+          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
+          body_path: build/release-notes.md
+          fail_on_unmatched_files: true
+          files: |
+            dist/30ops-*.tar.gz
+            dist/images.txt
+            dist/SHA256SUMS

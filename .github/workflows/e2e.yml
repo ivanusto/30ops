@@ -1,0 +1,39 @@
+name: e2e
+
+# tests/e2e/run.sh on a fresh runner: the release tarball of this commit
+# (scripts/dist.sh) installed as the collector of tests/e2e/site.yaml, a
+# fake LAN in a network namespace for the NAS, the PVE nodes, the FortiGate
+# and the alert receiver, then the checks of docs/e2e.md. run.sh changes
+# the host for good, which a runner that is thrown away afterwards allows.
+# release.yml calls this before it publishes anything.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: release tarball of this commit
+        run: sh scripts/dist.sh build
+      - name: e2e (install, fake LAN, alerts, logs, archive, doctor)
+        run: sudo OPS30_E2E_DISPOSABLE=1 OUT=/var/tmp/ops30e2e sh tests/e2e/run.sh build/30ops-*.tar.gz
+      - name: summary
+        if: always()
+        run: |
+          { echo '```'; cat /var/tmp/ops30e2e/summary.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: e2e-evidence
+          path: /var/tmp/ops30e2e
+          retention-days: 14
