@@ -1,0 +1,178 @@
+import copy
+import os
+import shutil
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "lib" / "python"))
+
+from ops30 import site, yamlio  # noqa: E402
+
+SAMPLE = ROOT / "examples" / "sample-site"
+
+
+def sample():
+    return site.load(SAMPLE / "site.yaml")
+
+
+def check(doc, **kw):
+    return site.validate(doc, str(SAMPLE), **kw)
+
+
+class Yaml(unittest.TestCase):
+    def test_dates_stay_strings(self):
+        self.assertEqual(yamlio.loads("a: 2026-10-14\nb: 2026-10-14T01:02:03Z\n"),
+                         {"a": "2026-10-14", "b": "2026-10-14T01:02:03Z"})
+
+    def test_duplicate_key(self):
+        with self.assertRaisesRegex(yamlio.YamlError, "duplicate key 'a'"):
+            yamlio.loads("a: 1\nb: 2\na: 3\n")
+
+    def test_dump_is_stable(self):
+        obj = {"z": 1, "a": ["x", {"k": "多行\n文字"}], "m": "a: b"}
+        self.assertEqual(yamlio.dumps(obj), yamlio.dumps(copy.deepcopy(obj)))
+        self.assertEqual(yamlio.loads(yamlio.dumps(obj)), obj)
+        self.assertTrue(yamlio.dumps(obj).startswith("z: 1\n"))
+
+
+class Validate(unittest.TestCase):
+    def test_sample_is_clean(self):
+        self.assertEqual(check(sample()), ([], []))
+
+    def assertErr(self, doc, text):
+        errs, _ = check(doc)
+        self.assertTrue(any(text in e for e in errs), errs)
+
+    def test_schema(self):
+        d = sample()
+        d["hosts"][1]["vendor"] = "cisco"
+        d["hosts"][2]["colour"] = "red"
+        del d["site"]["timezone"]
+        d["version"] = 2
+        errs, _ = check(d)
+        self.assertIn("hosts[1].vendor must be one of linux, pve, qnap, fortigate, generic-snmp (got 'cisco')", errs)
+        self.assertIn("hosts[2].colour: unknown key", errs)
+        self.assertIn("site.timezone is required", errs)
+        self.assertIn("version must be 1", errs)
+
+    def test_types(self):
+        d = sample()
+        d["hosts"][0]["roles"] = "collector"
+        d["logs"]["archive"]["skip"] = "x"
+        self.assertErr(d, "hosts[0].roles must be a list")
+        self.assertErr(d, "logs.archive.skip must be a list")
+
+    def test_plain_text_secret(self):
+        d = sample()
+        d["alerting"]["smtp"]["password"] = "hunter2"
+        d["snmp"]["auths"]["nas_v3"]["priv_password"] = "hunter3"
+        errs, _ = check(d)
+        self.assertIn("alerting.smtp.password must name an entry in credentials (plain-text secrets are not allowed)", errs)
+        self.assertIn("snmp.auths.nas_v3.priv_password must name an entry in credentials (plain-text secrets are not allowed)", errs)
+        self.assertNotIn("hunter2", " ".join(errs))
+
+    def test_credentials_are_file_refs(self):
+        d = sample()
+        d["credentials"]["smtp"] = {"file": "secrets/smtp", "value": "x"}
+        self.assertErr(d, "credentials.smtp.value: unknown key")
+        self.assertErr(d, "credentials.smtp.file must be an absolute path")
+
+    def test_references(self):
+        d = sample()
+        d["collector"]["host"] = "spark01"
+        d["worm"]["host"] = "nas-third"
+        d["logs"]["admin_from"] = ["nobody"]
+        d["hosts"][7]["snmp"]["auth"] = "v2"
+        errs, _ = check(d)
+        self.assertIn("collector.host 'spark01' does not have role collector", errs)
+        self.assertIn("worm.host 'nas-third' is not a host name", errs)
+        self.assertIn("logs.admin_from[0] 'nobody' is not a host name", errs)
+        self.assertIn("hosts[7].snmp.auth 'v2' is not in snmp.auths", errs)
+
+    def test_duplicates(self):
+        d = sample()
+        d["hosts"][2]["name"] = "spark01"
+        d["hosts"][3]["address"] = "192.0.2.30"
+        errs, _ = check(d)
+        self.assertIn("hosts[2].name 'spark01' is used twice", errs)
+        self.assertIn("hosts[6].also[0] '192.0.2.30' is also the address of pve1", errs)
+
+    def test_timezone_and_names(self):
+        d = sample()
+        d["site"]["timezone"] = "Mars/Olympus"
+        d["site"]["id"] = "Lab 1"
+        d["hosts"][0]["labels"]["bad-label"] = "x"
+        self.assertErr(d, "site.timezone 'Mars/Olympus' is not in the zoneinfo database")
+        self.assertErr(d, "site.id 'Lab 1' must be lower case")
+        self.assertErr(d, "hosts[0].labels.bad-label is not a valid Prometheus label name")
+
+    def test_receivers(self):
+        d = sample()
+        del d["alerting"]["receivers"]["ops-digest"]
+        del d["alerting"]["smtp"]
+        errs, _ = check(d)
+        self.assertIn("alerting.receivers.ops-digest is required (the route tree sends to it)", errs)
+        self.assertIn("alerting.smtp is required when a receiver has email", errs)
+
+    def test_vendor_needed_for_managed_roles(self):
+        d = sample()
+        del d["hosts"][1]["vendor"]
+        self.assertErr(d, "hosts[1].vendor is required for roles journal, node, pcap")
+
+    def test_gate_assets_must_exist(self):
+        d = sample()
+        d["gate"]["targets"].append({"asset": "nas-primary/QTS", "ssh": "gate@nas"})
+        self.assertErr(d, "gate.targets[3].asset 'nas-primary/QTS' is not a row of assets.tsv")
+
+    def test_warnings_and_strict(self):
+        d = sample()
+        d["alerting"]["thresholds"] = {"nas_pool_warn": 85}
+        d["credentials"]["spare"] = {"file": "/etc/30ops/secrets/spare"}
+        errs, warns = check(d)
+        self.assertEqual(errs, [])
+        self.assertIn("credentials.spare is not used", warns)
+        self.assertIn("alerting.thresholds is accepted but not applied to the rules before v0.4", warns)
+        errs, warns = check(d, strict=True)
+        self.assertEqual(warns, [])
+        self.assertIn("credentials.spare is not used (--strict)", errs)
+
+
+class SecretFiles(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def test_mode(self):
+        d = sample()
+        ok = os.path.join(self.tmp, "ok")
+        loose = os.path.join(self.tmp, "loose")
+        for p, m in ((ok, 0o600), (loose, 0o644)):
+            Path(p).write_text("x")
+            os.chmod(p, m)
+        d["credentials"] = {k: {"file": ok} for k in d["credentials"]}
+        d["credentials"]["smtp"] = {"file": loose}
+        d["credentials"]["pcap-pull"] = {"file": os.path.join(self.tmp, "missing")}
+        errs, _ = check(d, secrets=True)
+        self.assertEqual(len(errs), 2, errs)
+        self.assertIn(f"credentials.smtp.file {loose} is mode 644, must be 0600 or 0400", errs)
+        self.assertEqual(check(d)[0], [])
+
+
+class Resolve(unittest.TestCase):
+    def test_defaults(self):
+        r = site.resolve(sample(), str(SAMPLE))
+        self.assertEqual(r["collector"]["root"], "/opt/30ops")
+        self.assertEqual(r["collector"]["drills"]["logs"], "/srv/drills/onprem-logs/drills.jsonl")
+        self.assertEqual(r["changes"]["clone"], "/opt/onprem-changes")
+        self.assertEqual(r["gate"]["approval_ttl_s"], 600)
+        self.assertEqual(site.host(r, "spark01")["pcap"], {"user": "pcap"})
+        self.assertEqual([h["name"] for h in site.with_role(r, "nas")], ["nas-primary", "nas-secondary"])
+
+
+if __name__ == "__main__":
+    unittest.main()

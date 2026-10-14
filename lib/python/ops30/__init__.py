@@ -1,6 +1,7 @@
 """Shared code for the collector-side tools of 30ops.
 
-Python 3.12 standard library only. Scripts find this package with a
+Python 3.12 standard library, plus PyYAML (python3-yaml) for site.yaml in
+ops30.yamlio, imported only when used. Scripts find this package with a
 sys.path entry derived from their own __file__ (see docs/lib.md), so it
 works under `python3 -I` as well. Node-side scripts that are copied to
 other hosts on their own do not import it.

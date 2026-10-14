@@ -1,0 +1,146 @@
+# site.yaml for the sample site: one collector VM, two DGX Spark nodes, a
+# two-node Proxmox VE cluster with a QDevice, two QNAP NAS and an edge
+# FortiGate. Addresses are documentation ranges (RFC 5737). Reference:
+# docs/site-yaml.md. Check with `30ops validate`, generate the
+# configuration with `30ops render --out build`.
+version: 1
+
+site:
+  id: onprem-lab
+  name: 範例機房
+  timezone: Asia/Taipei
+  locale: zh-TW
+
+collector:
+  host: collector
+
+# Secrets never live in this file: each entry names a file on the collector
+# (0600, owner root or metrics) and the rest of site.yaml refers to it by name.
+credentials:
+  pve-exporter: {file: /etc/30ops/secrets/pve-exporter.token}
+  snmp-auth: {file: /etc/30ops/secrets/snmp-auth.pass}
+  snmp-priv: {file: /etc/30ops/secrets/snmp-priv.pass}
+  fortigate-api: {file: /etc/30ops/secrets/fortigate-api.token}
+  smtp: {file: /etc/30ops/secrets/smtp.pass}
+  pcap-pull: {file: /var/lib/metrics/.ssh/id_pcap}
+
+hosts:
+  - name: collector
+    address: 192.0.2.49
+    vendor: linux
+    roles: [collector]
+    labels: {role: collector}
+
+  - name: spark01
+    address: 192.0.2.131
+    vendor: linux
+    roles: [node, journal, pcap]
+    plugins: [gb10-ops]
+    labels: {role: gpu-node, hw: dgx-spark}
+  - name: spark02
+    address: 192.0.2.141
+    vendor: linux
+    roles: [node, journal, pcap]
+    plugins: [gb10-ops]
+    labels: {role: gpu-node, hw: dgx-spark}
+
+  - name: pve1
+    address: 192.0.2.9
+    vendor: pve
+    roles: [hypervisor, journal, pcap]
+    labels: {role: pve}
+    ssh: {user: root}
+    pve: {cluster: lab}
+  - name: pve2
+    address: 192.0.2.5
+    vendor: pve
+    roles: [hypervisor, journal, pcap]
+    labels: {role: pve}
+    ssh: {user: root}
+    pve: {cluster: lab}
+  - name: qdevice
+    address: qdevice
+    vendor: linux
+    roles: [qdevice]
+
+  # The primary NAS has two LAN addresses and sends syslog from either.
+  - name: nas-primary
+    address: 192.0.2.2
+    also: [192.0.2.30]
+    vendor: qnap
+    roles: [nas, syslog]
+    labels: {nas: primary}
+    ssh: {user: ops30}
+    snmp: {auth: nas_v3}
+  - name: nas-secondary
+    address: 192.0.2.22
+    vendor: qnap
+    roles: [nas, syslog]
+    labels: {nas: secondary}
+    ssh: {user: ops30}
+    snmp: {auth: nas_v3}
+
+  - name: fgt-edge
+    address: 192.0.2.99
+    vendor: fortigate
+    roles: [firewall, syslog, audit-source, webfilter]
+    syslog: {devname: fgt-edge}
+    api: {url: "https://192.0.2.99:10443", token: fortigate-api, insecure: true}
+
+  # Admin workstations: their logins stay in the audit reports, marked,
+  # and are not counted as unattributed.
+  - name: admin1
+    address: 192.0.2.10
+    roles: [admin]
+  - name: admin2
+    address: 192.0.2.11
+    roles: [admin]
+
+pve:
+  exporter: {user: prometheus@pve, token_name: exporter, token: pve-exporter, verify_ssl: false}
+
+snmp:
+  auths:
+    nas_v3:
+      username: ops30
+      auth_protocol: SHA
+      password: snmp-auth
+      priv_protocol: DES
+      priv_password: snmp-priv
+
+worm:
+  host: nas-primary
+  export: /LogArchive
+  mount: /mnt/worm
+
+logs:
+  archive:
+    skip: [syslog-fgt-edge]
+  pcap:
+    key: pcap-pull
+    peer: nas-primary
+
+alerting:
+  smtp:
+    smarthost: "smtp.example.net:587"
+    from: alerts@example.net
+    username: alerts@example.net
+    password: smtp
+  receivers:
+    ops-critical: {email: [oncall@example.net]}
+    ops-warning: {email: [ops@example.net]}
+    ops-digest: {email: [ops@example.net], send_resolved: false}
+
+# The change records live in their own repository; the collector keeps a
+# clone (owned by metrics) that cron pulls every 15 minutes.
+changes:
+  clone: /opt/onprem-changes
+
+gate:
+  targets:
+    - {asset: pve1/Proxmox VE, ssh: gate@pve1}
+    - {asset: qdevice/Debian, ssh: gate@qdevice}
+    - {asset: collector/Ubuntu, ssh: local}
+
+assets: assets.tsv
+cost: cost.yaml
