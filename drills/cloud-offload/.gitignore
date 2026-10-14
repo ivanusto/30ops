@@ -1,0 +1,4 @@
+drills.jsonl
+*.sha256
+*.json.key
+__pycache__/
