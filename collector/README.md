@@ -10,12 +10,12 @@ One Prometheus for a small on-prem AI lab: two NVIDIA DGX Spark (GB10) nodes, tw
 | `prometheus/snmp-build.py` and `prometheus/snmp.yml` | collector VM | Builds the snmp_exporter module from QNAP's QTS-MIB (enterprises 55062, QuTS hero) without the generator: disks and temperature, SMART attributes, RAID, pools, shared folders (WORM, compression, dedup), fans, CPU and system temperature, CPU and memory, UPS, firmware, exposed services, installed apps, plus IF-MIB interface counters. SNMP v3 only; the example is authPriv (SHA, DES, the most QuTS hero 6.0.2 offers), and `security_level` and the protocols must match what the NAS actually has. Auth in `snmp-auth.yml` (gitignored) |
 | `textfile/nas-textfile.sh` | the collector host, cron every minute | Takes `LABEL=user@host`, so the `nas` label matches the SNMP target's `nas`. Over ssh to each NAS, only what the MIB does not have: ZFS pool list by name, dataset used, snapshots per dataset (count, newest, oldest, bytes), HBS 3 installed. Nothing is installed on the NAS |
 | `textfile/drills-textfile.py` | the collector host, cron every 15 min | Reads the `drills.jsonl` files of the three drills, the archive and pcap verify (source `logs`) and the rollback drills (source `changes`), v1 and the older per-tool lines alike ([docs/drills-jsonl.md](../docs/drills-jsonl.md)), exposes the latest drill per label: timestamp, result, RTO, RPO, rate, last success |
-| `prometheus/` | collector VM | `prometheus.yml` with three intervals (15 s GPU nodes, 60 s NAS and PVE), file_sd target files (`.example` committed, real ones ignored), `pve.yml.example` for prometheus-pve-exporter, `rules/staleness.yml` for pipeline-alive alerts |
-| `docker-compose.yml` | collector VM | Prometheus 3.5 with 90 d retention, pve-exporter, snmp-exporter, Alertmanager and Grafana, images pinned by digest. Grafana on :3000 is the only port open to the LAN; Prometheus, Alertmanager and the exporters publish on 127.0.0.1 only |
-| `systemd/` | DGX Spark and collector | node_exporter unit, gb10-textfile service and timer, cron.d lines for the collector |
+| `prometheus/` | collector VM | `prometheus.yml`: the scrape jobs with three intervals (15 s GPU nodes, 60 s NAS and PVE); `30ops render` writes the site's copy with the site label, the file_sd targets and the exporter configs (`pve.yml`, `snmp-auth.yml`) to `/etc/30ops/prometheus/`. `thresholds.yml`: the alert thresholds a site may change in `site.yaml` `alerting.thresholds`. `rules/`: the one copy of the 69 alert rules, rendered with the site's thresholds ([docs/rules.md](../docs/rules.md)) |
+| `compose.yml` | collector VM | The one compose project: Prometheus 3.5, pve-exporter, snmp-exporter, Alertmanager, Grafana (the 30ops image with the VictoriaLogs datasource baked in) and VictoriaLogs, images pinned by digest. Site settings (volume names, retention, time zone, Grafana port, secret files, which exporters run) come from the rendered `/etc/30ops/compose.env`; volumes are external, so a wrong name stops the start instead of creating an empty TSDB. Grafana on :3000 and VictoriaLogs (9428, syslog 514 and 515) are the ports open to the LAN; Prometheus, Alertmanager and the exporters publish on 127.0.0.1 only |
+| `systemd/` | DGX Spark and collector | node_exporter unit, gb10-textfile service and timer. The collector's cron file is `/etc/cron.d/30ops` from `30ops render` |
 | `install-node.sh` | each DGX Spark; `--collector` on the collector | Downloads node_exporter (arm64 or amd64), verifies sha256 against the release, installs the units. DGX Spark mode also installs gb10-textfile and `/run/gb10` (tmpfiles.d); `--collector` installs node_exporter and the textfile directory only |
 | `verify.sh` | anywhere with curl, ssh and python3 | `up`, scrape duration and samples per target, one Prometheus value next to the original tool's value per source, the drill table. On the NAS it only reads what a plain account can (`getsysinfo` temperatures need root) |
-| `prometheus/rules/thresholds.yml` | collector VM | Alerts on the numbers (Day 20): soak at 180 s or more (guard acts at 240 s; the textfile age, scrape step and evaluation wait take up to 45 s, measured on Day 20; the gb10 group evaluates every 15 s for this), MemAvailable 6 and 3 GiB, `NV_ERR_NO_MEMORY` increase, pool 80 and 90 %, pool and disk status strings as QuTS hero reports them, snapshots older than 2 days, quorum lost and one vote missing, HA resources in error, drills overdue or failed. Every threshold names its source |
+| `prometheus/rules/thresholds.yml` | collector VM | Alerts on the numbers (Day 20): soak at 180 s or more (guard acts at 240 s; the textfile age, scrape step and evaluation wait take up to 45 s, measured on Day 20; the gb10 group evaluates every 15 s for this), MemAvailable 6 and 3 GiB, `NV_ERR_NO_MEMORY` increase, pool 80 and 90 %, pool and disk status strings as QuTS hero reports them, snapshots older than 2 days, quorum lost and one vote missing, HA resources in error, drills overdue or failed. Thresholds are defaults a site can override; [docs/rules.md](../docs/rules.md) gives the source of each |
 | `prometheus/rules/firewall.yml` | collector VM | Firewall review alerts (Day 22) on `fw.prom`, which onprem-logs' `firewall/fw-report.py` writes from the collector's cron every 10 minutes: report stale, one source over a per-wall burst threshold (the walls' log rate limits differ by orders of magnitude), a source never dropped before, NAS login failures above the NAS's own ban rate, and an expected wall that logged nothing for 2 hours |
 | `prometheus/rules/aup.yml`, `tests/rules_aup_test.yml` | collector VM | Acceptable-use alerts (Day 24) on the `aup.prom` that onprem-logs' `firewall/aup-report.py` writes every 10 minutes: one hit on an urgent category (Malicious Websites, Phishing, Spam URLs) is critical, 20 blocks from one workstation in an hour is a warning, six silent hours from an expected FortiGate is info, a stale report is a warning that inhibits the other three |
 | `eol/assets.tsv`, `textfile/eol-textfile.py`, `prometheus/rules/eol.yml`, `tests/rules_eol_test.yml`, `tests/test_eol_textfile.py` | collector VM, cron daily | Day 25. Asset lifecycle: one TSV row per (asset, component, milestone) with the date, where it came from (vendor, estimate, licence, unknown) and a note. The textfile turns it into `asset_eol_timestamp_seconds`, keeps the rows without a date visible as `asset_eol_unknown`, checks the dates against endoflife.date (`--refresh`, cached a day) and reads the FortiGate's licence expiries over REST (`--fortigate`). Rules: 90 days warning, 30 days critical, already passed critical, unknown and source mismatch info, textfile stale warning; licences lapse together with their contract, so they alert once per device with a count (expired critical, within 90 days warning). The dashboard gets a row with the days left per asset and per licence |
@@ -23,8 +23,8 @@ One Prometheus for a small on-prem AI lab: two NVIDIA DGX Spark (GB10) nodes, tw
 | `prometheus/rules/audit.yml`, `tests/rules_audit_test.yml` | collector VM | Audit trail against the change records (Day 27), on the `audit.prom` that onprem-logs' `audit/audit-report.py` writes every 10 minutes: a FortiGate configuration change outside any change window is a warning, other unattributed administrative actions and a done record without change marks are info, a stale report is a warning that inhibits the rest |
 | `prometheus/rules/agent.yml`, `tests/rules_agent_test.yml` | collector VM | The agent gate (Day 29), on the `agent-gate.prom` that [onprem-agent-gate](https://github.com/ivanusto/onprem-agent-gate)'s `gatectl textfile` writes: an L3 request waiting for a human for 2 minutes is a warning, the emergency stop is info, a broken audit chain is critical, more than 5 denials an hour is info, a stale textfile is a warning that inhibits the other four |
 | `textfile/pve-quorum-textfile.sh` | the collector host, cron every minute | `LABEL=root@node1,root@node2`: ssh to the first node that answers and runs `pvecm status`, exposes expected, total and quorum votes, the Quorate flag, the QDevice vote and votes per node. The key is pinned on the node with `from=` and `command="/usr/bin/pvecm status",restrict` |
-| `alertmanager/`, `grafana/` | collector VM | Alertmanager routes (critical now, warning in 30 s batches, info as a daily digest, the soak alert without batching) and eight inhibit rules so a dead pipeline does not also alert for every number it stopped reporting. Grafana loads the datasources and one dashboard by provisioning; the JSON is generated by `build-dashboard.py` and the UI cannot change it |
-| `tests/` | CI | Fake sysfs, nvidia-smi, dmesg, zfs, zpool, getsysinfo; every output is checked with `promtool check metrics` |
+| `alertmanager/`, `grafana/` | collector VM | `alertmanager.base.yml`: the template render starts from, with the routes (critical now, warning in 30 s batches, info as a daily digest, the soak alert without batching) and eight inhibit rules so a dead pipeline does not also alert for every number it stopped reporting; render puts in the site's SMTP and receivers. `grafana/Dockerfile`: Grafana 12.2.10 with the VictoriaLogs datasource 0.32.0 (base by digest, plugin by sha256), published as `ghcr.io/ivanusto/30ops-grafana` with a build provenance attestation. The dashboard JSON is generated by `build-dashboard.py` (render draws it with the site's thresholds) and the UI cannot change it |
+| `tests/` | CI | Fake sysfs, nvidia-smi, dmesg, zfs, zpool, getsysinfo, every output checked with `promtool check metrics`; promtool tests of the rules (`scripts/test-rules.sh` runs them on the rendered rules); `compose-smoke.sh` starts the merged stack on a render of the sample site |
 
 ## Why SNMP for hardware and ssh for ZFS
 
@@ -37,31 +37,22 @@ The soak counter needs memory between samples, the NAS has no package manager an
 ## Quick start
 
 ```sh
-# collector VM
-cp prometheus/targets/gb10.yml.example prometheus/targets/gb10.yml      # edit addresses
-cp prometheus/targets/collector.yml.example prometheus/targets/collector.yml
-cp prometheus/targets/pve.yml.example prometheus/targets/pve.yml
-cp prometheus/targets/nas-snmp.yml.example prometheus/targets/nas-snmp.yml
-cp prometheus/pve.yml.example prometheus/pve.yml                           # token
-cp prometheus/snmp-auth.yml.example prometheus/snmp-auth.yml               # SNMP v3 passphrases, 8 characters or more
-sudo chown root:101 prometheus/pve.yml && sudo chmod 640 prometheus/pve.yml               # pve-exporter runs as uid/gid 101
-sudo chown root:65534 prometheus/snmp-auth.yml && sudo chmod 640 prometheus/snmp-auth.yml # snmp-exporter runs as nobody
-promtool check config prometheus/prometheus.yml
-docker compose up -d
-sudo ./install-node.sh --collector
-sudo install -m 0644 systemd/collector.cron /etc/cron.d/onprem-metrics    # edit hosts and paths
-
-# alerts and dashboard (Day 20)
-cp alertmanager/alertmanager.yml.example alertmanager/alertmanager.yml    # SMTP
-openssl rand -base64 24 > grafana/admin_password
-sudo chown 472:0 grafana/admin_password && sudo chmod 0440 grafana/admin_password   # Grafana runs as uid 472, gid 0
-docker compose up -d
-# Grafana reads the password only when it creates its database. If the file was
-# unreadable on the first start, the admin password is "admin": fix the owner,
-# then `docker compose rm -sf grafana && docker volume rm <project>_grafana-data`.
-# GF_PLUGINS_PREINSTALL_DISABLED keeps Grafana from fetching catalog plugins
-# at start; onprem-logs builds an image with its datasource plugin baked in
-# and points this service at it.
+# collector VM, with the checkout in /opt/30ops and the site's site.yaml
+bin/30ops validate --site site.yaml --strict
+sudo bin/30ops render --site site.yaml --out /     # /etc/30ops, /etc/cron.d/30ops, units, ...
+# until `30ops install` (v0.5): put the token and passphrases in place of the
+# @secret: values in /etc/30ops/prometheus/pve.yml and snmp-auth.yml, and
+# create the secret files compose mounts (owner = the uid the container runs as)
+sudo install -d -m 0700 /etc/30ops/secrets
+openssl rand -base64 24 | sudo install -m 0400 -o 472 /dev/stdin /etc/30ops/secrets/grafana-admin.pass
+# SMTP password: owner 65534 (Alertmanager runs as nobody), mode 0400
+# a new site creates its volumes; a moved one names its old ones in site.yaml
+for v in prometheus alertmanager grafana victorialogs; do docker volume create "30ops_$v-data"; done
+docker compose --env-file /etc/30ops/compose.env -f collector/compose.yml up -d
+sudo ./collector/install-node.sh --collector
+# Grafana reads the admin password only when it creates its database. If the
+# file was unreadable on the first start, the password is "admin": fix the
+# owner, then remove the grafana container and its volume and start again.
 
 # PVE quorum: one line in /root/.ssh/authorized_keys on a node (it is
 # /etc/pve/priv/authorized_keys, shared by the whole cluster)
@@ -107,12 +98,11 @@ SNMP (`qnap_*`, 48 metrics, see `prometheus/snmp.yml`): `qnap_disk_temperature_c
 ```sh
 python3 -m unittest discover -s tests
 sh tests/fake-nas.sh
-shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh tests/fake-nas.sh
-promtool check config prometheus/prometheus.yml && promtool check rules prometheus/rules/*.yml
-(cd tests && promtool test rules rules_test.yml)
-amtool check-config alertmanager/alertmanager.yml.example
+sh tests/compose-smoke.sh                    # docker; ports 3000, 9090, 9093, 9428, 514, 515
+shellcheck textfile/nas-textfile.sh textfile/pve-quorum-textfile.sh verify.sh install-node.sh tests/fake-nas.sh tests/compose-smoke.sh grafana/build.sh
+sh ../scripts/test-rules.sh                  # promtool check and test on the rendered rules
+amtool check-config alertmanager/alertmanager.base.yml
 python3 grafana/build-dashboard.py --check
-snmp_exporter --config.file=prometheus/snmp.yml --config.file=prometheus/snmp-auth.yml.example --dry-run
 ```
 
 ## License

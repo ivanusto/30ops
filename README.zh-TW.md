@@ -8,7 +8,7 @@
 
 ## 狀態
 
-**v0.3.0**：以一份 `site.yaml` 描述場域，`30ops render` 由它產生所有場域相關的設定檔：Prometheus targets 與 exporter 設定、Alertmanager、Grafana datasources、單一 cron 檔、日誌允許清單、WORM 掛載、gate 設定與節點參數（[docs/site-yaml.md](docs/site-yaml.md)、[docs/render.md](docs/render.md)）。`30ops import-legacy` 可從現有收集端草擬 `site.yaml`，`render --compare-legacy` 證明產出與該收集端作用相同。產出尚無安裝程式：compose、告警規則與 `30ops install` 在 v0.4、v0.5 完成。
+**v0.4.0**：收集端是單一 compose 專案（`collector/compose.yml`）：Prometheus、exporter、Alertmanager、Grafana 與 VictoriaLogs，映像全部以 digest 釘住。Grafana 是內含 VictoriaLogs 資料源外掛的 30ops 映像（`ghcr.io/ivanusto/30ops-grafana`，附建置來源證明）。69 條告警規則只有一份，放在 `collector/prometheus/rules/`；`30ops render` 依 `site.yaml` 的門檻產生規則（[docs/rules.md](docs/rules.md)），連同儀表板，以及記錄 volume、保留期與時區的 `compose.env`。`scripts/check-drift.py` 確保不再出現第二份。v0.3 起：以一份 `site.yaml` 描述場域，`30ops render` 由它產生所有場域相關的檔案（[docs/site-yaml.md](docs/site-yaml.md)、[docs/render.md](docs/render.md)）；`30ops import-legacy` 與 `render --compare-legacy` 讓現有收集端搬過來。`30ops install` 在 v0.5 完成。
 
 | 版本 | 內容 |
 |---|---|
@@ -46,12 +46,13 @@ CI 的每個模組一個 job，見 `.github/workflows/check.yml`。本機可以�
 
 ```sh
 python3 scripts/hygiene.py          # 破折號、私有 IP、家目錄路徑、.pii-patterns
-python3 scripts/check-drift.py      # lib/ 已有的寫法不得在別處再寫一份
+python3 scripts/check-drift.py      # 不得寫兩份：lib 函式、規則、門檻、場域檔
 python3 -m unittest discover -s tests/unit && python3 -m unittest tests/test_golden.py tests/test_render.py
 sh tests/sh/test_ops30_sh.sh && sh tests/sh/test_fetch_legacy.sh
 bin/30ops validate --site examples/sample-site/site.yaml && bin/30ops render --site examples/sample-site/site.yaml --compare-legacy tests/fixtures/legacy-root
 sh scripts/check-ci-pins.sh         # action 釘 SHA、下載驗 sha256、映像帶 digest
-(cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh)
+sh scripts/test-rules.sh             # 對 render 產出的規則跑 promtool check 與 test
+(cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh && sh tests/compose-smoke.sh)
 (cd changes && python3 -m unittest discover -s tests && python3 scripts/check.py --assets ../examples/sample-site/assets.tsv)
 (cd gate && python3 -W error -m unittest discover -s tests)
 (cd inventory && python3 -m unittest discover -s tests && python3 cost.py --check)

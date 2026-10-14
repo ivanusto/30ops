@@ -23,7 +23,8 @@ collector:
     victorialogs: onprem-logs_victorialogs-data
 
 # Secrets never live in this file: each entry names a file on the collector
-# (0600, owner root or metrics) and the rest of site.yaml refers to it by name.
+# (0600 or 0400; owned by the uid that reads it, see docs/render.md) and the
+# rest of site.yaml refers to it by name.
 credentials:
   pve-exporter: {file: /etc/30ops/secrets/pve-exporter.token}
   snmp-auth: {file: /etc/30ops/secrets/snmp-auth.pass}

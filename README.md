@@ -8,7 +8,7 @@ An on-prem operations platform for small and medium businesses to run themselves
 
 ## Status
 
-**v0.3.0**: one `site.yaml` describes the site, and `30ops render` generates every site-specific configuration file from it: Prometheus targets and exporter configs, Alertmanager, Grafana datasources, one cron file, the log allowlist, the WORM mount, the gate config and the node parameters ([docs/site-yaml.md](docs/site-yaml.md), [docs/render.md](docs/render.md)). `30ops import-legacy` drafts a `site.yaml` from an existing collector, and `render --compare-legacy` shows it does the same as that collector. Nothing installs the output yet: the compose project, the alert rules and `30ops install` come in v0.4 and v0.5.
+**v0.4.0**: the collector is one compose project (`collector/compose.yml`): Prometheus, the exporters, Alertmanager, Grafana and VictoriaLogs, every image pinned by digest. Grafana is the 30ops image with the VictoriaLogs datasource baked in (`ghcr.io/ivanusto/30ops-grafana`, with a build provenance attestation). The 69 alert rules exist once, in `collector/prometheus/rules/`; `30ops render` writes them with the site's thresholds from `site.yaml` ([docs/rules.md](docs/rules.md)), together with the dashboard and the `compose.env` that names the volumes, retention and time zone. `scripts/check-drift.py` keeps it that way. From v0.3: one `site.yaml` describes the site and `30ops render` generates every site-specific file from it ([docs/site-yaml.md](docs/site-yaml.md), [docs/render.md](docs/render.md)); `30ops import-legacy` and `render --compare-legacy` move an existing collector over. `30ops install` comes in v0.5.
 
 | Version | Scope |
 |---|---|
@@ -46,12 +46,13 @@ CI runs one job per module, see `.github/workflows/check.yml`. Locally:
 
 ```sh
 python3 scripts/hygiene.py          # em dash, private IPs, home paths, .pii-patterns
-python3 scripts/check-drift.py      # nothing that lib/ already has is written again
+python3 scripts/check-drift.py      # nothing written twice: lib helpers, rules, thresholds, site files
 python3 -m unittest discover -s tests/unit && python3 -m unittest tests/test_golden.py tests/test_render.py
 sh tests/sh/test_ops30_sh.sh && sh tests/sh/test_fetch_legacy.sh
 bin/30ops validate --site examples/sample-site/site.yaml && bin/30ops render --site examples/sample-site/site.yaml --compare-legacy tests/fixtures/legacy-root
 sh scripts/check-ci-pins.sh         # actions by SHA, downloads by sha256, images by digest
-(cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh)
+sh scripts/test-rules.sh             # promtool check and test on the rendered rules
+(cd collector && python3 -m unittest discover -s tests && sh tests/fake-nas.sh && sh tests/compose-smoke.sh)
 (cd changes && python3 -m unittest discover -s tests && python3 scripts/check.py --assets ../examples/sample-site/assets.tsv)
 (cd gate && python3 -W error -m unittest discover -s tests)
 (cd inventory && python3 -m unittest discover -s tests && python3 cost.py --check)

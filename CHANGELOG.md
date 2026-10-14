@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.4.0（2026-10-14）
+
+- 單一 compose：`collector/compose.yml` 取代 `collector/docker-compose.yml` 與 `logs/docker-compose.yml`，VictoriaLogs 併入同一個專案，不再需要 external network。掛載改為 render 產出的 `/etc/30ops`；場域設定（專案名稱、profiles、volume 名稱、保留期、syslog 時區、Grafana 埠、秘密檔）由新的 `etc/30ops/compose.env` 提供。volume 一律 external，名稱錯誤時停在啟動前。site.yaml 新增 `collector.volumes`、`collector.retention`、`collector.grafana_port`。
+- 規則單一來源：69 條告警只留 `collector/prometheus/rules/` 一份，刪除 changes、gate、logs 的五份複本與兩份測試複本。門檻改為佔位，鍵與預設值在 `collector/prometheus/thresholds.yml`（25 個），render 依 `alerting.thresholds` 代入並寫到 `etc/30ops/prometheus/rules/`。validate 檢查鍵、正值與警告線和危險線的順序。預設門檻下，每條告警的 expr、for、labels 與 v0.3.0 相同（`tests/unit/test_rules_render.py`）。告警名稱不變。
+- `docs/rules.md`：69 條告警的意義、門檻鍵與處置方式，以及門檻表。規則註解與 annotation 不再引用系列天數；annotation 的門檻數字跟著場域值。
+- promtool 測試改為對 render 產出執行（`scripts/test-rules.sh`），並補上 NasDiskHot、NasSnapshotStale、CloudDrillStale 與 FwSourceBurst 其餘三道牆的測試。
+- Grafana 映像：Dockerfile 移到 `collector/grafana/`，外掛以 `ADD --checksum` 鎖 sha256，`fetch-plugin.sh` 刪除。新的 `grafana-image` workflow 建置 amd64 與 arm64，發佈 `ghcr.io/ivanusto/30ops-grafana:12.2.10-vlogs0.32.0` 並附 build provenance，compose 以 digest 引用。修正漂移：repo 的 compose 原本用上游 grafana 映像，沒有 VictoriaLogs 外掛。
+- 儀表板：`build-dashboard.py` 的門檻改讀 `thresholds.yml`，render 依場域門檻產生 `etc/30ops/grafana/dashboards/onprem-overview.json`；說明文字不再引用系列天數。
+- Alertmanager 的 `smtp_auth_password_file` 改為 compose secret 的 `/run/secrets/smtp`。`alertmanager.yml.example` 改名 `alertmanager.base.yml`（render 的模板）。
+- victorialogs scrape job 併入 `collector/prometheus/prometheus.yml`，刪除 `logs/collector/prometheus-scrape.yml`。
+- `render --compare-legacy` 與 `import-legacy` 涵蓋 compose：服務、實際 volume 名稱、保留期、syslog 時區、Grafana 埠。
+- 刪除由 render 取代的手寫場域檔：7 個 cron 片段、允許清單與其 service、WORM mount、targets 與 exporter 設定的 `.example`。`tests/fixtures/legacy-root/` 保留 v0.3 時的副本並補上兩個 compose 檔。
+- `scripts/check-drift.py` 新增單一來源檢查：規則只在 `collector/prometheus/rules/`、佔位與 thresholds.yml 一致、規則不引用系列天數、儀表板的 datasource uid 都有 provision、規則與儀表板的 job 都是 scrape job、不得出現手抄指示、compose 映像帶 digest。
+- CI：collector job 對 render 產出跑 promtool、`docker compose config`（不再 `|| true`）與 compose smoke（啟動合併後的 stack，檢查 69 條規則、外掛、datasource、儀表板與 VictoriaLogs 抓取）；changes 與 gate job 不再測規則複本。
+
 ## v0.3.0（2026-10-14）
 
 - 新增 `site.yaml`（version 1）與 `30ops validate`：schema、參照、重複的名稱與位址、zoneinfo、明文秘密一律拒絕（只能引用 `credentials` 的檔案），assets.tsv 與 cost.yaml 以原本的規則檢查。`--strict` 把警告當錯誤，`--secrets` 在收集端檢查秘密檔的權限。欄位見 `docs/site-yaml.md`，範例在 `examples/sample-site/site.yaml`。

@@ -46,6 +46,9 @@ alerting:
 | `collector.reports_dir` | | 週報輸出，預設 `/srv/reports` |
 | `collector.eol_cache` | | 預設 `/var/lib/onprem-metrics/eol` |
 | `collector.victorialogs` | | 預設 `http://127.0.0.1:9428` |
+| `collector.volumes.{prometheus,alertmanager,grafana,victorialogs}` | | compose 的 docker volume 名稱，預設 `30ops_<名稱>-data`。一律以 external 掛載，不存在就不啟動；從舊收集端搬來時寫舊名稱（`onprem-metrics_prometheus-data` 等），資料不搬 |
+| `collector.retention` | | `metrics`（Prometheus）與 `logs`（VictoriaLogs）預設 `90d`，數字加 h、d、w 或 y；`logs_max_disk` 預設 `12GiB` |
+| `collector.grafana_port` | | Grafana 對區網的埠，預設 3000 |
 | `collector.drills.{pve,nas,cloud,logs}` | | 各演練的 drills.jsonl，預設沿用舊路徑 `/srv/drills/<舊 repo 名>/drills.jsonl`，切換時不搬歷史 |
 | `credentials.<名稱>` | | `{file, note}` |
 | `hosts[]` | 是 | 見下表 |
@@ -57,7 +60,7 @@ alerting:
 | `logs.pcap` | 有 `pcap` 角色時 | `key`（拉取用 SSH 金鑰的 credentials 名稱）、`peer`（節點擷取設定檔指向的 NAS） |
 | `alerting.smtp` | 有 email 收件者時 | `smarthost`、`from`、`username`、`password`、`require_tls`（預設 true） |
 | `alerting.receivers` | 是 | 必須有 `ops-critical`、`ops-warning`、`ops-digest`（路由樹送往這三個），各自 `email[]`、`webhook[]`、`send_resolved` |
-| `alerting.thresholds` | | 接受並檢查型別，v0.4 才套進規則 |
+| `alerting.thresholds` | | 告警門檻覆寫，鍵與預設值見 `collector/prometheus/thresholds.yml`，說明見 [rules.md](rules.md#門檻)。鍵必須存在、值大於 0，成對的警告線與危險線順序要對 |
 | `changes.clone` | | 變更單 repo 在收集端的 clone，預設 `/var/lib/30ops/changes` |
 | `changes.state_dir` | | 預設 `/var/lib/onprem-changes` |
 | `gate.targets[]` | | `asset`（`asset/component`，必須是 assets.tsv 的一列）、`ssh`（`user@host` 或 `local`） |
