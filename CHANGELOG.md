@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.5.0（2026-10-14）
+
+- adapter：`adapters/<kind>/<vendor>/` 的 `adapter.yaml` 宣告能力，`adapter.py` 實作，共用的 schema、輸出、連線方式（ssh、本機、HTTP、錄製重放）與載入在 `lib/python/ops30/adapters/`。v0.5 有 qnap、fortigate、pve、generic-snmp、linux 五個；尚未實作的能力標 `planned` 與版本（pve 的 backup_jobs，fortigate 的 facts、config_backup、managed_aps，generic-snmp 的交換器抓取在 v0.7）。`30ops validate` 依角色找 adapter，找不到就是錯誤。契約測試（`tests/unit/adapters/test_contract.py`）對 `tests/fixtures/adapters/` 的錄製 case 重放，輸出要與預期完全相同，family 與 label 要等於 schema。見 `docs/adapters.md`。
+- qnap 的 health 與 pve 的 quorum 改為 Python（`30ops textfile nas|pve-quorum`），`nas-textfile.sh` 與 `pve-quorum-textfile.sh` 保留為 shim，cron 指令不變。輸出由新的 golden（`nas.prom`、`pve-quorum.prom`，先以舊的 shell 寫入器錄下）鎖定。修正：NAS 的 ssh 在中途斷線時，舊版會輸出半份資料再加一行 `nas_up 0`，node_exporter 因重複的序列拒收整個檔案；新版以遠端的 `@@end` 判斷完整，不完整就只輸出 `nas_up 0`。多叢集時 pve-quorum 的樣本改為依 family 分組。每個 textfile 有 flock，前一輪還沒結束時不疊加。
+- FortiGate 的授權查詢移進 fortigate adapter，`eol-textfile.py` 改呼叫，`eol.prom` 不變。`pve.yml` 由 pve adapter 產生。
+- 狀態字串正規化：qnap adapter 的 `status:` 宣告哪些 QuTS 字串算健康，render 產出 `rules/status.yml` 的 recording rule `nas:<metric>:ok`，NasDiskNotGood、NasPoolStatusNotReady、NasUpsNotOnline、NasTelnetEnabled 改為比對它，名稱、for、labels 與 annotation 不變；測試證明對照等於 v0.3 的 matcher。
+- `ops30_adapter_info`：render 產出靜態的 `30ops-adapters.prom`，每台主機每個 kind 一筆，附既有序列用來指主機的 label。既有指標不加 `vendor` label，TSDB 序列不斷。
+- `30ops install collector [--dry-run] [--create-volumes]`：前置檢查（root、compose v2、checkout 位置、舊 cron 與舊 compose 專案、volume 存在且沒被其他專案使用、憑證檔、同一憑證只有一個讀取者），帳號（`metrics` 加入 `node-exporter` 群組，修正 textfile 目錄寫不進去的缺口），各 job 的目錄，ssh 金鑰，變更單 clone（新的選填欄位 `changes.remote`），秘密檔依讀取者設定擁有者與權限（`secrets/` 改為 `root:metrics 0750`，cron 才讀得到 token），Grafana 管理密碼，依 manifest 部署（`@secret:` 代入，換掉或移除的檔案備份到 `/etc/30ops/.backup/`），單元，volume，依 digest 拉映像，`compose up -d` 與單檔掛載的重建處理，健康檢查，最後部署 cron 並讓每個 textfile job 先跑一次。見 `docs/install.md`。
+- `30ops install node <host> [--bundle] [--ssh]`：確定性 bundle（條目排序、時間與 uid 為 0），節點端 `collector/node/node-install.sh` 依角色安裝 node_exporter、journal-upload、pcap 與 PVE 的 quorum 受限金鑰；經 ssh 時共用一條 ControlMaster 連線，並把節點的 host key 釘進 `metrics` 的 known_hosts。設備改印 adapter 的設定步驟。`install-node.sh` 加 `--plain`，版本相同時不下載；`install-journal-upload.sh` 只在設定改變時重啟；`install-pcap.sh` 加 `--profiles` 與 `--sudoers`，改用 render 產出。
+- `30ops doctor [--format json] [--skip]`：映像 digest、targets、textfile 新鮮度（門檻與 stale 規則相同）與 `*_up 0`、cron、WORM（不寫測試檔）、時區與 NTP、磁碟、秘密檔、Grafana 預設密碼、帳號、render 差異。
+- `render --diff` 略過 `nodes/`，也比對權限；以 root 執行或加 `--owners` 時比對擁有者。
+- `tests/vm/`：在拋棄式 Ubuntu 24.04 VM 上的驗收（連裝兩次比對狀態、doctor、bundle 兩次）。v0.5.0 在 PVE 上的 VM 通過：第二次 0 個變更、狀態相同、doctor 15 項全過。
+- yamlio 接受 YAML 的 `<<` 合併鍵（compose 檔用到）。
+
 ## v0.4.0（2026-10-14）
 
 - 單一 compose：`collector/compose.yml` 取代 `collector/docker-compose.yml` 與 `logs/docker-compose.yml`，VictoriaLogs 併入同一個專案，不再需要 external network。掛載改為 render 產出的 `/etc/30ops`；場域設定（專案名稱、profiles、volume 名稱、保留期、syslog 時區、Grafana 埠、秘密檔）由新的 `etc/30ops/compose.env` 提供。volume 一律 external，名稱錯誤時停在啟動前。site.yaml 新增 `collector.volumes`、`collector.retention`、`collector.grafana_port`。

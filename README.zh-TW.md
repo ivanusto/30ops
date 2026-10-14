@@ -8,7 +8,7 @@
 
 ## 狀態
 
-**v0.4.0**：收集端是單一 compose 專案（`collector/compose.yml`）：Prometheus、exporter、Alertmanager、Grafana 與 VictoriaLogs，映像全部以 digest 釘住。Grafana 是內含 VictoriaLogs 資料源外掛的 30ops 映像（`ghcr.io/ivanusto/30ops-grafana`，附建置來源證明）。69 條告警規則只有一份，放在 `collector/prometheus/rules/`；`30ops render` 依 `site.yaml` 的門檻產生規則（[docs/rules.md](docs/rules.md)），連同儀表板，以及記錄 volume、保留期與時區的 `compose.env`。`scripts/check-drift.py` 確保不再出現第二份。v0.3 起：以一份 `site.yaml` 描述場域，`30ops render` 由它產生所有場域相關的檔案（[docs/site-yaml.md](docs/site-yaml.md)、[docs/render.md](docs/render.md)）；`30ops import-legacy` 與 `render --compare-legacy` 讓現有收集端搬過來。`30ops install` 在 v0.5 完成。
+**v0.5.0**：`30ops install collector` 把 render 的結果裝到收集端：帳號、目錄、每個秘密檔的擁有者與權限、render 產出的檔案、單元、docker volume 與映像、stack，最後才是 cron。只改有差異的地方，所以第二次執行不會有任何變更（[docs/install.md](docs/install.md)）。`30ops install node` 為每個節點產生確定性的 bundle，經 ssh 以 sudo 執行；NAS、防火牆與交換器改印出該 adapter 的設定步驟。`30ops doctor` 依 `site.yaml` 檢查已安裝的收集端：映像 digest、targets、textfile 新鮮度、WORM 掛載、時鐘與時區、磁碟、秘密檔、Grafana 密碼與 render 差異。廠商相關的程式改放在 adapter（`adapters/<kind>/<vendor>/`，[docs/adapters.md](docs/adapters.md)），以錄製的 case 跑契約測試；QuTS 的狀態字串由 qnap adapter 的狀態對照轉成 recording rule，`ops30_adapter_info` 標出每台主機的廠商，既有序列的 label 一個都不改。驗收：在拋棄式 Ubuntu 24.04 VM 上連裝兩次，狀態相同，doctor 全過。v0.4 起：單一 compose 專案、映像全部以 digest 釘住，69 條告警規則只有一份並套用場域門檻（[docs/rules.md](docs/rules.md)）。v0.3 起：`site.yaml`、`30ops render`、`import-legacy` 與 `render --compare-legacy`（[docs/site-yaml.md](docs/site-yaml.md)、[docs/render.md](docs/render.md)）。
 
 | 版本 | 內容 |
 |---|---|
@@ -34,10 +34,11 @@
 | `checks/` | PVE QDevice 檢查、可維運檢查清單 | pve-qdevice-on-qnap、索引 repo |
 | `inventory/` | 一年成本模型（電費、攤提、雲端對照） | 索引 repo |
 | `plugins/` | 可選的節點模組：GB10 主機防護、節點基線、NFS 模型庫 | gb10-ops、spark-baseline、nfs-model-library |
+| `adapters/` | 廠商 adapter（`<kind>/<vendor>/adapter.yaml` 與 `adapter.py`）：qnap、fortigate、pve、generic-snmp、linux，見 [docs/adapters.md](docs/adapters.md) | |
 | `examples/sample-site/` | 範例場域的 `site.yaml`、資產清單與成本表 | |
-| `bin/` | `30ops` 指令：`validate`、`render`、`import-legacy`、`drill record`、`drill migrate` | |
+| `bin/` | `30ops` 指令：`validate`、`render`、`import-legacy`、`install collector`、`install node`、`doctor`、`textfile`、`drill record`、`drill migrate` | |
 | `lib/` | `python/ops30` 與 `sh/ops30.sh`，收集端與演練腳本共用，見 [docs/lib.md](docs/lib.md) | |
-| `tests/` | `unit/` 測 lib，`golden/` 是不得改變的 textfile 輸出與範例場域的 render 產出，`fixtures/legacy-root/` 是 30ops 之前的佈局，`sh/` | |
+| `tests/` | `unit/` 測 lib，`golden/` 是不得改變的 textfile 輸出與範例場域的 render 產出，`fixtures/legacy-root/` 是 30ops 之前的佈局，`fixtures/adapters/` 是 adapter 的錄製 case，`sh/`，`vm/` 是在 VM 上的安裝驗收 | |
 | `scripts/` | `hygiene.py`、`check-drift.py`、`check-ci-pins.sh`、`fetch-legacy.sh` | |
 
 ## 檢查

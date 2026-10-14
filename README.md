@@ -8,7 +8,7 @@ An on-prem operations platform for small and medium businesses to run themselves
 
 ## Status
 
-**v0.4.0**: the collector is one compose project (`collector/compose.yml`): Prometheus, the exporters, Alertmanager, Grafana and VictoriaLogs, every image pinned by digest. Grafana is the 30ops image with the VictoriaLogs datasource baked in (`ghcr.io/ivanusto/30ops-grafana`, with a build provenance attestation). The 69 alert rules exist once, in `collector/prometheus/rules/`; `30ops render` writes them with the site's thresholds from `site.yaml` ([docs/rules.md](docs/rules.md)), together with the dashboard and the `compose.env` that names the volumes, retention and time zone. `scripts/check-drift.py` keeps it that way. From v0.3: one `site.yaml` describes the site and `30ops render` generates every site-specific file from it ([docs/site-yaml.md](docs/site-yaml.md), [docs/render.md](docs/render.md)); `30ops import-legacy` and `render --compare-legacy` move an existing collector over. `30ops install` comes in v0.5.
+**v0.5.0**: `30ops install collector` puts a rendered site on the collector: accounts, directories, the owner and mode of every secret file, the rendered files, the units, the docker volumes and images, the stack, then the cron file; it changes only what differs, so a second run changes nothing ([docs/install.md](docs/install.md)). `30ops install node` builds a deterministic bundle per node and runs it over ssh with sudo; NAS, firewalls and switches get their adapter's setup steps instead. `30ops doctor` checks the installed collector against `site.yaml`: image digests, targets, textfile ages, WORM mount, clock and time zone, disk, secrets, the Grafana password and render drift. Vendor code lives in adapters (`adapters/<kind>/<vendor>/`, [docs/adapters.md](docs/adapters.md)) with a contract test on recorded cases; QuTS status strings are normalised by the qnap adapter's status map into recording rules, and `ops30_adapter_info` names each host's vendor without relabelling any existing series. Accepted on a throwaway Ubuntu 24.04 VM: install twice, identical state, doctor clean. From v0.4: one compose project with every image pinned by digest, the 69 alert rules in one place with the site's thresholds ([docs/rules.md](docs/rules.md)). From v0.3: `site.yaml`, `30ops render`, `import-legacy` and `render --compare-legacy` ([docs/site-yaml.md](docs/site-yaml.md), [docs/render.md](docs/render.md)).
 
 | Version | Scope |
 |---|---|
@@ -34,10 +34,11 @@ An on-prem operations platform for small and medium businesses to run themselves
 | `checks/` | PVE QDevice check, operability checklist | pve-qdevice-on-qnap, series index |
 | `inventory/` | One-year cost model (power, depreciation, cloud comparison) | series index |
 | `plugins/` | Optional node modules: GB10 host guard, node baseline, NFS model library | gb10-ops, spark-baseline, nfs-model-library |
+| `adapters/` | Vendor adapters (`<kind>/<vendor>/adapter.yaml` and `adapter.py`): qnap, fortigate, pve, generic-snmp, linux, see [docs/adapters.md](docs/adapters.md) | |
 | `examples/sample-site/` | `site.yaml`, asset list and cost sheet of a sample site | |
-| `bin/` | `30ops` command: `validate`, `render`, `import-legacy`, `drill record`, `drill migrate` | |
+| `bin/` | `30ops` command: `validate`, `render`, `import-legacy`, `install collector`, `install node`, `doctor`, `textfile`, `drill record`, `drill migrate` | |
 | `lib/` | `python/ops30` and `sh/ops30.sh`, shared by the collector-side and drill scripts, see [docs/lib.md](docs/lib.md) | |
-| `tests/` | `unit/` for lib, `golden/` textfile outputs that must not change and the sample site's render, `fixtures/legacy-root/` the pre-30ops layout, `sh/` | |
+| `tests/` | `unit/` for lib, `golden/` textfile outputs that must not change and the sample site's render, `fixtures/legacy-root/` the pre-30ops layout, `fixtures/adapters/` the adapters' recorded cases, `sh/`, `vm/` the install acceptance on a VM | |
 | `scripts/` | `hygiene.py`, `check-drift.py`, `check-ci-pins.sh`, `fetch-legacy.sh` | |
 
 ## Checks
