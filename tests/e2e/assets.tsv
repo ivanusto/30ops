@@ -1,0 +1,11 @@
+# The e2e site's assets: the FortiGate (its licences come live from the fake
+# API through eol-textfile.py --fortigate) and one dated row. eol_ref is -
+# everywhere, so --refresh never leaves the test host. The three os rows are
+# the assets gate/tools.json names (validate --strict checks them). Columns:
+# see examples/sample-site/assets.tsv.
+asset	component	kind	version	milestone	date	basis	eol_ref	source	note
+fgt-edge	FortiOS	firmware	7.6.7	end_of_support	2030-01-25	vendor	-	https://endoflife.date/fortios	e2e
+fgt-edge	FortiGuard licences	licence	-	expires	?	licence	-	GET /api/v2/monitor/license/status	filled live from the fake API
+collector	Ubuntu	os	24.04	end_of_support	2029-05-31	vendor	-	https://endoflife.date/ubuntu	e2e
+pve1	Proxmox VE	os	9.0	end_of_support	2029-08-31	estimate	-	https://endoflife.date/proxmox-ve	e2e
+qdevice	Debian	os	13	end_of_support	2028-08-09	vendor	-	https://endoflife.date/debian	e2e

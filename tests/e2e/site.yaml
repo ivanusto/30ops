@@ -1,0 +1,88 @@
+# The e2e site: the sample site cut down to what tests/e2e/fakes can stand
+# in for, with the same vendors and addresses. The collector is the test
+# host itself (192.0.2.49 on the fake LAN's veth); everything else lives in
+# the ops30e2e network namespace. Not covered here: the gb10 nodes, the
+# agent gate, pcap and plugins (docs/e2e.md).
+version: 1
+
+site:
+  id: e2e
+  name: 30ops e2e
+  timezone: Asia/Taipei
+  locale: en
+
+collector:
+  host: collector
+
+credentials:
+  pve-exporter: {file: /etc/30ops/secrets/pve-exporter.token}
+  snmp-auth: {file: /etc/30ops/secrets/snmp-auth.pass}
+  snmp-priv: {file: /etc/30ops/secrets/snmp-priv.pass}
+  fortigate-api: {file: /etc/30ops/secrets/fortigate-api.token}
+
+hosts:
+  - name: collector
+    address: 192.0.2.49
+    vendor: linux
+    roles: [collector, journal]
+
+  - name: pve1
+    address: 192.0.2.9
+    vendor: pve
+    roles: [hypervisor]
+    ssh: {user: root}
+    pve: {cluster: lab}
+  - name: pve2
+    address: 192.0.2.5
+    vendor: pve
+    roles: [hypervisor]
+    ssh: {user: root}
+    pve: {cluster: lab}
+
+  - name: nas-primary
+    address: 192.0.2.2
+    vendor: qnap
+    roles: [nas, syslog]
+    labels: {nas: primary}
+    ssh: {user: ops30}
+    snmp: {auth: nas_v3}
+
+  - name: fgt-edge
+    address: 192.0.2.99
+    vendor: fortigate
+    roles: [firewall, syslog, audit-source]
+    syslog: {devname: fgt-edge}
+    api: {url: "https://192.0.2.99:10443", token: fortigate-api, insecure: true}
+
+pve:
+  exporter: {user: prometheus@pve, token_name: exporter, token: pve-exporter, verify_ssl: false}
+
+snmp:
+  auths:
+    nas_v3:
+      username: ops30
+      auth_protocol: SHA
+      password: snmp-auth
+      priv_protocol: AES
+      priv_password: snmp-priv
+
+worm:
+  host: nas-primary
+  export: /LogArchive
+  mount: /mnt/worm
+
+logs:
+  archive:
+    skip: [syslog-fgt-edge]
+
+alerting:
+  receivers:
+    ops-critical: {webhook: ["http://192.0.2.250:9999/ops-critical"]}
+    ops-warning: {webhook: ["http://192.0.2.250:9999/ops-warning"]}
+    ops-digest: {webhook: ["http://192.0.2.250:9999/ops-digest"], send_resolved: false}
+
+assets: assets.tsv
+
+changes:
+  clone: /var/lib/30ops/changes
+  remote: /srv/git/changes.git

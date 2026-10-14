@@ -1,0 +1,37 @@
+# Metric names (anchored PromQL regexes) that must exist once the e2e stack
+# has scraped every target and run every textfile job once; check.py
+# baseline. One per source, so a missing line names the broken path.
+
+# nas-primary over ssh (30ops textfile nas, the qnap adapter's health)
+nas_up
+nas_zpool_health
+nas_zfs_snapshots
+nas_textfile_last_run_timestamp
+# nas-primary over SNMPv3 (snmp-exporter, qnap module) and the status rules
+qnap_disk_status
+qnap_pool_status_info
+qnap_model_info
+ifHCInOctets
+nas:qnap_disk_status:ok
+nas:qnap_pool_status_info:ok
+# pve1 and pve2: the API through pve-exporter, the quorum over ssh
+pve_up
+pve_version_info
+pve_cluster_info
+pve_storage_info
+pve_quorum_up
+pve_quorum_qdevice_votes
+pve_quorum_textfile_last_run_timestamp
+# fgt-edge licences through the fortigate adapter, and the asset rows
+asset_eol_timestamp_seconds
+asset_licence_status
+eol_textfile_last_run_timestamp
+# the reports over VictoriaLogs, the changes clone, the drills
+fw_report_last_run_timestamp
+audit_report_last_run_timestamp
+changes_textfile_last_run_timestamp
+drills_textfile_last_run_timestamp
+# the collector itself
+ops30_adapter_info
+node_textfile_mtime_seconds
+node_uname_info
