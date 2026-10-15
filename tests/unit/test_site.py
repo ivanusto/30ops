@@ -220,5 +220,22 @@ class JournalDefault(unittest.TestCase):
         self.assertTrue(any("journal: false and role journal contradict" in e for e in errs), errs)
 
 
+class UpsNone(unittest.TestCase):
+    def test_ups_none_is_for_a_nas(self):
+        d = sample()
+        nas = next(x for x in d["hosts"] if x["name"] == "nas-primary")
+        nas["ups"] = "none"
+        self.assertEqual(check(d), ([], []))
+        from ops30.render import adapters
+        r = site.resolve(d, str(SAMPLE))
+        self.assertEqual(adapters.ups_none(r), ['ops30_ups_none{nas="primary"} 1\n'])
+        text = next(iter(adapters.render(r, "x").values())).text
+        self.assertIn("# TYPE ops30_ups_none gauge\nops30_ups_none{nas=\"primary\"} 1\n", text)
+        q = next(x for x in d["hosts"] if x["name"] == "qdevice")
+        q["ups"] = "none"
+        errs, _ = check(d)
+        self.assertTrue(any("ups is for a host with role nas" in e for e in errs), errs)
+
+
 if __name__ == "__main__":
     unittest.main()

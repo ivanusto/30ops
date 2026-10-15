@@ -1,6 +1,6 @@
 # 告警規則
 
-規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 70 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
+規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 71 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
 
 - 告警名稱、等級與標籤是 Alertmanager 路由與抑制規則的依據（`collector/alertmanager/alertmanager.base.yml`），也是告警歷史的鍵，所以 v1 不改名。`NasPoolAbove80` 在門檻改成 85 之後仍叫這個名字。
 - 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。
@@ -91,6 +91,7 @@ alerting:
 | NasDiskHot | warning | 15m | `nas_disk_temp_c` | 硬碟溫度過高，檢查風扇與機房溫度 |
 | NasSnapshotStale | warning | 1h | `nas_snapshot_max_age_days` | 有快照的資料集，最新快照過舊，檢查快照排程 |
 | NasUpsNotOnline | critical | 1m | | UPS 回報的狀態不是 online。沒接 UPS 時 QuTS hero 回傳 `-1`，不算告警 |
+| NasUpsAbsent | info | 1h | | NAS 沒有接 UPS（`qnap_ups_status` 為 `-1`），停電時無法正常關機。刻意不接的場域在該主機寫 `ups: none`，告警就不會出現；readiness 的 `ups-present` 也會改判為明示接受 |
 | NasTelnetEnabled | warning | 10m | | Telnet 被打開，屬於強化設定回退 |
 | NasMemoryFragmented | warning | 10m | | 帶 GPU 的 NAS，Normal zone 6 小時內都沒有 512 KiB 以上的空閒區塊；GPU 容器可能無法啟動，在空檔重開 NAS |
 

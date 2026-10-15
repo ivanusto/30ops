@@ -53,3 +53,39 @@ tests:
       - eval_time: 11m
         alertname: NasTelnetEnabled
         exp_alerts: []
+
+  # Presence: -1 is "no UPS". NasUpsAbsent fires after an hour, except for a
+  # NAS that site.yaml marks ups: none (ops30_ups_none from 30ops-adapters.prom,
+  # scraped from the collector host); a real UPS state is present.
+  - interval: 1m
+    input_series:
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.0.2.2",nas="primary",qnap_ups_status="-1"}'
+        values: "1x100"
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.0.2.22",nas="secondary",qnap_ups_status="-1"}'
+        values: "1x100"
+      - series: 'ops30_ups_none{job="collector-host",instance="192.0.2.49:9100",nas="secondary"}'
+        values: "1x100"
+      - series: 'qnap_ups_status{job="nas-snmp",instance="192.0.2.3",nas="third",qnap_ups_status="Online"}'
+        values: "1x100"
+    promql_expr_test:
+      - expr: nas:ups:present
+        eval_time: 10m
+        exp_samples:
+          - labels: 'nas:ups:present{job="nas-snmp",instance="192.0.2.2",nas="primary",qnap_ups_status="-1"}'
+            value: 0
+          - labels: 'nas:ups:present{job="nas-snmp",instance="192.0.2.22",nas="secondary",qnap_ups_status="-1"}'
+            value: 0
+          - labels: 'nas:ups:present{job="nas-snmp",instance="192.0.2.3",nas="third",qnap_ups_status="Online"}'
+            value: 1
+    alert_rule_test:
+      - eval_time: 50m
+        alertname: NasUpsAbsent
+        exp_alerts: []
+      - eval_time: 80m
+        alertname: NasUpsAbsent
+        exp_alerts:
+          - exp_labels: {severity: info, job: nas-snmp, instance: "192.0.2.2", nas: primary, qnap_ups_status: "-1"}
+            exp_annotations: {summary: "primary has no UPS; a power cut stops it without a clean shutdown (site.yaml ups: none accepts this)"}
+      - eval_time: 80m
+        alertname: NasUpsNotOnline
+        exp_alerts: []

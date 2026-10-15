@@ -10,3 +10,5 @@ groups:
     expr: qnap_ups_status{qnap_ups_status=~"(?i)online.*|-1"} * 0 + 1 or qnap_ups_status{qnap_ups_status!~"(?i)online.*|-1"} * 0
   - record: nas:qnap_service_telnet_enabled_info:ok
     expr: qnap_service_telnet_enabled_info{qnap_service_telnet_enabled=~"yes"} * 0 or qnap_service_telnet_enabled_info{qnap_service_telnet_enabled!~"yes"} * 0 + 1
+  - record: nas:ups:present
+    expr: qnap_ups_status{qnap_ups_status=~"-1"} * 0 or qnap_ups_status{qnap_ups_status!~"-1"} * 0 + 1

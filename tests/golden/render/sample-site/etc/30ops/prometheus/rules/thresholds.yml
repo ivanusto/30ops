@@ -67,6 +67,14 @@ groups:
         for: 1m
         labels: {severity: critical}
         annotations: {summary: "{{ $labels.nas }} UPS reports {{ $labels.qnap_ups_status }}"}
+      # No UPS at all (nas:ups:present, from adapter.yaml presence:). A site
+      # that runs a NAS without one on purpose says ups: none for that host,
+      # which render writes as ops30_ups_none and which keeps this quiet.
+      - alert: NasUpsAbsent
+        expr: nas:ups:present == 0 unless on (nas) ops30_ups_none == 1
+        for: 1h
+        labels: {severity: info}
+        annotations: {summary: "{{ $labels.nas }} has no UPS; a power cut stops it without a clean shutdown (site.yaml ups: none accepts this)"}
       - alert: NasTelnetEnabled
         expr: nas:qnap_service_telnet_enabled_info:ok == 0
         for: 10m

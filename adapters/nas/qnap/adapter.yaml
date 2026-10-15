@@ -46,3 +46,12 @@ status:
   - {record: "nas:qnap_pool_status_info:ok", metric: qnap_pool_status_info, label: qnap_pool_status, ok: "ready", alert: NasPoolStatusNotReady}
   - {record: "nas:qnap_ups_status:ok", metric: qnap_ups_status, label: qnap_ups_status, ok: "(?i)online.*|-1", alert: NasUpsNotOnline}
   - {record: "nas:qnap_service_telnet_enabled_info:ok", metric: qnap_service_telnet_enabled_info, label: qnap_service_telnet_enabled, bad: "yes", alert: NasTelnetEnabled}
+# Presence: whether a device is there at all, as opposed to how it is. A
+# QNAP with no UPS reports the status "-1", which the status map above
+# counts as healthy (nothing is wrong with a UPS that does not exist).
+# render turns each entry into a recording rule <record>: 0 where the label
+# matches `absent`, 1 otherwise. The record name carries no vendor, so
+# another source (NUT) can feed the same alert. The alert stays quiet for a
+# host that site.yaml marks ups: none (ops30_ups_none in 30ops-adapters.prom).
+presence:
+  - {record: "nas:ups:present", metric: qnap_ups_status, label: qnap_ups_status, absent: "-1", alert: NasUpsAbsent}

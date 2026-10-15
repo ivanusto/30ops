@@ -12,6 +12,11 @@ so a query can join on it:
   firewall    host="<syslog.devname>"        as fw.prom
   os          instance="<address>:9100"      as the node and collector jobs
 
+It also says which NAS the site runs without a UPS on purpose (site.yaml
+ups: none), for NasUpsAbsent to leave alone:
+
+  ops30_ups_none{nas} 1
+
 It is static (it changes only with site.yaml), so install puts it in the
 textfile directory and doctor does not check its age.
 """
@@ -51,11 +56,20 @@ def lines(site):
     return out
 
 
+UPS_HELP = "# HELP ops30_ups_none 1 for a NAS that site.yaml says runs without a UPS (ups: none)\n" \
+           "# TYPE ops30_ups_none gauge\n"
+
+
+def ups_none(site):
+    return [f'ops30_ups_none{{nas="{esc(join("nas", h)[0][1])}"}} 1\n'
+            for h in site["hosts"] if h.get("ups") == "none" and "nas" in h["roles"]]
+
+
 def render(site, sha):
-    ls = lines(site)
-    if not ls:
+    ls, ups = lines(site), ups_none(site)
+    if not ls and not ups:
         return {}
     path = site["collector"]["textfile_dir"].strip("/") + "/30ops-adapters.prom"
-    return {path: Output(header(sha) + HELP + "".join(ls))}
+    return {path: Output(header(sha) + HELP + "".join(ls) + (UPS_HELP + "".join(ups) if ups else ""))}
 
 

@@ -30,7 +30,7 @@ from ops30.adapters.transport import Replay  # noqa: E402
 
 FIX = ROOT / "tests" / "fixtures" / "adapters"
 SNMP = (ROOT / "collector" / "prometheus" / "snmp.yml").read_text()
-TOP = {"adapter", "kind", "vendor", "version", "tested", "capabilities", "os", "status", "manual"}
+TOP = {"adapter", "kind", "vendor", "version", "tested", "capabilities", "os", "status", "presence", "manual"}
 CAP = {"face", "status", "textfile", "via", "ref", "module", "metrics", "milestone", "note"}
 
 
@@ -107,6 +107,19 @@ class Contract(unittest.TestCase):
                     self.assertEqual(e["record"], f"{kind}:{e['metric']}:ok")
                     self.assertTrue(snmp_has(e["metric"]), e["metric"])
                     self.assertRegex(rules_text, rf"- alert: {e['alert']}\n\s+expr: {re.escape(e['record'])} == 0\n")
+
+    def test_presence_maps(self):
+        """Each presence entry names an SNMP metric, the label, the string
+        that means absent, a vendor-free record and the alert that reads it."""
+        rules_text = "".join(p.read_text() for p in (ROOT / "collector" / "prometheus" / "rules").glob("*.yml"))
+        for kind, vendor in registry.available():
+            for e in registry.meta(kind, vendor).get("presence") or []:
+                with self.subTest(adapter=f"{kind}/{vendor}", record=e.get("record")):
+                    self.assertEqual(set(e), {"record", "metric", "label", "absent", "alert"})
+                    self.assertRegex(e["record"], rf"^{kind}:[a-z]+:present$")
+                    self.assertNotIn(vendor, e["record"])
+                    self.assertTrue(snmp_has(e["metric"]), e["metric"])
+                    self.assertRegex(rules_text, rf"- alert: {e['alert']}\n\s+expr: {re.escape(e['record'])} == 0")
 
     def test_collect_cases(self):
         for kind, vendor in registry.available():

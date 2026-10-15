@@ -121,6 +121,7 @@ HOST = {
     "syslog": _f({"devname": _f(S, True)}),
     "pcap": _f({"user": _f(S), "iface": _f(S)}),
     "journal": _f(B),
+    "ups": _f(("enum", ("none",))),
     "note": _f(S),
 }
 
@@ -340,6 +341,8 @@ def _cross(doc, base, secrets, errs, warns):
         for j, pl in enumerate(h.get("plugins") or []) if isinstance(h.get("plugins"), list) else ():
             if pl in PLUGINS and (why := plugins.fits(pl, h)):
                 errs.append(f"{p}.plugins[{j}]: {why}")
+        if h.get("ups") and "nas" not in roles:
+            errs.append(f"{p}.ups is for a host with role nas")
         if h.get("journal") is False and "journal" in roles:
             errs.append(f"{p}: journal: false and role journal contradict each other")
         if isinstance(h.get("snmp"), dict):
