@@ -16,7 +16,11 @@
 #      journal land in VictoriaLogs; a sender off the allowlist is dropped
 #   5. the day is archived to the WORM share over NFS and verified
 #   6. doctor: no failure, warnings only as allowed-warn.txt says
-#   7. the containers use less than 3 GiB together
+#   7. the deadman: the Watchdog reaches 30ops-deadman (on watcher, in the
+#      namespace) and no other receiver; the switch answers SNMP
+#   8. readiness: every item has the status check.py expects, and no item
+#      is a no that site.yaml does not accept
+#   9. the containers use less than 3 GiB together
 # It changes the host for good (accounts, /etc/30ops, cron, docker, an NFS
 # export), so it refuses to run without OPS30_E2E_DISPOSABLE=1. Evidence
 # goes to $OUT (default /var/tmp/ops30e2e); $OUT/summary.txt has the result.
@@ -60,7 +64,8 @@ collect() {
   curl -fsS 'http://127.0.0.1:9090/api/v1/targets?state=active' > "$OUT/targets.json" 2>/dev/null
   curl -fsS http://127.0.0.1:9090/api/v1/alerts > "$OUT/prometheus-alerts.json" 2>/dev/null
   curl -fsS http://127.0.0.1:9093/api/v2/alerts > "$OUT/alertmanager-alerts.json" 2>/dev/null
-  journalctl -b --no-pager -u srv-worm.mount -u 30ops-allowlist -u systemd-journal-upload -u nfs-server > "$OUT/units.log" 2>&1
+  journalctl -b --no-pager -u srv-worm.mount -u 30ops-allowlist -u systemd-journal-upload -u nfs-server \
+    -u 30ops-deadman > "$OUT/units.log" 2>&1
   {
     systemctl --failed --no-pager
     systemctl list-dependencies --no-pager srv-worm.mount
@@ -137,6 +142,14 @@ ops30 install node collector --site "$SITE" --bundle /var/tmp/ | tee "$OUT/bundl
 (cd /var/tmp && tar xzf 30ops-node-collector.tar.gz && sh 30ops-node-collector/node-install.sh) > "$OUT/node-install.log" 2>&1 \
   || { cat "$OUT/node-install.log"; fail "node-install on the collector"; }
 
+# the deadman host's bundle, installed here but run inside the namespace
+# as watcher (192.0.2.41): the drop-in is in place before the unit starts
+ops30 install node watcher --site "$SITE" --bundle /var/tmp/ | tee "$OUT/bundle-watcher.log"
+mkdir -p /etc/systemd/system/30ops-deadman.service.d
+printf '[Service]\nNetworkNamespacePath=/run/netns/ops30e2e\n' > /etc/systemd/system/30ops-deadman.service.d/e2e.conf
+(cd /var/tmp && tar xzf 30ops-node-watcher.tar.gz && sh 30ops-node-watcher/node-install.sh) > "$OUT/node-install-watcher.log" 2>&1 \
+  || { cat "$OUT/node-install-watcher.log"; fail "node-install on watcher"; }
+
 # run a textfile job of /etc/cron.d/30ops now, as cron would
 job() {
   python3 - "$1" <<'PYEOF' > "$OUT/job.sh"
@@ -167,6 +180,9 @@ grep -q '^30ops install collector: 0 change(s), 0 warning(s)$' "$OUT/install-2.l
 # ---------------------------------------------------------------------------
 step "baseline: targets, metric names, rules"
 check baseline --rules /etc/30ops/prometheus/rules --expected "$R/tests/e2e/expected-metrics.txt"
+
+step "deadman: the Watchdog reaches 30ops-deadman and nothing else"
+check deadman --sink /run/ops30e2e/webhook.jsonl
 
 step "fault: nas-primary's pool DEGRADED"
 "$R/tests/e2e/fakes/netns.sh" degrade
@@ -214,6 +230,10 @@ step "recover, doctor"
 job nas.prom
 ops30 doctor --site "$SITE" --format json > "$OUT/doctor.json" || true
 check doctor --json "$OUT/doctor.json" --allowed "$R/tests/e2e/allowed-warn.txt"
+
+step "readiness"
+job drills.prom
+check readiness --ops30 "$R/bin/30ops" --site "$SITE" --out "$OUT/readiness.json"
 
 step "memory"
 docker stats --no-stream --format '{{.Name}}\t{{.MemUsage}}' > "$OUT/memory.txt"

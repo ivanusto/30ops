@@ -23,7 +23,7 @@ ROLES = ("collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas",
 # A Linux or PVE host in one of these roles ships its journal to the
 # collector unless it says journal: false (resolve() adds the role). The
 # collector is left out: it is where the journals go.
-JOURNAL_BY_DEFAULT = {"node", "qdevice", "hypervisor"}
+JOURNAL_BY_DEFAULT = {"node", "qdevice", "hypervisor", "deadman"}
 JOURNAL_VENDORS = ("linux", "pve")
 # roles that need a vendor, because something on the collector talks to the host
 MANAGED = {"collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "firewall", "switch", "ap",

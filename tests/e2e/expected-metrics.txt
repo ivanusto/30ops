@@ -14,6 +14,7 @@ qnap_model_info
 ifHCInOctets
 nas:qnap_disk_status:ok
 nas:qnap_pool_status_info:ok
+nas:ups:present
 # pve1 and pve2: the API through pve-exporter, the quorum over ssh
 pve_up
 pve_version_info
@@ -35,3 +36,14 @@ drills_textfile_last_run_timestamp
 ops30_adapter_info
 node_textfile_mtime_seconds
 node_uname_info
+ops30_ups_none
+# sw-core over SNMPv3 (snmp-exporter, if_mib module)
+sysUpTime
+ifOperStatus
+ifAdminStatus
+# watcher: 30ops-deadman, pushed to by Alertmanager
+deadman_last_push_timestamp_seconds
+deadman_alerting
+# 30ops readiness from the collector's cron (primed by install)
+readiness_item
+readiness_textfile_last_run_timestamp

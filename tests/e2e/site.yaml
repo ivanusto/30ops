@@ -46,6 +46,24 @@ hosts:
     labels: {nas: primary}
     ssh: {user: ops30}
     snmp: {auth: nas_v3}
+    # the fake reports no UPS (qnap_ups_status -1), as the lab NAS do
+    ups: none
+
+  # a switch answering SNMPv3 with net-snmp's own IF-MIB (the generic-snmp adapter)
+  - name: sw-core
+    address: 192.0.2.40
+    vendor: generic-snmp
+    roles: [switch]
+    snmp: {auth: nas_v3}
+
+  # 30ops-deadman, installed from its node bundle on the test host and run
+  # inside the namespace (run.sh adds NetworkNamespacePath); its journal
+  # would be the test host's own, so it does not ship one
+  - name: watcher
+    address: 192.0.2.41
+    vendor: linux
+    roles: [deadman]
+    journal: false
 
   - name: fgt-edge
     address: 192.0.2.99
@@ -83,9 +101,30 @@ alerting:
     ops-critical: {webhook: ["http://192.0.2.250:9999/ops-critical"]}
     ops-warning: {webhook: ["http://192.0.2.250:9999/ops-warning"]}
     ops-digest: {webhook: ["http://192.0.2.250:9999/ops-digest"], send_resolved: false}
+  deadman:
+    host: watcher
+    webhook: ["http://192.0.2.250:9999/deadman"]
 
 assets: assets.tsv
 
 changes:
   clone: /var/lib/30ops/changes
   remote: /srv/git/changes.git
+
+# The items the fake LAN cannot answer, accepted with the reason; check.py
+# readiness holds every item to the statuses it expects.
+readiness:
+  accept:
+    pkg-rollback: a disposable test host, nothing to roll back to
+    restore-drill-pve: the fake PVE nodes have no storage to restore to
+    restore-drill-nas: the fake NAS has no shares to restore
+    offsite-copy: no cloud bucket in the test
+    backup-of-backup: no second NAS in the test
+    eol: the fake FortiGate licence row has no date
+    change-records: the fixture record is still scheduled after its window closed (ChangeWindowOverrun)
+    second-approver: the fake change records are one person's
+    change-effort: the fake change records predate effort_min
+    audit-attributed: the test injects a FortiGate event that matches no change record
+    rollback-drilled: the fake change records have no rollback drill
+  answers:
+    pkg-release-verified: e2e installs the tarball of the commit under test; run.sh prints its sha256

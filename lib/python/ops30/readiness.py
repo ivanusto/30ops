@@ -70,13 +70,16 @@ def applies(site, item, enabled):
 
 
 def _journald_coverage(site, facts):
+    """Every Linux and PVE host but the collector ships its journal, or says
+    journal: false (a decision written down is not a gap)."""
     col = site["collector"]["host"]
-    miss = [h["name"] for h in site["hosts"]
-            if h.get("vendor") in ("linux", "pve") and h["name"] != col and "journal" not in h["roles"]]
+    hs = [h for h in site["hosts"] if h.get("vendor") in ("linux", "pve") and h["name"] != col]
+    miss = [h["name"] for h in hs if "journal" not in h["roles"] and h.get("journal") is not False]
     if miss:
         return NO, f"no journal upload from {', '.join(miss)}"
     n = sum(1 for h in site["hosts"] if "journal" in h["roles"])
-    return YES, f"{n} hosts ship their journal"
+    off = [h["name"] for h in hs if h.get("journal") is False]
+    return YES, f"{n} hosts ship their journal" + (f"; journal: false on {', '.join(off)}" if off else "")
 
 
 def _switch_in_assets(site, facts):

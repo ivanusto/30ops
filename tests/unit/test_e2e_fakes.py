@@ -153,6 +153,21 @@ class E2eSite(unittest.TestCase):
         netns = (FAKES / "netns.sh").read_text()
         for a in addrs.values():
             self.assertIn(a, netns)
+        self.assertIn(f"agentAddress udp:{addrs['sw-core']}:161", (FAKES / "snmp" / "snmpd-switch.conf.in").read_text())
+
+    def test_readiness_expectations_cover_the_plan(self):
+        """check.py READINESS names exactly the items the e2e site is asked,
+        and every accepted item is one check.py lets be accepted."""
+        from ops30 import readiness
+        check = load("e2e_check", ROOT / "tests" / "e2e" / "check.py")
+        doc = site.load(ROOT / "tests" / "e2e" / "site.yaml")
+        p = readiness.plan(site.resolve(doc, str(ROOT / "tests" / "e2e")))
+        self.assertEqual({i["id"] for i in p["items"]}, set(check.READINESS))
+        for i in doc["readiness"]["accept"]:
+            self.assertIn("accepted", check.READINESS[i], i)
+        for i, want in check.READINESS.items():
+            if "accepted" in want and i != "ups-present":     # ups: none accepts that one
+                self.assertIn(i, doc["readiness"]["accept"], i)
 
 
 if __name__ == "__main__":

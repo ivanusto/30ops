@@ -6,6 +6,8 @@
   check.py logs     --token T --kernel-log FILE
   check.py archive  --mount DIR --day-dir DIR --drills FILE [--source NAME ...]
   check.py doctor   --json FILE --allowed FILE
+  check.py deadman  --sink FILE [--timeout 240]
+  check.py readiness --ops30 BIN --site FILE --out FILE [--timeout 240]
 
 Every mode prints one "ok" or "FAIL" line per check and exits 1 when any
 check failed. Waits poll every 3 s up to the timeout given; the run is
@@ -13,6 +15,7 @@ over as soon as everything holds.
 """
 import argparse
 import glob
+import subprocess
 import json
 import os
 import re
@@ -162,6 +165,71 @@ def doctor(a):
     print(f"     doctor: {len(doc['results']) - len(warns) - len(fails)} ok, {len(warns)} warn, {len(fails)} fail")
 
 
+def deadman(a):
+    """30ops-deadman got a push and counts the collector alive; the
+    Watchdog went to no ordinary receiver, and the deadman sent nothing."""
+    def pushed():
+        r = prom("/api/v1/query", query="deadman_last_push_timestamp_seconds > 0 and on () deadman_alerting == 0")["result"]
+        return (bool(r), "no push seen by the deadman job yet")
+    done, detail = wait(pushed, a.timeout)
+    ok(done, "30ops-deadman got the Watchdog (deadman_last_push_timestamp_seconds, deadman_alerting 0)", detail)
+    hits, silent = [], []
+    if os.path.exists(a.sink):
+        for line in open(a.sink, encoding="utf-8"):
+            rec = json.loads(line)
+            body = rec["body"] if isinstance(rec["body"], dict) else {}
+            names = {x.get("labels", {}).get("alertname") for x in body.get("alerts", [])}
+            if "Watchdog" in names:
+                hits.append(rec["path"])
+            if "CollectorSilent" in names:
+                silent.append(rec["path"])
+    ok(not hits, "no ordinary receiver got the Watchdog", ", ".join(hits))
+    ok(not silent, "the deadman did not report the collector silent", ", ".join(silent))
+    up = prom("/api/v1/query", query='up{job="switch-snmp"} == 1 and on (instance) sysUpTime')["result"]
+    ok(bool(up), "the switch answers SNMP (switch-snmp up, sysUpTime present)")
+
+
+# check.py readiness: the status each item of tests/e2e/site.yaml must have.
+# Two statuses where the fake LAN's timing decides (an alert that fires or
+# not before the item is asked); site.yaml accepts those, with the reason.
+READINESS = {
+    "pkg-images-pinned": {"yes"}, "pkg-render-clean": {"yes"}, "pkg-release-verified": {"yes"},
+    "pkg-rollback": {"accepted"},
+    "targets-up": {"yes"}, "textfiles-fresh": {"yes"}, "alert-path": {"yes"}, "deadman": {"yes"},
+    "journald-coverage": {"yes"}, "switch-monitored": {"yes"}, "switch-in-assets": {"yes"},
+    "pve-quorum": {"yes"}, "restore-drill-pve": {"accepted"}, "restore-drill-nas": {"accepted"},
+    "offsite-copy": {"accepted"}, "nas-snapshots": {"yes"}, "ups-present": {"accepted"},
+    "backup-of-backup": {"accepted"},
+    "logs-worm": {"yes"}, "fw-reviewed": {"yes"}, "eol": {"yes", "accepted"}, "change-records": {"accepted"},
+    "audit-attributed": {"yes", "accepted"}, "rollback-drilled": {"yes", "accepted"},
+    "second-approver": {"accepted"}, "change-effort": {"accepted"},
+}
+
+
+def readiness(a):
+    last = {}
+
+    def run():
+        nonlocal last
+        p = subprocess.run([a.ops30, "readiness", "--site", a.site, "--format", "json"], capture_output=True, text=True)
+        if p.returncode not in (0, 1):
+            return (False, f"exit {p.returncode}: {p.stderr.strip()[-300:]}")
+        last = json.loads(p.stdout)
+        got = {r["id"]: r["status"] for r in last["results"]}
+        bad = [f"{i}={got.get(i)}" for i, want in READINESS.items() if got.get(i) not in want]
+        extra = sorted(set(got) - set(READINESS))
+        if extra:
+            bad.append(f"unexpected items {', '.join(extra)}")
+        return (not bad and p.returncode == 0, "; ".join(bad) or f"exit {p.returncode}")
+    done, detail = wait(run, a.timeout, interval=10)
+    if last:
+        with open(a.out, "w", encoding="utf-8") as f:
+            json.dump(last, f, ensure_ascii=False, indent=2)
+        for r in last["results"]:
+            print(f"     {r['status']:<8} {r['id']}: {r['evidence']}")
+    ok(done, f"readiness: {len(READINESS)} items as expected, no unaccepted no", detail)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="mode", required=True)
@@ -186,8 +254,17 @@ def main(argv=None):
     d = sub.add_parser("doctor")
     d.add_argument("--json", required=True)
     d.add_argument("--allowed", required=True)
+    dm = sub.add_parser("deadman")
+    dm.add_argument("--sink", required=True)
+    dm.add_argument("--timeout", type=int, default=240)
+    rd = sub.add_parser("readiness")
+    rd.add_argument("--ops30", required=True)
+    rd.add_argument("--site", required=True)
+    rd.add_argument("--out", required=True)
+    rd.add_argument("--timeout", type=int, default=240)
     a = ap.parse_args(argv)
-    {"baseline": baseline, "alert": alert, "logs": logs, "archive": archive, "doctor": doctor}[a.mode](a)
+    {"baseline": baseline, "alert": alert, "logs": logs, "archive": archive, "doctor": doctor,
+     "deadman": deadman, "readiness": readiness}[a.mode](a)
     print(f"check.py {a.mode}: {len(failed)} failed")
     return 1 if failed else 0
 

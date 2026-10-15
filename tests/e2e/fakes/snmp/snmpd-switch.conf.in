@@ -1,0 +1,8 @@
+# snmpd for the e2e fake switch sw-core (netns.sh fills in the @...@
+# values): SNMPv3 with the e2e site's nas_v3 account, and nothing but what
+# net-snmp serves itself, sysUpTime, sysName and the IF-MIB tables of the
+# namespace's interfaces, as a managed switch answers module if_mib.
+agentAddress udp:192.0.2.40:161
+createUser @USER@ SHA "@AUTH@" AES "@PRIV@"
+rouser @USER@ priv
+sysName sw-core

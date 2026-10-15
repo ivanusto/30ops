@@ -9,3 +9,4 @@ fgt-edge	FortiGuard licences	licence	-	expires	?	licence	-	GET /api/v2/monitor/l
 collector	Ubuntu	os	24.04	end_of_support	2029-05-31	vendor	-	https://endoflife.date/ubuntu	e2e
 pve1	Proxmox VE	os	9.0	end_of_support	2029-08-31	estimate	-	https://endoflife.date/proxmox-ve	e2e
 qdevice	Debian	os	13	end_of_support	2028-08-09	vendor	-	https://endoflife.date/debian	e2e
+sw-core	Switch OS	firmware	4.5.0	end_of_support	2030-12-31	vendor	-	-	e2e

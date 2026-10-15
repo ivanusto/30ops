@@ -201,7 +201,7 @@ class Wiring(unittest.TestCase):
         self.assertEqual(env.get("EMAIL_TO", ""), " ".join(crit.get("email") or []))
         tree = nodes.render(r, "x")
         self.assertIn("nodes/watcher/etc/30ops-deadman/deadman.env", tree)
-        self.assertIn('ROLES="deadman"', tree["nodes/watcher/install.env"].text)
+        self.assertIn('ROLES="deadman journal"', tree["nodes/watcher/install.env"].text)   # journal by default
 
     def test_validate(self):
         doc, _ = resolved()

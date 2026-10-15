@@ -13,6 +13,8 @@
 #   192.0.2.9    pve1         ssh (pvecm status), PVE API on 8006
 #   192.0.2.5    pve2         the same
 #   192.0.2.99   fgt-edge     FortiGate API on 10443
+#   192.0.2.40   sw-core      SNMPv3, net-snmp's own IF-MIB (module if_mib)
+#   192.0.2.41   watcher      30ops-deadman on 9095 (run.sh starts the unit in the namespace)
 #   192.0.2.250  webhook sink for Alertmanager, port 9999
 #   192.0.2.66   a sender that is not on the syslog allowlist
 #
@@ -28,7 +30,7 @@ SECRETS=${SECRETS:-/etc/30ops/secrets}
 WORM=${WORM:-/srv/ops30e2e-worm}
 REPO=$(cd "$(dirname "$0")/../../.." && pwd)
 HERE=$REPO/tests/e2e/fakes
-ADDRS="192.0.2.2 192.0.2.9 192.0.2.5 192.0.2.99 192.0.2.250 192.0.2.66"
+ADDRS="192.0.2.2 192.0.2.9 192.0.2.5 192.0.2.99 192.0.2.40 192.0.2.41 192.0.2.250 192.0.2.66"
 in_ns() { ip netns exec "$NS" "$@"; }
 die() { echo "netns.sh: $*" >&2; exit 1; }
 fill() { sed -e "s|@STATE@|$STATE|g" -e "s|@REPO@|$REPO|g" "$@"; }
@@ -37,7 +39,7 @@ up() {
   [ "$(id -u)" = 0 ] || die "run as root"
   ip netns list | grep -qw "$NS" && die "$NS exists; run down first"
   rm -rf "$STATE"
-  mkdir -p "$STATE/nas" "$STATE/authorized_keys" "$STATE/snmp"
+  mkdir -p "$STATE/nas" "$STATE/authorized_keys" "$STATE/snmp" "$STATE/snmp-switch"
   chmod 755 "$STATE" "$STATE/authorized_keys"
 
   ip netns add "$NS"
@@ -74,6 +76,12 @@ up() {
     -e "s|@AUTH@|$(cat "$SECRETS/snmp-auth.pass")|" -e "s|@PRIV@|$(cat "$SECRETS/snmp-priv.pass")|" > "$STATE/snmpd.conf"
   chmod 600 "$STATE/snmpd.conf"
   SNMP_PERSISTENT_DIR="$STATE/snmp" in_ns snmpd -C -c "$STATE/snmpd.conf" -p "$STATE/snmpd.pid" -Lf "$STATE/snmpd.log" < /dev/null > /dev/null 2>&1
+  # snmpd: sw-core, a second agent with its own persistent directory
+  fill "$HERE/snmp/snmpd-switch.conf.in" | sed -e "s|@USER@|ops30|" \
+    -e "s|@AUTH@|$(cat "$SECRETS/snmp-auth.pass")|" -e "s|@PRIV@|$(cat "$SECRETS/snmp-priv.pass")|" > "$STATE/snmpd-switch.conf"
+  chmod 600 "$STATE/snmpd-switch.conf"
+  SNMP_PERSISTENT_DIR="$STATE/snmp-switch" in_ns snmpd -C -c "$STATE/snmpd-switch.conf" -p "$STATE/snmpd-switch.pid" \
+    -Lf "$STATE/snmpd-switch.log" < /dev/null > /dev/null 2>&1
 
   # HTTP: PVE API, FortiGate API, webhook sink
   openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj /CN=ops30-e2e \
@@ -98,14 +106,16 @@ up() {
       sleep 0.5
     done
   done
-  if ! { [ -s "$STATE/snmpd.pid" ] && kill -0 "$(cat "$STATE/snmpd.pid")"; }; then
-    tail -n 20 "$STATE/snmpd.log" >&2; die "snmpd is not running"
-  fi
+  for p in snmpd snmpd-switch; do
+    if ! { [ -s "$STATE/$p.pid" ] && kill -0 "$(cat "$STATE/$p.pid")"; }; then
+      tail -n 20 "$STATE/$p.log" >&2; die "$p is not running"
+    fi
+  done
   echo "netns.sh: $NS up ($ADDRS)"
 }
 
 down() {
-  for p in http sshd snmpd; do
+  for p in http sshd snmpd snmpd-switch; do
     if [ -f "$STATE/$p.pid" ]; then kill "$(cat "$STATE/$p.pid")" 2>/dev/null || true; fi
   done
   ip netns del "$NS" 2>/dev/null || true

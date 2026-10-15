@@ -150,7 +150,8 @@ class Plan(unittest.TestCase):
         by = {i["id"]: i for i in p["items"]}
         self.assertEqual(by["deadman"]["accept"], "v0.8")
         self.assertEqual(by["pkg-rollback"]["answer"], "tarball kept on the NAS")
-        self.assertEqual(by["journald-coverage"]["static"], ["no", "no journal upload from qdevice"])
+        self.assertEqual(by["journald-coverage"]["static"][0], "yes")
+        self.assertIn("journal: false on qdevice", by["journald-coverage"]["static"][1])
 
 
 class Checks(unittest.TestCase):
