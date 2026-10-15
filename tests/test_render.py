@@ -29,7 +29,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "lib" / "python"))
 
-from ops30 import legacy, legacy_import, render, site  # noqa: E402
+from ops30 import legacy, legacy_import, render, site, yamlio  # noqa: E402
 
 SAMPLE = ROOT / "examples" / "sample-site" / "site.yaml"
 GOLDEN = ROOT / "tests" / "golden" / "render" / "sample-site"
@@ -157,6 +157,24 @@ class Detects(unittest.TestCase):
         self.edit("opt/onprem-metrics/prometheus/pve.yml", "REPLACE-WITH-TOKEN", "MASKED")
         self.edit("etc/cron.d/onprem-metrics", "/etc/onprem-metrics/fgt.token", "/root/fgt.token")
         self.assertEqual(self.diffs(), [])
+
+    def test_additions_are_notes(self):
+        """What 30ops added on purpose (deadman route and receiver, readiness
+        cron line) is a note, not a difference; anything else still is."""
+        am, cron = "etc/30ops/alertmanager/alertmanager.yml", "etc/cron.d/30ops"
+        doc = yamlio.loads(self.tree[am].text, am)
+        doc["receivers"].append({"name": "deadman"})
+        doc["route"]["routes"].insert(0, {"matchers": ['alertname="Watchdog"'], "receiver": "deadman"})
+        self.tree[am] = render.Output(yamlio.dumps(doc))
+        self.tree[cron] = render.Output(self.tree[cron].text + "*/15 * * * * metrics /opt/30ops/bin/30ops readiness "
+                                        "--plan /etc/30ops/readiness.json\n")
+        notes = []
+        self.assertEqual(legacy.compare(self.tree, self.root, self.site, notes), [])
+        self.assertEqual(len(notes), 3, notes)
+        self.assertIn('alertmanager.yml: route alertname="Watchdog" -> deadman', notes)
+        doc["route"]["routes"].insert(0, {"matchers": ['alertname="NasPoolAbove90"'], "receiver": "deadman"})
+        self.tree[am] = render.Output(yamlio.dumps(doc))
+        self.assertTrue(any(d.startswith("alertmanager.yml: route.routes") for d in self.diffs()), self.diffs())
 
     def test_missing_file(self):
         os.unlink(os.path.join(self.root, "etc/cron.d/onprem-changes"))

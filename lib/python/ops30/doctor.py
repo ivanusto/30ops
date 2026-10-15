@@ -22,7 +22,7 @@ import os
 import re
 import time
 
-from . import site as S
+from . import promql, site as S
 from .install import collector as IC, deploy
 from .render import compose as RC
 from .render.cron import TEXTFILES
@@ -31,8 +31,8 @@ OK, WARN, FAIL = "ok", "warn", "fail"
 
 
 class Doctor:
-    def __init__(self, site, tree, ops, now=None):
-        self.site, self.tree, self.ops = site, tree, ops
+    def __init__(self, site, tree, ops, now=None, prom=promql.LOCAL):
+        self.site, self.tree, self.ops, self.prom = site, tree, ops, prom
         self.now = time.time() if now is None else now
         self.results = []
         self.ctx = IC.Ctx(site, tree, ops, IC.Run(True, lambda x: None))
@@ -61,21 +61,13 @@ class Doctor:
         self.add("images", FAIL if bad else OK, "; ".join(bad) or f"{len(want)} services on their pinned digests")
 
     def _query(self, q):
-        import urllib.parse
-        code, body = self.ops.http("http://127.0.0.1:9090/api/v1/query?query=" + urllib.parse.quote(q))
-        if code != 200:
-            return None
-        try:
-            return json.loads(body)["data"]["result"]
-        except (ValueError, KeyError):
-            return None
+        return promql.query(self.ops, q, self.prom)
 
     def targets(self):
-        code, body = self.ops.http("http://127.0.0.1:9090/api/v1/targets?state=active")
-        if code != 200:
+        code, ts = promql.targets(self.ops, self.prom)
+        if ts is None:
             self.add("targets", FAIL, f"Prometheus did not answer ({code})")
             return
-        ts = json.loads(body)["data"]["activeTargets"]
         name = lambda t: f"{t['labels'].get('job')}/{t['labels'].get('instance')}"   # noqa: E731
         down = [f"{name(t)}: {t.get('lastError') or t['health']}" for t in ts if t["health"] == "down"]
         new = [name(t) for t in ts if t["health"] not in ("up", "down")]

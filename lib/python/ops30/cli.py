@@ -152,9 +152,12 @@ def cmd_render(a):
             rc = 1
     if a.compare_legacy:
         from . import legacy
-        diffs = legacy.compare(tree, a.compare_legacy, r[0])
+        notes = []
+        diffs = legacy.compare(tree, a.compare_legacy, r[0], notes)
         for d in diffs:
             print(d)
+        for n in notes:
+            print(f"note: new in 30ops: {n}", file=sys.stderr)
         print(f"30ops render --compare-legacy: {len(diffs)} difference(s) from {a.compare_legacy}", file=sys.stderr)
         rc = rc or (1 if diffs else 0)
     if not (a.out or a.diff or a.compare_legacy):

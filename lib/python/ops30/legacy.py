@@ -9,6 +9,11 @@ labels, the same cron jobs with the same arguments, the same allowlist,
 mount, receivers and gate targets. Paths of the old clones are mapped to
 collector.root first; secrets are not compared (snapshots have them
 masked). Every difference is a line of text; none means "same".
+
+Some of what render writes has no counterpart before 30ops because 30ops
+added it (the deadman route, the readiness job, the switch scrape job, the
+journal upload a host gets by default). compare() leaves those out of the
+differences and, given a notes list, says what it left out there.
 """
 import collections
 import glob
@@ -48,6 +53,13 @@ PROFILE_SERVICES = {"pve": "pve-exporter", "snmp": "snmp-exporter", "logs": "vic
 FILE_ENV = {"AUDIT_QUIET_FROM": "audit-report.py", "FW_EXPECT": "fw-report.py", "AUP_EXPECT": "aup-report.py"}
 GATE_CONFIG_DEFAULT = "/etc/onprem-agent-gate/config.json"
 ENV_RE = re.compile(r'''^([A-Za-z_][A-Za-z0-9_]*)=("[^"]*"|'[^']*'|\S*)(\s+|$)''')
+# What 30ops added since v0.7 (see the module docstring): scrape jobs,
+# Alertmanager receivers, alert names whose routes and inhibit rules are
+# new, and cron commands.
+NEW_JOBS = {"deadman", "switch-snmp"}
+NEW_RECEIVERS = {"deadman"}
+NEW_ALERTS = {"Watchdog", "SwitchDown"}
+NEW_CRON = re.compile(r"/bin/30ops readiness ")
 SECRET_KEYS = ("password", "priv_password", "token_value", "smtp_auth_password", "smtp_auth_password_file")
 
 
@@ -289,10 +301,54 @@ def _targets_set(groups):
 
 # ---------- compare ----------
 
-def compare(tree, legacy, site):
-    """Differences between a rendered tree and a legacy root (list of str)."""
+def _read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _new_alert(matchers):
+    return any(re.search(rf'alertname="{a}"', m) for m in matchers or [] for a in NEW_ALERTS)
+
+
+def _drop_new_alerting(doc, legacy_doc, notes):
+    """The rendered alertmanager.yml without the receivers, routes and
+    inhibit rules 30ops added that the legacy file does not have."""
+    old_recv = {r.get("name") for r in (legacy_doc or {}).get("receivers") or []}
+    old_routes = [r for r in ((legacy_doc or {}).get("route") or {}).get("routes") or []]
+    keep = []
+    for r in doc.get("receivers") or []:
+        if r.get("name") in NEW_RECEIVERS and r.get("name") not in old_recv:
+            notes.append(f"alertmanager.yml: receiver {r['name']}")
+        else:
+            keep.append(r)
+    doc["receivers"] = keep
+    route = doc.get("route") or {}
+    if route.get("routes") is not None:
+        keep = []
+        for r in route["routes"]:
+            if _new_alert(r.get("matchers")) and r not in old_routes:
+                notes.append(f"alertmanager.yml: route {', '.join(r['matchers'])} -> {r.get('receiver')}")
+            else:
+                keep.append(r)
+        route["routes"] = keep
+    old_inh = (legacy_doc or {}).get("inhibit_rules") or []
+    keep = []
+    for r in doc.get("inhibit_rules") or []:
+        if _new_alert(r.get("source_matchers")) and r not in old_inh:
+            notes.append(f"alertmanager.yml: inhibit rule from {', '.join(r['source_matchers'])}")
+        else:
+            keep.append(r)
+    if "inhibit_rules" in doc:
+        doc["inhibit_rules"] = keep
+    return doc
+
+
+def compare(tree, legacy, site, notes=None):
+    """Differences between a rendered tree and a legacy root (list of str).
+    What 30ops added on purpose is not a difference; it goes to notes."""
     pm = path_map(site)
     diffs = []
+    notes = [] if notes is None else notes
 
     def L(rel):
         return os.path.join(legacy, rel)
@@ -329,6 +385,9 @@ def compare(tree, legacy, site):
     elif rp:
         for d in (lp, rp):
             d["scrape_configs"] = {j["job_name"]: j for j in d.get("scrape_configs") or []}
+        for job in sorted(NEW_JOBS & set(rp["scrape_configs"]) - set(lp["scrape_configs"])):
+            del rp["scrape_configs"][job]
+            notes.append(f"prometheus.yml: scrape job {job}")
         diffs.extend(f"prometheus.yml: {d}" for d in _diff(lp, rp))
         files = sorted({f for j in rp["scrape_configs"].values() for c in j.get("file_sd_configs", [])
                         for f in c.get("files", [])} | {f for j in lp["scrape_configs"].values()
@@ -344,8 +403,10 @@ def compare(tree, legacy, site):
 
     pair("pve.yml", lread(FILES["pve"]), R("etc/30ops/prometheus/pve.yml"), lambda t, n: _mask(ydoc(t, n)))
     pair("snmp-auth.yml", lread(FILES["snmp"]), R("etc/30ops/prometheus/snmp-auth.yml"), lambda t, n: _mask(ydoc(t, n)))
-    pair("alertmanager.yml", lread(FILES["alertmanager"]), R("etc/30ops/alertmanager/alertmanager.yml"),
-         lambda t, n: _mask(ydoc(t, n)))
+    lam = lread(FILES["alertmanager"])
+    pair("alertmanager.yml", lam, R("etc/30ops/alertmanager/alertmanager.yml"),
+         lambda t, n: _mask(ydoc(t, n)) if n.startswith("legacy")
+         else _drop_new_alerting(_mask(ydoc(t, n)), _mask(ydoc(lam, "legacy")) if lam else None, notes))
 
     # Grafana datasources, by uid
     def ds(texts):
@@ -354,7 +415,7 @@ def compare(tree, legacy, site):
             for d in (ydoc(t, "datasource") or {}).get("datasources") or []:
                 out[d.get("uid") or d.get("name")] = d
         return out
-    ld = [open(p, encoding="utf-8").read() for p in sorted(glob.glob(L(FILES["datasources"]) + "/*.y*ml"))]
+    ld = [_read(p) for p in sorted(glob.glob(L(FILES["datasources"]) + "/*.y*ml"))]
     rd = [o.text for p, o in tree.items() if p.startswith("etc/30ops/grafana/datasources/")]
     diffs.extend(f"datasources: {d}" for d in _diff(ds(ld), ds(rd)))
 
@@ -371,6 +432,9 @@ def compare(tree, legacy, site):
         lglob.update(g)
     rtext = R("etc/cron.d/30ops") or ""
     rentries, rglob = parse_cron(rtext)
+    for e in [e for e in rentries if NEW_CRON.search(_fmt(_key(e)))]:
+        rentries.remove(e)
+        notes.append(f"cron: {_fmt(_key(e))}")
     a = collections.Counter(_key(e) for e in lentries)
     b = collections.Counter(_key(e) for e in rentries)
     for k in sorted(a - b):
@@ -405,8 +469,13 @@ def compare(tree, legacy, site):
     lt, rt = lread(FILES["allowlist"]), R("etc/default/30ops-allowlist")
     if lt is not None or rt is not None:
         le, re_ = env_file(lt or ""), env_file(rt or "")
+        by_default = {h["address"] for h in site["hosts"] if h.get("journal_default")}
         for k in sorted(set(le) | set(re_)):
             x, y = set(le.get(k, "").split()), set(re_.get(k, "").split())
+            if k == "JOURNALD_FROM":
+                for addr in sorted(by_default & (y - x)):
+                    y.discard(addr)
+                    notes.append(f"allowlist JOURNALD_FROM: {addr} (journal by default)")
             if x != y:
                 diffs.append(f"allowlist {k}: only in legacy {sorted(x - y)}, only in render {sorted(y - x)}")
 
@@ -425,7 +494,7 @@ def compare(tree, legacy, site):
             out[u.get(("Mount", "Where"), name)] = {
                 "unit": name, **{k: u.get(("Mount", k)) for k in ("What", "Type", "Options")}}
         return out
-    lm = mounts((os.path.basename(p), open(p, encoding="utf-8").read())
+    lm = mounts((os.path.basename(p), _read(p))
                 for p in sorted(glob.glob(L(FILES["units"]) + "/*.mount")))
     rm = mounts((os.path.basename(p), o.text) for p, o in tree.items()
                 if p.startswith("etc/systemd/system/") and p.endswith(".mount"))
