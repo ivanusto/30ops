@@ -17,7 +17,9 @@
 #   5. the day is archived to the WORM share over NFS and verified
 #   6. doctor: no failure, warnings only as allowed-warn.txt says
 #   7. the deadman: the Watchdog reaches 30ops-deadman (on watcher, in the
-#      namespace) and no other receiver; the switch answers SNMP
+#      namespace) and no other receiver; with the Watchdog silenced it
+#      reports the collector silent by webhook, and back once the silence
+#      expires; the switch answers SNMP
 #   8. readiness: every item has the status check.py expects, and no item
 #      is a no that site.yaml does not accept
 #   9. the containers use less than 3 GiB together
@@ -189,6 +191,9 @@ check baseline --rules /etc/30ops/prometheus/rules --expected "$R/tests/e2e/expe
 
 step "deadman: the Watchdog reaches 30ops-deadman and nothing else"
 check deadman --sink /run/ops30e2e/webhook.jsonl
+# then the pushes stop (the Watchdog silenced in Alertmanager) while the
+# next steps run; after_s is 180 on the e2e site
+check silence --id-file "$OUT/silence.id"
 
 step "fault: nas-primary's pool DEGRADED"
 "$R/tests/e2e/fakes/netns.sh" degrade
@@ -230,6 +235,9 @@ runuser -u metrics -- env VL=http://127.0.0.1:9428 ARCHIVE="$WORM_MNT/logs" DRIL
 cat "$OUT/verify.log"
 check archive --mount "$WORM_MNT" --day-dir "$WORM_MNT/logs/$(echo "$day" | tr - /)" --drills /srv/drills/onprem-logs/drills.jsonl \
   --source syslog-nas-primary --source audit-fgt-edge --source journald-collector
+
+step "deadman: silent collector reported, then back"
+check deadman-alert --sink /run/ops30e2e/webhook.jsonl --id-file "$OUT/silence.id"
 
 step "recover, doctor"
 "$R/tests/e2e/fakes/netns.sh" recover

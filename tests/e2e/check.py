@@ -7,6 +7,10 @@
   check.py archive  --mount DIR --day-dir DIR --drills FILE [--source NAME ...]
   check.py doctor   --json FILE --allowed FILE
   check.py deadman  --sink FILE [--timeout 240]
+  check.py silence  --id-file FILE            silence the Watchdog in Alertmanager
+  check.py deadman-alert --sink FILE --id-file FILE [--timeout 300]
+                    the deadman reports the collector silent; then the
+                    silence is expired and it reports it back
   check.py readiness --ops30 BIN --site FILE --out FILE [--timeout 240]
 
 Every mode prints one "ok" or "FAIL" line per check and exits 1 when any
@@ -189,6 +193,55 @@ def deadman(a):
     ok(bool(up), "the switch answers SNMP (switch-snmp up, sysUpTime present)")
 
 
+def silence(a):
+    """Silence the Watchdog: Alertmanager stops pushing it, as when someone
+    silences everything or Alertmanager stops, while Prometheus keeps
+    scraping the deadman (the target stays up)."""
+    now = time.time()
+    body = json.dumps({"matchers": [{"name": "alertname", "value": "Watchdog", "isRegex": False, "isEqual": True}],
+                       "startsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+                       "endsAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now + 1800)),
+                       "createdBy": "e2e", "comment": "stop the deadman pushes"}).encode()
+    req = urllib.request.Request(f"{AM}/api/v2/silences", data=body, method="POST",
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        sid = json.loads(r.read())["silenceID"]
+    with open(a.id_file, "w", encoding="utf-8") as f:
+        f.write(sid)
+    ok(bool(sid), f"the Watchdog is silenced ({sid})")
+
+
+def _deadman_posts(sink, status):
+    if not os.path.exists(sink):
+        return []
+    out = []
+    for line in open(sink, encoding="utf-8"):
+        rec = json.loads(line)
+        body = rec["body"] if isinstance(rec["body"], dict) else {}
+        for x in body.get("alerts", []):
+            if x.get("labels", {}).get("alertname") == "CollectorSilent" and x.get("status") == status:
+                out.append(rec["path"])
+    return out
+
+
+def deadman_alert(a):
+    done, detail = wait(lambda: (bool(_deadman_posts(a.sink, "firing")), "no CollectorSilent yet"), a.timeout)
+    ok(done, "30ops-deadman reported the collector silent (CollectorSilent firing)", detail)
+    if done:
+        print(f"     delivered to {', '.join(sorted(set(_deadman_posts(a.sink, 'firing'))))}")
+    sid = open(a.id_file, encoding="utf-8").read().strip()
+    req = urllib.request.Request(f"{AM}/api/v2/silence/{sid}", method="DELETE")
+    urllib.request.urlopen(req, timeout=10).close()
+    done, detail = wait(lambda: (bool(_deadman_posts(a.sink, "resolved")), "no CollectorSilent resolved yet"), a.timeout)
+    ok(done, "after the silence expired, 30ops-deadman reported the collector back", detail)
+
+    def alive():
+        r = prom("/api/v1/query", query='deadman_alerting == 0 and on () up{job="deadman"} == 1')["result"]
+        return (bool(r), "deadman_alerting not back to 0")
+    done, detail = wait(alive, a.timeout)
+    ok(done, "deadman_alerting is 0 again and the deadman target is up", detail)
+
+
 # check.py readiness: the status each item of tests/e2e/site.yaml must have.
 # Two statuses where the fake LAN's timing decides (an alert that fires or
 # not before the item is asked); site.yaml accepts those, with the reason.
@@ -257,6 +310,12 @@ def main(argv=None):
     dm = sub.add_parser("deadman")
     dm.add_argument("--sink", required=True)
     dm.add_argument("--timeout", type=int, default=240)
+    si = sub.add_parser("silence")
+    si.add_argument("--id-file", required=True)
+    da = sub.add_parser("deadman-alert")
+    da.add_argument("--sink", required=True)
+    da.add_argument("--id-file", required=True)
+    da.add_argument("--timeout", type=int, default=300)
     rd = sub.add_parser("readiness")
     rd.add_argument("--ops30", required=True)
     rd.add_argument("--site", required=True)
@@ -264,7 +323,7 @@ def main(argv=None):
     rd.add_argument("--timeout", type=int, default=240)
     a = ap.parse_args(argv)
     {"baseline": baseline, "alert": alert, "logs": logs, "archive": archive, "doctor": doctor,
-     "deadman": deadman, "readiness": readiness}[a.mode](a)
+     "deadman": deadman, "silence": silence, "deadman-alert": deadman_alert, "readiness": readiness}[a.mode](a)
     print(f"check.py {a.mode}: {len(failed)} failed")
     return 1 if failed else 0
 

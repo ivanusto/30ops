@@ -103,6 +103,7 @@ alerting:
     ops-digest: {webhook: ["http://192.0.2.250:9999/ops-digest"], send_resolved: false}
   deadman:
     host: watcher
+    after_s: 180          # the shortest allowed, so run.sh sees the silence alert sooner
     webhook: ["http://192.0.2.250:9999/deadman"]
 
 assets: assets.tsv
