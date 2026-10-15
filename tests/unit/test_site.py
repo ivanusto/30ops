@@ -197,5 +197,28 @@ class Resolve(unittest.TestCase):
         self.assertEqual([h["name"] for h in site.with_role(r, "nas")], ["nas-primary", "nas-secondary"])
 
 
+class JournalDefault(unittest.TestCase):
+    def hosts(self, doc):
+        return {h["name"]: h for h in site.resolve(doc, str(SAMPLE))["hosts"]}
+
+    def test_linux_and_pve_hosts_ship_their_journal(self):
+        h = self.hosts(sample())
+        self.assertIn("journal", h["qdevice"]["roles"])
+        self.assertTrue(h["qdevice"]["journal_default"])
+        self.assertNotIn("journal_default", h["spark01"])           # listed it itself
+        self.assertNotIn("journal", h["collector"]["roles"])        # where the journals go
+        self.assertNotIn("journal", h["nas-primary"]["roles"])      # an appliance
+
+    def test_opt_out(self):
+        d = sample()
+        q = next(x for x in d["hosts"] if x["name"] == "qdevice")
+        q["journal"] = False
+        self.assertEqual(check(d), ([], []))
+        self.assertNotIn("journal", self.hosts(d)["qdevice"]["roles"])
+        q["roles"] = ["qdevice", "journal"]
+        errs, _ = check(d)
+        self.assertTrue(any("journal: false and role journal contradict" in e for e in errs), errs)
+
+
 if __name__ == "__main__":
     unittest.main()

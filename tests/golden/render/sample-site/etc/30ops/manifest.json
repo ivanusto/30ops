@@ -298,6 +298,13 @@
       "secret": false
     },
     {
+      "path": "nodes/qdevice/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "nodes/spark01/etc/pcap/custom.env",
       "mode": "0644",
       "owner": "root:root",

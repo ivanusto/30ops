@@ -20,6 +20,11 @@ LOCALES = ("zh-TW", "en")
 VENDORS = ("linux", "pve", "qnap", "fortigate", "generic-snmp")
 ROLES = ("collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "syslog",
          "firewall", "audit-source", "webfilter", "admin", "switch", "ap")
+# A Linux or PVE host in one of these roles ships its journal to the
+# collector unless it says journal: false (resolve() adds the role). The
+# collector is left out: it is where the journals go.
+JOURNAL_BY_DEFAULT = {"node", "qdevice", "hypervisor"}
+JOURNAL_VENDORS = ("linux", "pve")
 # roles that need a vendor, because something on the collector talks to the host
 MANAGED = {"collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "firewall", "switch", "ap"}
 PLUGINS = plugins.available()   # plugins/*/plugin.yaml
@@ -109,6 +114,7 @@ HOST = {
     "api": _f({"url": _f(S, True), "token": _f(S, True), "insecure": _f(B)}),
     "syslog": _f({"devname": _f(S, True)}),
     "pcap": _f({"user": _f(S), "iface": _f(S)}),
+    "journal": _f(B),
     "note": _f(S),
 }
 
@@ -325,6 +331,8 @@ def _cross(doc, base, secrets, errs, warns):
         for j, pl in enumerate(h.get("plugins") or []) if isinstance(h.get("plugins"), list) else ():
             if pl in PLUGINS and (why := plugins.fits(pl, h)):
                 errs.append(f"{p}.plugins[{j}]: {why}")
+        if h.get("journal") is False and "journal" in roles:
+            errs.append(f"{p}: journal: false and role journal contradict each other")
         if isinstance(h.get("snmp"), dict):
             auths = ((doc.get("snmp") or {}).get("auths") or {})
             if h["snmp"].get("auth") not in auths:
@@ -541,6 +549,11 @@ def resolve(doc, base="."):
     hosts = []
     for h in doc["hosts"]:
         h = {"also": [], "labels": {}, "plugins": [], "vendor": None, **h}
+        h["roles"] = list(h["roles"])
+        if (h["vendor"] in JOURNAL_VENDORS and set(h["roles"]) & JOURNAL_BY_DEFAULT
+                and "journal" not in h["roles"] and h.get("journal") is not False):
+            h["roles"].append("journal")
+            h["journal_default"] = True
         if "pcap" in h["roles"]:
             h["pcap"] = {"user": "pcap", **(h.get("pcap") or {})}
         hosts.append(h)

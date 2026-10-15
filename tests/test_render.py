@@ -170,8 +170,9 @@ class Detects(unittest.TestCase):
                                         "--plan /etc/30ops/readiness.json\n")
         notes = []
         self.assertEqual(legacy.compare(self.tree, self.root, self.site, notes), [])
-        self.assertEqual(len(notes), 3, notes)
         self.assertIn('alertmanager.yml: route alertname="Watchdog" -> deadman', notes)
+        self.assertIn("alertmanager.yml: receiver deadman", notes)
+        self.assertTrue(any(n.startswith("cron: */15 * * * * metrics /opt/30ops/bin/30ops readiness") for n in notes))
         doc["route"]["routes"].insert(0, {"matchers": ['alertname="NasPoolAbove90"'], "receiver": "deadman"})
         self.tree[am] = render.Output(yamlio.dumps(doc))
         self.assertTrue(any(d.startswith("alertmanager.yml: route.routes") for d in self.diffs()), self.diffs())
