@@ -11,6 +11,7 @@ so a query can join on it:
   hypervisor  cluster="<pve.cluster>"        as pve-quorum.prom
   firewall    host="<syslog.devname>"        as fw.prom
   os          instance="<address>:9100"      as the node and collector jobs
+  network     switch="<labels.switch or name>"  as the switch-snmp job
 
 It also says which NAS the site runs without a UPS on purpose (site.yaml
 ups: none), for NasUpsAbsent to leave alone:
@@ -36,6 +37,8 @@ def join(kind, h):
         return [("cluster", h["pve"]["cluster"])]
     if kind == "firewall" and h.get("syslog"):
         return [("host", h["syslog"]["devname"])]
+    if kind == "network" and h.get("snmp"):
+        return [("switch", h["labels"].get("switch", h["name"]))]
     if kind == "os" and set(h["roles"]) & {"collector", "node"}:
         return [("instance", f"{h['address']}:9100")]
     return []

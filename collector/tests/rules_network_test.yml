@@ -1,0 +1,57 @@
+# The switch and access point alerts (rules/network.yml) on synthetic
+# switch-snmp series.
+rule_files:
+  - rules/network.yml
+
+evaluation_interval: 1m
+
+tests:
+  # sw1 stops answering; sw2 answers with an empty walk (wrong v3 level).
+  - interval: 1m
+    input_series:
+      - series: 'up{job="switch-snmp",instance="192.0.2.40",switch="sw1"}'
+        values: "1 1 0x10"
+      - series: 'up{job="switch-snmp",instance="192.0.2.42",switch="sw2"}'
+        values: "1x12"
+      - series: 'scrape_samples_scraped{job="switch-snmp",instance="192.0.2.42",switch="sw2"}'
+        values: "5x12"
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: SwitchDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: SwitchDown
+        exp_alerts:
+          - exp_labels: {severity: critical, job: switch-snmp, instance: "192.0.2.40", switch: sw1}
+            exp_annotations: {summary: "sw1 (192.0.2.40) does not answer SNMP for 5 minutes"}
+      - eval_time: 6m
+        alertname: SwitchSnmpNoData
+        exp_alerts:
+          - exp_labels: {severity: warning, job: switch-snmp, instance: "192.0.2.42", switch: sw2}
+            exp_annotations: {summary: "SNMP on sw2 returns no interface data (check v3 auth and priv settings)"}
+
+  # Port 1 was up and goes down: alert. Port 2 was never up (nothing
+  # plugged in): quiet. Port 3 is down because someone disabled it: quiet.
+  - interval: 1m
+    input_series:
+      - series: 'ifOperStatus{job="switch-snmp",instance="192.0.2.40",switch="sw1",ifIndex="1",ifName="ge1",ifAlias="uplink"}'
+        values: "1x10 2x20"
+      - series: 'ifAdminStatus{job="switch-snmp",instance="192.0.2.40",switch="sw1",ifIndex="1",ifName="ge1",ifAlias="uplink"}'
+        values: "1x30"
+      - series: 'ifOperStatus{job="switch-snmp",instance="192.0.2.40",switch="sw1",ifIndex="2",ifName="ge2",ifAlias=""}'
+        values: "2x30"
+      - series: 'ifAdminStatus{job="switch-snmp",instance="192.0.2.40",switch="sw1",ifIndex="2",ifName="ge2",ifAlias=""}'
+        values: "1x30"
+      - series: 'ifOperStatus{job="switch-snmp",instance="192.0.2.40",switch="sw1",ifIndex="3",ifName="ge3",ifAlias="spare"}'
+        values: "1x10 2x20"
+      - series: 'ifAdminStatus{job="switch-snmp",instance="192.0.2.40",switch="sw1",ifIndex="3",ifName="ge3",ifAlias="spare"}'
+        values: "1x10 2x20"
+    alert_rule_test:
+      - eval_time: 13m
+        alertname: SwitchInterfaceDown
+        exp_alerts: []
+      - eval_time: 17m
+        alertname: SwitchInterfaceDown
+        exp_alerts:
+          - exp_labels: {severity: warning, job: switch-snmp, instance: "192.0.2.40", switch: sw1, ifIndex: "1", ifName: ge1, ifAlias: uplink}
+            exp_annotations: {summary: "sw1 port ge1 (uplink) is down"}

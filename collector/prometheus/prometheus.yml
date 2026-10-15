@@ -82,6 +82,26 @@ scrape_configs:
       - target_label: __address__
         replacement: snmp-exporter:9116
 
+  # Switches and access points (roles switch and ap, the generic-snmp
+  # adapter) over SNMP v3: uptime and the IF-MIB interface table, module
+  # if_mib in snmp.yml. Each target carries a switch label (its name).
+  - job_name: switch-snmp
+    scrape_interval: 60s
+    scrape_timeout: 30s
+    metrics_path: /snmp
+    params:
+      module: [if_mib]
+      auth: [switch_v3]
+    file_sd_configs:
+      - files: [targets/switch-snmp.yml]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: snmp-exporter:9116
+
   # 30ops-deadman on the deadman host (site.yaml alerting.deadman.host):
   # when the collector last pushed its Watchdog. A dead deadman host is
   # TargetDown like any other target.

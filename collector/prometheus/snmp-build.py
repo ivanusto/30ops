@@ -16,6 +16,11 @@ temperatures, CPU and memory, UPS, firmware, exposed services, installed
 apps. Network counters come from IF-MIB, which every agent serves.
 
 Only QuTS hero (enterprises 55062.2) is handled. QTS uses 24681 (待查).
+
+A second module, if_mib, is appended as written in IF_MIB_MODULE below: the
+standard objects (SNMPv2-MIB uptime and name, the IF-MIB interface table)
+every managed switch and access point serves, for the generic-snmp adapter.
+Their OIDs are fixed by the RFCs, so nothing is resolved from a MIB file.
 """
 import re
 import sys
@@ -167,6 +172,36 @@ IFMIB = """  - name: ifName
 """
 
 
+# Switches and access points (generic-snmp adapter): uptime, then per
+# interface the admin and operational state (1 up, 2 down, 7
+# lowerLayerDown), errors, traffic and speed, labelled with ifName and
+# ifAlias (the port description set on the device).
+_IF_LOOKUPS = ("lookups: [{labels: [ifIndex], labelname: ifName, oid: 1.3.6.1.2.1.31.1.1.1.1, type: DisplayString}, "
+               "{labels: [ifIndex], labelname: ifAlias, oid: 1.3.6.1.2.1.31.1.1.1.18, type: DisplayString}]")
+_IF_COLUMNS = [
+    ("ifAdminStatus", "1.3.6.1.2.1.2.2.1.7", "gauge", "Configured state (1 up, 2 down, 3 testing)"),
+    ("ifOperStatus", "1.3.6.1.2.1.2.2.1.8", "gauge", "Operational state (1 up, 2 down, 3 testing, 5 dormant, 7 lowerLayerDown)"),
+    ("ifInErrors", "1.3.6.1.2.1.2.2.1.14", "counter", "Inbound packets discarded as errors"),
+    ("ifOutErrors", "1.3.6.1.2.1.2.2.1.20", "counter", "Outbound packets that could not be sent because of errors"),
+    ("ifHCInOctets", "1.3.6.1.2.1.31.1.1.1.6", "counter", "Bytes received"),
+    ("ifHCOutOctets", "1.3.6.1.2.1.31.1.1.1.10", "counter", "Bytes sent"),
+    ("ifHighSpeed", "1.3.6.1.2.1.31.1.1.1.15", "gauge", "Interface speed in Mbps"),
+]
+IF_MIB_MODULE = "\n".join(
+    ["  if_mib:", "    walk:"]
+    + [f"      - {o}" for o in ("1.3.6.1.2.1.1.3", "1.3.6.1.2.1.1.5", "1.3.6.1.2.1.2.2.1.7", "1.3.6.1.2.1.2.2.1.8",
+                                 "1.3.6.1.2.1.2.2.1.14", "1.3.6.1.2.1.2.2.1.20", "1.3.6.1.2.1.31.1.1.1.1",
+                                 "1.3.6.1.2.1.31.1.1.1.6", "1.3.6.1.2.1.31.1.1.1.10", "1.3.6.1.2.1.31.1.1.1.15",
+                                 "1.3.6.1.2.1.31.1.1.1.18")]
+    + ["    max_repetitions: 25", "    retries: 3", "    timeout: 10s", "    metrics:",
+       "    - name: sysUpTime", "      oid: 1.3.6.1.2.1.1.3", "      type: gauge",
+       "      help: Time since the SNMP agent restarted, in hundredths of a second",
+       "    - name: sysName", "      oid: 1.3.6.1.2.1.1.5", "      type: DisplayString", "      help: System name"]
+    + [line for name, oid, t, hlp in _IF_COLUMNS for line in (
+        f"    - name: {name}", f"      oid: {oid}", f"      type: {t}", f"      help: {hlp}",
+        "      indexes: [{labelname: ifIndex, type: gauge}]", f"      {_IF_LOOKUPS}")]) + "\n"
+
+
 def main():
     if len(sys.argv) != 2:
         sys.exit(__doc__)
@@ -213,6 +248,7 @@ def main():
     out += ["  " + m.replace("\n", "\n  ") for m in metrics]
     out.append("  " + IFMIB.rstrip().replace("\n", "\n  "))
     print("\n".join(out))
+    print(IF_MIB_MODULE, end="")
 
 
 if __name__ == "__main__":

@@ -39,6 +39,31 @@ class Parts(unittest.TestCase):
         self.assertEqual(env["OPS30_SMTP_PASSWORD_FILE"], "/dev/null")
         self.assertEqual(env["COMPOSE_PROFILES"], "logs")
 
+    def test_switch_snmp(self):
+        def edit(d):
+            d["hosts"] = [h for h in d["hosts"] if "nas" not in h["roles"]]
+            d["snmp"]["auths"]["sw_v3"] = dict(d["snmp"]["auths"]["nas_v3"])
+            d["hosts"] += [{"name": "sw1", "address": "192.0.2.40", "vendor": "generic-snmp", "roles": ["switch"],
+                            "snmp": {"auth": "sw_v3"}},
+                           {"name": "ap1", "address": "192.0.2.41", "vendor": "generic-snmp", "roles": ["ap"],
+                            "labels": {"switch": "lobby-ap"}, "snmp": {"auth": "nas_v3"}},
+                           {"name": "sw2", "address": "192.0.2.42", "vendor": "generic-snmp", "roles": ["switch"]}]
+        s = sample(edit)
+        jobs, auth = prometheus.targets(s)
+        self.assertEqual(jobs["switch-snmp"], ("switch-snmp.yml", [
+            {"targets": ["192.0.2.40"], "labels": {"switch": "sw1"}},
+            {"targets": ["192.0.2.41"], "labels": {"switch": "lobby-ap", "__param_auth": "nas_v3"}}]))
+        self.assertEqual(auth["switch-snmp"], "sw_v3")
+        self.assertNotIn("nas-snmp", jobs)
+        job = next(j for j in prometheus.prometheus_yml(s, jobs, auth)["scrape_configs"] if j["job_name"] == "switch-snmp")
+        self.assertEqual(job["params"], {"module": ["if_mib"], "auth": ["sw_v3"]})
+        self.assertIn("snmp", compose.env(s)["COMPOSE_PROFILES"].split(","))
+        from ops30.render import adapters
+        self.assertTrue(any('kind="network",vendor="generic-snmp",version="1",switch="sw1"' in x
+                            for x in adapters.lines(s)))
+        errs, warns = site.validate(site.load(SAMPLE / "site.yaml"), str(SAMPLE))
+        self.assertEqual((errs, warns), ([], []))
+
     def test_rendered_compose_settings(self):
         text = compose.render(sample(), "x")[compose.P].text
         s = legacy.rendered_compose_settings(text)

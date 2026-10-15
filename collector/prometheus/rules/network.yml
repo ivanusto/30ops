@@ -1,0 +1,29 @@
+# Switches and access points: the switch-snmp job (generic-snmp adapter,
+# module if_mib). docs/rules.md explains each alert.
+groups:
+  - name: network
+    rules:
+      - alert: SwitchDown
+        expr: up{job="switch-snmp"} == 0
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "{{ $labels.switch }} ({{ $labels.instance }}) does not answer SNMP for 5 minutes"}
+      # An empty walk comes back with HTTP 200 (up 1) when the device wants
+      # another security level than snmp-auth.yml asks for; only the
+      # exporter's own snmp_scrape_* samples are left.
+      - alert: SwitchSnmpNoData
+        expr: scrape_samples_scraped{job="switch-snmp"} < 8
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "SNMP on {{ $labels.switch }} returns no interface data (check v3 auth and priv settings)"}
+      # A port that is enabled, was up at some point in the last week and is
+      # down now: a cable, a peer or a transceiver. Ports nobody plugged in
+      # are down for longer than that and stay quiet.
+      - alert: SwitchInterfaceDown
+        expr: >-
+          ifOperStatus{job="switch-snmp"} == 2
+          and on (instance, ifIndex) ifAdminStatus{job="switch-snmp"} == 1
+          and on (instance, ifIndex) min_over_time(ifOperStatus{job="switch-snmp"}[7d]) == 1
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "{{ $labels.switch }} port {{ $labels.ifName }} ({{ $labels.ifAlias }}) is down"}

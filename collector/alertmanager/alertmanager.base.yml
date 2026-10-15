@@ -90,6 +90,10 @@ inhibit_rules:
   - source_matchers: [alertname="NasUnreachable"]
     target_matchers: [alertname=~"Nas(Pool|Snapshot).*"]
     equal: [nas]
+  # a switch that does not answer is one critical, not also a TargetDown
+  - source_matchers: [alertname="SwitchDown"]
+    target_matchers: [alertname="TargetDown"]
+    equal: [instance]
   - source_matchers: [alertname="NasSnmpNoData"]
     target_matchers: [alertname=~"Nas(Disk|Ups|Telnet|PoolStatus).*"]
     equal: [instance]

@@ -1,17 +1,25 @@
-# Any switch or access point that answers SNMP with the standard MIBs
-# (IF-MIB, HOST-RESOURCES-MIB, ENTITY-SENSOR-MIB).
+# Any switch or access point that answers SNMP v3 with the standard MIBs.
+# The collector's snmp_exporter walks module if_mib of
+# collector/prometheus/snmp.yml (SNMPv2-MIB uptime, the IF-MIB interface
+# table) in the switch-snmp job, for every host with role switch or ap and
+# an snmp auth. Sensors (ENTITY-SENSOR-MIB) are not walked yet: support
+# differs too much between models to write one module for all of them.
 adapter: 1
 kind: network
 vendor: generic-snmp
 version: 1
-tested: []
+tested: ["net-snmp 5.9 (the e2e fake)"]
 capabilities:
   interfaces:
-    status: planned
-    milestone: v0.7
+    face: snmp
+    status: implemented
+    module: if_mib
+    metrics: [ifAdminStatus, ifOperStatus, ifInErrors, ifOutErrors, ifHCInOctets, ifHCOutOctets, ifHighSpeed]
   sensors:
     status: planned
-    milestone: v0.7
+    milestone: v1.x
   uptime:
-    status: planned
-    milestone: v0.7
+    face: snmp
+    status: implemented
+    module: if_mib
+    metrics: [sysUpTime]

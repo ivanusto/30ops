@@ -1,6 +1,6 @@
 # 告警規則
 
-規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 71 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
+規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 74 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
 
 - 告警名稱、等級與標籤是 Alertmanager 路由與抑制規則的依據（`collector/alertmanager/alertmanager.base.yml`），也是告警歷史的鍵，所以 v1 不改名。`NasPoolAbove80` 在門檻改成 85 之後仍叫這個名字。
 - 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。
@@ -126,6 +126,16 @@ pve-exporter 經由兩個節點抓取，每個節點都會回報整個叢集，�
 | DrillStale | warning | `drill_max_age_days` | PVE 或 NAS 演練太久沒有通過 |
 | CloudDrillStale | warning | `cloud_drill_max_age_days` | 雲端演練太久沒有通過 |
 | DrillRtoOverTarget | info | `drill_rto_target_s` | PVE 還原的 RTO 超過目標。NAS 與雲端演練規模不同，不套用 |
+
+## 交換器與無線基地台（network.yml）
+
+資料來源是 switch-snmp 抓取工作：角色 `switch` 或 `ap` 且設了 `snmp.auth` 的主機，由 snmp_exporter 走訪 `snmp.yml` 的 `if_mib` 模組（generic-snmp adapter）。每個目標帶 `switch` 標籤（主機名稱，或 `labels.switch`）。
+
+| 告警 | 等級 | 持續 | 意義與處置 |
+|---|---|---|---|
+| SwitchDown | critical | 5m | 設備 5 分鐘沒有回應 SNMP。先看設備是否開機、管理介面與收集端之間的路徑；會抑制同一目標的 TargetDown |
+| SwitchSnmpNoData | warning | 5m | 走訪回來只剩 exporter 自己的樣本，通常是設備要求的安全等級或協定與 `snmp.auths` 不同 |
+| SwitchInterfaceDown | warning | 5m | 已啟用、過去 7 天內曾經 up 的埠現在是 down：線、對端或光模組。沒接線的埠不會響 |
 
 ## 資產生命週期（eol.yml）
 

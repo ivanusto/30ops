@@ -98,6 +98,12 @@ inhibit_rules:
   equal:
   - nas
 - source_matchers:
+  - alertname="SwitchDown"
+  target_matchers:
+  - alertname="TargetDown"
+  equal:
+  - instance
+- source_matchers:
   - alertname="NasSnmpNoData"
   target_matchers:
   - alertname=~"Nas(Disk|Ups|Telnet|PoolStatus).*"

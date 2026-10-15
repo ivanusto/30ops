@@ -99,7 +99,8 @@ alerting:
 | `firewall` | `FW_EXPECT`、EOL 的授權到期日 |
 | `webfilter` | `AUP_EXPECT` |
 | `admin` | `AUDIT_QUIET_FROM` |
-| `qdevice`、`switch`、`ap` | v0.3 只登錄，v0.5 起由 adapter 使用 |
+| `qdevice` | v0.3 只登錄，v0.5 起由 adapter 使用 |
+| `switch`、`ap` | 有 `snmp.auth` 時由 switch-snmp 抓取（generic-snmp adapter，v0.7） |
 
 ## 時區與 cron
 

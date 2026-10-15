@@ -19,7 +19,7 @@ def profiles(site):
     out = []
     if (site.get("pve") or {}).get("exporter") and "pve" in jobs:
         out.append("pve")
-    if "nas-snmp" in jobs:
+    if {"nas-snmp", "switch-snmp"} & set(jobs):
         out.append("snmp")
     if logs_enabled(site):
         out.append("logs")

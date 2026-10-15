@@ -332,6 +332,8 @@ def _cross(doc, base, secrets, errs, warns):
             warns.append(f"{p}: a nas without snmp is not scraped")
         if "nas" in roles and not h.get("ssh"):
             warns.append(f"{p}: a nas without ssh gets no nas.prom (nas-textfile.sh)")
+        if roles & {"switch", "ap"} and not h.get("snmp"):
+            warns.append(f"{p}: a switch or ap without snmp is not scraped")
         if "hypervisor" in roles and not h.get("pve"):
             warns.append(f"{p}: a hypervisor without pve.cluster is left out of the quorum check")
         if "hypervisor" in roles and h.get("pve") and not h.get("ssh"):

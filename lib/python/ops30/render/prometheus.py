@@ -46,11 +46,25 @@ def targets(site):
     if dh:
         jobs["deadman"] = ("deadman.yml", groups([dh], site["alerting"]["deadman"]["port"]))
     nas = [h for h in S.with_role(site, "nas") if h.get("snmp")]
-    auths = [h["snmp"]["auth"] for h in nas]
+    jobs["nas-snmp"], default = snmp_job("nas-snmp.yml", nas)
+    net = [h for h in site["hosts"] if set(h["roles"]) & {"switch", "ap"} and h.get("snmp")]
+    jobs["switch-snmp"], net_auth = snmp_job(
+        "switch-snmp.yml", net, lambda h: {} if "switch" in h["labels"] else {"switch": h["name"]})
+    return {k: v for k, v in jobs.items() if v[1]}, {"nas-snmp": default, "switch-snmp": net_auth}
+
+
+def snmp_job(fname, hosts, extra=None):
+    """(targets file, groups), default auth: the first host's auth is the
+    job's params.auth, any other is a __param_auth label on its target."""
+    auths = [h["snmp"]["auth"] for h in hosts]
     default = auths[0] if auths else None
-    jobs["nas-snmp"] = ("nas-snmp.yml", groups(
-        nas, extra=lambda h: {} if h["snmp"]["auth"] == default else {"__param_auth": h["snmp"]["auth"]}))
-    return {k: v for k, v in jobs.items() if v[1]}, default
+
+    def labels(h):
+        out = dict(extra(h)) if extra else {}
+        if h["snmp"]["auth"] != default:
+            out["__param_auth"] = h["snmp"]["auth"]
+        return out
+    return (fname, groups(hosts, extra=labels)), default
 
 
 def plugin_jobs(site):
@@ -80,7 +94,7 @@ def logs_enabled(site):
     return bool(S.with_role(site, "journal") or S.with_role(site, "syslog") or site["logs"])
 
 
-def prometheus_yml(site, jobs, nas_auth):
+def prometheus_yml(site, jobs, snmp_auth):
     doc = yamlio.load(BASE)
     doc["global"]["external_labels"] = {**doc["global"].get("external_labels", {}), "site": site["site"]["id"]}
     files = {f"targets/{v[0]}": k for k, v in jobs.items()}
@@ -91,8 +105,8 @@ def prometheus_yml(site, jobs, nas_auth):
             continue
         if j["job_name"] == "victorialogs" and not logs_enabled(site):
             continue
-        if j["job_name"] == "nas-snmp" and nas_auth:
-            j["params"]["auth"] = [nas_auth]
+        if snmp_auth.get(j["job_name"]):
+            j["params"]["auth"] = [snmp_auth[j["job_name"]]]
         keep.append(j)
     at = next((i for i, j in enumerate(keep) if j["job_name"] == "collector-host"), 0)
     for job, sc, _ in reversed(plugin_jobs(site)):
@@ -107,8 +121,8 @@ def prometheus_yml(site, jobs, nas_auth):
 
 
 def render(site, sha):
-    jobs, nas_auth = targets(site)
-    out = {f"{P}/prometheus.yml": Output(header(sha) + yamlio.dumps(prometheus_yml(site, jobs, nas_auth)))}
+    jobs, snmp_auth = targets(site)
+    out = {f"{P}/prometheus.yml": Output(header(sha) + yamlio.dumps(prometheus_yml(site, jobs, snmp_auth)))}
     for _, (fname, gs) in jobs.items():
         out[f"{P}/targets/{fname}"] = Output(header(sha) + yamlio.dumps(gs))
     out.update(registry.module("hypervisor", "pve").render(site, sha))
