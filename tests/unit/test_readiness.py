@@ -117,17 +117,21 @@ class Plan(unittest.TestCase):
         ids = [i["id"] for i in p["items"]]
         self.assertIn("pve-quorum", ids)
         self.assertIn("gb10-ops:textfile-fresh", ids)
-        self.assertNotIn("switch-in-assets", ids)              # no switch in the sample site
+        self.assertIn("switch-in-assets", ids)                 # sw-core
         self.assertNotIn("spark-baseline:snapshot", ids)       # no host lists it
 
         def no_pve(d):
             d["hosts"] = [h for h in d["hosts"] if h.get("vendor") != "pve" and h["name"] != "qdevice"]
             d.pop("pve")
+            d["alerting"].pop("deadman")
             for h in d["hosts"]:
                 h.pop("plugins", None)
         ids = [i["id"] for i in R.plan(resolved(no_pve))["items"]]
         self.assertNotIn("pve-quorum", ids)
         self.assertNotIn("gb10-ops:textfile-fresh", ids)
+        ids = [i["id"] for i in R.plan(resolved(lambda d: d.update(hosts=[h for h in d["hosts"]
+                                                                          if h["name"] != "sw-core"])))["items"]]
+        self.assertNotIn("switch-in-assets", ids)
 
     def test_thresholds_filled_and_json(self):
         r = resolved(lambda d: d["alerting"].setdefault("thresholds", {}).update(drill_max_age_days=45))
@@ -304,14 +308,14 @@ class Cli(unittest.TestCase):
         r = self.run30("--site", SAMPLE / "site.yaml", "--prometheus", self.url, "--no-local", "--format", "json")
         self.assertEqual(r.returncode, 1, r.stderr)
         doc = json.loads(r.stdout)
-        self.assertEqual(doc["counts"]["no"], 7)
+        self.assertEqual(doc["counts"]["no"], 5)
         with tempfile.TemporaryDirectory() as d:
             plan = Path(d) / "readiness.json"
             plan.write_text(json.dumps(R.plan(resolved())))
             tf = Path(d) / "readiness.prom"
             r = self.run30("--plan", plan, "--prometheus", self.url, "--no-local", "--textfile", tf)
             self.assertEqual(r.returncode, 1, r.stderr)
-            self.assertIn('readiness_items{status="no"} 7', tf.read_text())
+            self.assertIn('readiness_items{status="no"} 5', tf.read_text())
             self.assertIn("30ops readiness: ", r.stdout.splitlines()[-1])
 
     def test_prometheus_down(self):

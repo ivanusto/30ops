@@ -41,6 +41,7 @@ asset_eol_unknown{asset="spark02",component="DGX OS",kind="os",version="7.6.0",m
 asset_eol_unknown{asset="nas-primary",component="QuTS hero",kind="os",version="6.0.2",milestone="end_of_support",basis="unknown"} 1
 asset_eol_unknown{asset="nas-secondary",component="QuTS hero",kind="os",version="6.0.2",milestone="end_of_support",basis="unknown"} 1
 asset_eol_unknown{asset="nas-secondary",component="TS-464",kind="hardware",version="TS-464",milestone="end_of_support",basis="unknown"} 1
+asset_eol_unknown{asset="sw-core",component="Switch OS",kind="firmware",version="4.5.0",milestone="end_of_support",basis="unknown"} 1
 # HELP asset_eol_source_mismatch 1 when endoflife.date disagrees with the date in the TSV (--refresh), 0 when it agrees
 # TYPE asset_eol_source_mismatch gauge
 asset_eol_source_mismatch{asset="fgt-edge",component="FortiOS",kind="firmware",version="7.6.7",milestone="end_of_engineering",basis="vendor"} 0

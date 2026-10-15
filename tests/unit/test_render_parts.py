@@ -33,7 +33,7 @@ class Parts(unittest.TestCase):
             for r in d["alerting"]["receivers"].values():
                 r.pop("email", None)
             d.pop("pve")
-            d["hosts"] = [h for h in d["hosts"] if "nas" not in h["roles"]]
+            d["hosts"] = [h for h in d["hosts"] if not {"nas", "switch"} & set(h["roles"])]
         env = compose.env(sample(edit))
         self.assertEqual(env["OPS30_VOL_GRAFANA"], "30ops_grafana-data")
         self.assertEqual(env["OPS30_SMTP_PASSWORD_FILE"], "/dev/null")
@@ -41,7 +41,7 @@ class Parts(unittest.TestCase):
 
     def test_switch_snmp(self):
         def edit(d):
-            d["hosts"] = [h for h in d["hosts"] if "nas" not in h["roles"]]
+            d["hosts"] = [h for h in d["hosts"] if not {"nas", "switch"} & set(h["roles"])]
             d["snmp"]["auths"]["sw_v3"] = dict(d["snmp"]["auths"]["nas_v3"])
             d["hosts"] += [{"name": "sw1", "address": "192.0.2.40", "vendor": "generic-snmp", "roles": ["switch"],
                             "snmp": {"auth": "sw_v3"}},

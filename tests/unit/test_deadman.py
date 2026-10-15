@@ -118,8 +118,16 @@ class Http(unittest.TestCase):
             srv.server_close()
 
 
+def without_deadman(doc):
+    """The sample site with no deadman: neither the role nor alerting.deadman."""
+    for h in doc["hosts"]:
+        h["roles"] = [r for r in h["roles"] if r != "deadman"]
+    doc["alerting"].pop("deadman", None)
+    return doc
+
+
 def resolved(**dm):
-    doc = site.load(SAMPLE / "site.yaml")
+    doc = without_deadman(site.load(SAMPLE / "site.yaml"))
     doc["hosts"].append({"name": "watcher", "address": "192.0.2.150", "vendor": "linux", "roles": ["deadman"]})
     doc["alerting"]["deadman"] = {"host": "watcher", **dm}
     return doc, site.resolve(doc, str(SAMPLE))
@@ -170,7 +178,7 @@ class Wiring(unittest.TestCase):
         self.assertEqual(compose.env(r)["OPS30_DEADMAN_URL_FILE"], "/dev/null")
 
     def test_no_deadman_no_webhook(self):
-        r = site.resolve(site.load(SAMPLE / "site.yaml"), str(SAMPLE))
+        r = site.resolve(without_deadman(site.load(SAMPLE / "site.yaml")), str(SAMPLE))
         recv = {x["name"]: x for x in alertmanager.alertmanager_yml(r)["receivers"]}
         self.assertEqual(recv["deadman"], {"name": "deadman"})
         self.assertNotIn("deadman", prometheus.targets(r)[0])

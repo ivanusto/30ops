@@ -1,7 +1,7 @@
 {
   "version": 1,
   "tool": "30ops X.Y.Z",
-  "site_sha256": "8dd3c969b00b85ce68a7f0fee27f4adc109cd2629509a8bc44a86b943e47f2f7",
+  "site_sha256": "e64197fdb2465be61801358aafb2b954975953321dc76fc39c011e6ec10860bc",
   "files": [
     {
       "path": "etc/30ops/alertmanager/alertmanager.yml",
@@ -165,6 +165,13 @@
       "secret": false
     },
     {
+      "path": "etc/30ops/prometheus/targets/deadman.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "etc/30ops/prometheus/targets/gb10.yml",
       "mode": "0644",
       "owner": "root:root",
@@ -180,6 +187,13 @@
     },
     {
       "path": "etc/30ops/prometheus/targets/pve.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "etc/30ops/prometheus/targets/switch-snmp.yml",
       "mode": "0644",
       "owner": "root:root",
       "sha256": "X",
@@ -306,6 +320,13 @@
     },
     {
       "path": "nodes/pve2/install.env",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
+      "path": "nodes/qdevice/etc/30ops-deadman/deadman.env",
       "mode": "0644",
       "owner": "root:root",
       "sha256": "X",

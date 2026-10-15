@@ -228,7 +228,7 @@ class UpsNone(unittest.TestCase):
         self.assertEqual(check(d), ([], []))
         from ops30.render import adapters
         r = site.resolve(d, str(SAMPLE))
-        self.assertEqual(adapters.ups_none(r), ['ops30_ups_none{nas="primary"} 1\n'])
+        self.assertEqual(adapters.ups_none(r), ['ops30_ups_none{nas="primary"} 1\n', 'ops30_ups_none{nas="secondary"} 1\n'])
         text = next(iter(adapters.render(r, "x").values())).text
         self.assertIn("# TYPE ops30_ups_none gauge\nops30_ups_none{nas=\"primary\"} 1\n", text)
         q = next(x for x in d["hosts"] if x["name"] == "qdevice")

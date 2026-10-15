@@ -67,10 +67,12 @@ hosts:
     labels: {role: pve}
     ssh: {user: root}
     pve: {cluster: lab}
+  # The QDevice VM runs on the NAS, outside the PVE cluster and away from
+  # the collector VM, which makes it the deadman host too.
   - name: qdevice
-    address: qdevice
+    address: 192.0.2.148
     vendor: linux
-    roles: [qdevice]
+    roles: [qdevice, deadman]
 
   # The primary NAS has two LAN addresses and sends syslog from either.
   - name: nas-primary
@@ -81,12 +83,21 @@ hosts:
     labels: {nas: primary}
     ssh: {user: ops30}
     snmp: {auth: nas_v3}
+    ups: none
   - name: nas-secondary
     address: 192.0.2.22
     vendor: qnap
     roles: [nas, syslog]
     labels: {nas: secondary}
     ssh: {user: ops30}
+    snmp: {auth: nas_v3}
+    ups: none
+
+  # The core switch, scraped over SNMP v3 (the same read-only account).
+  - name: sw-core
+    address: 192.0.2.40
+    vendor: generic-snmp
+    roles: [switch]
     snmp: {auth: nas_v3}
 
   - name: fgt-edge
@@ -139,6 +150,10 @@ alerting:
     ops-critical: {email: [oncall@example.net]}
     ops-warning: {email: [ops@example.net]}
     ops-digest: {email: [ops@example.net], send_resolved: false}
+  # 30ops-deadman on the QDevice VM: mail and pages (ops-critical's
+  # addresses) when the collector stops pushing its Watchdog for 5 minutes
+  deadman:
+    host: qdevice
 
 # The change records live in their own repository; the collector keeps a
 # clone (owned by metrics) that cron pulls every 15 minutes.
@@ -153,3 +168,12 @@ gate:
 
 assets: assets.tsv
 cost: cost.yaml
+
+# 30ops readiness (docs/readiness.md): what the site accepts as it is, with
+# the reason, and the evidence for items only a person can check.
+readiness:
+  accept:
+    second-approver: one-person site; approval_exception in every record, and a 24 h cooling-off on the merge
+  answers:
+    pkg-release-verified: v0.7.0 from the GitHub Release, sha256sum -c and gh attestation verify passed
+

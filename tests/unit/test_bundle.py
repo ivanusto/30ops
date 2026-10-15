@@ -71,6 +71,8 @@ class Bundle(unittest.TestCase):
 
     def test_deadman_node(self):
         doc = site.load(SAMPLE / "site.yaml")
+        for h in doc["hosts"]:
+            h["roles"] = [r for r in h["roles"] if r != "deadman"]
         doc["hosts"].append({"name": "watcher", "address": "192.0.2.150", "vendor": "linux", "roles": ["deadman"]})
         doc["alerting"]["deadman"] = {"host": "watcher"}
         s = site.resolve(doc, str(SAMPLE))

@@ -56,19 +56,35 @@
    "ops-warning": true,
    "ops-digest": true
   },
-  "deadman": null,
-  "switches_all": [],
-  "switches": [],
+  "deadman": {
+   "host": "qdevice",
+   "address": "192.0.2.148",
+   "port": 9095,
+   "after_s": 300,
+   "healthchecks": false
+  },
+  "switches_all": [
+   {
+    "name": "sw-core",
+    "address": "192.0.2.40"
+   }
+  ],
+  "switches": [
+   {
+    "name": "sw-core",
+    "address": "192.0.2.40"
+   }
+  ],
   "nas": [
    {
     "name": "nas-primary",
     "nas": "primary",
-    "ups_none": false
+    "ups_none": true
    },
    {
     "name": "nas-secondary",
     "nas": "secondary",
-    "ups_none": false
+    "ups_none": true
    }
   ]
  },
@@ -111,7 +127,8 @@
    "check": {
     "type": "manual",
     "hint": "docs/install.md, download and verify; give the version and the date verified"
-   }
+   },
+   "answer": "v0.7.0 from the GitHub Release, sha256sum -c and gh attestation verify passed"
   },
   {
    "id": "pkg-rollback",
@@ -202,6 +219,22 @@
     "type": "builtin",
     "name": "switch_monitored"
    }
+  },
+  {
+   "id": "switch-in-assets",
+   "category": "node-guard",
+   "question": {
+    "zh-TW": "每台交換器與基地台都在資產清單（assets.tsv）裡嗎？",
+    "en": "Is every switch and access point a row of the asset list (assets.tsv)?"
+   },
+   "check": {
+    "type": "site",
+    "name": "switch_in_assets"
+   },
+   "static": [
+    "yes",
+    "1 in assets.tsv"
+   ]
   },
   {
    "id": "pve-quorum",
@@ -432,7 +465,8 @@
    "check": {
     "type": "builtin",
     "name": "second_approver"
-   }
+   },
+   "accept": "one-person site; approval_exception in every record, and a 24 h cooling-off on the merge"
   },
   {
    "id": "change-effort",
@@ -473,5 +507,5 @@
    }
   }
  ],
- "site_sha256": "8dd3c969b00b85ce68a7f0fee27f4adc109cd2629509a8bc44a86b943e47f2f7"
+ "site_sha256": "e64197fdb2465be61801358aafb2b954975953321dc76fc39c011e6ec10860bc"
 }
