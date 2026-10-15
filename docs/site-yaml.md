@@ -27,7 +27,7 @@ alerting:
   smtp: {smarthost: "smtp.example.net:587", from: alerts@example.net, password: smtp}
 ```
 
-鍵名是 `password`、`priv_password`、`token`、`passphrase`、`secret`、`key` 的欄位，值必須是 `credentials` 裡的名稱，否則 validate 報「plain-text secrets are not allowed」，且訊息不回顯該值。render 也不讀秘密檔，見 [render.md](render.md#秘密)。
+鍵名是 `password`、`priv_password`、`token`、`passphrase`、`secret`、`key`、`healthchecks` 的欄位，值必須是 `credentials` 裡的名稱，否則 validate 報「plain-text secrets are not allowed」，且訊息不回顯該值。render 也不讀秘密檔，見 [render.md](render.md#秘密)。
 
 ## 欄位
 
@@ -60,7 +60,8 @@ alerting:
 | `logs.pcap` | 有 `pcap` 角色時 | `key`（拉取用 SSH 金鑰的 credentials 名稱）、`peer`（節點擷取設定檔指向的 NAS） |
 | `alerting.smtp` | 有 email 收件者時 | `smarthost`、`from`、`username`、`password`、`require_tls`（預設 true） |
 | `alerting.receivers` | 是 | 必須有 `ops-critical`、`ops-warning`、`ops-digest`（路由樹送往這三個），各自 `email[]`、`webhook[]`、`send_resolved` |
-| `alerting.thresholds` | | 告警門檻覆寫，鍵與預設值見 `collector/prometheus/thresholds.yml`，說明見 [rules.md](rules.md#門檻)。鍵必須存在、值大於 0，成對的警告線與危險線順序要對 |
+| `alerting.thresholds` | | 告警門檻覆寫，鍵與預設值見 `collector/prometheus/thresholds.yml` 與插件的 `thresholds.yml`，說明見 [rules.md](rules.md#門檻)。鍵必須存在、值大於 0，成對的警告線與危險線順序要對 |
+| `alerting.deadman` | | 收集端以外的看門狗（v0.7）。`host`（有 `deadman` 角色、不是收集端的主機，跑 30ops-deadman）與 `healthchecks`（外部檢查網址的 credentials 名稱，例如 healthchecks.io 的 ping 網址）至少一個；`port` 預設 9095；`after_s` 多久沒收到 Watchdog 算停擺，預設 300、至少 180；`email[]`、`webhook[]` 預設沿用 `ops-critical` 的收件者。說明見 [install.md](install.md#deadman) |
 | `changes.clone` | | 變更單 repo 在收集端的 clone，預設 `/var/lib/30ops/changes` |
 | `changes.state_dir` | | 預設 `/var/lib/onprem-changes` |
 | `changes.remote` | | 變更單 repo 的 git 網址。clone 不存在時，install 以 `collector.user` 從這裡 clone（v0.5） |
@@ -68,6 +69,8 @@ alerting:
 | `gate.principal`、`home`、`approval_ttl_s`、`approvers` | | 預設 `agent:ops`、`/var/lib/onprem-agent-gate`、600、`[implementer, approver]` |
 | `assets` | | assets.tsv 的路徑，相對於 site.yaml，格式見 [assets-tsv.md](assets-tsv.md) |
 | `cost` | | cost.yaml 的路徑，相對於 site.yaml，以 `inventory/cost.py` 的規則檢查 |
+| `readiness.accept.<項目>` | | 這一項維持現狀的理由（v0.7）。判定為否或未知時改列「明示接受」，見 [readiness.md](readiness.md) |
+| `readiness.answers.<項目>` | | 只能人工確認的項目（manual）的證據，有寫就判定為是 |
 
 ### hosts[]
 
@@ -78,19 +81,21 @@ alerting:
 | `vendor` | `linux`、`pve`、`qnap`、`fortigate`、`generic-snmp`。收集端會連線的角色必填 |
 | `roles[]` | 見下表 |
 | `labels` | 照抄到 Prometheus targets 的 label。v1 不改 metric label，舊值寫在這裡（例如 `nas: primary`） |
-| `plugins[]` | `gb10-ops`、`spark-baseline`、`nfs-model-library`。`gb10-ops` 的主機進 `gb10` job（15 秒） |
+| `plugins[]` | `plugins/` 下有 `plugin.yaml` 的插件（`gb10-ops`、`spark-baseline`、`nfs-model-library`）。主機要有插件要求的角色與廠商；插件的抓取 job、規則、儀表板列與 readiness 項目只在有主機列出它時加入，見 [plugins.md](plugins.md) |
 | `ssh.user` | 收集端登入用的帳號（NAS 健康檢查、PVE quorum） |
 | `snmp.auth` | `snmp.auths` 的名稱 |
 | `pve.cluster` | quorum 檢查的叢集名稱，同名的主機為同一叢集 |
 | `api` | `url`、`token`（credentials 名稱）、`insecure`。FortiGate 的授權到期日讀這裡 |
 | `syslog.devname` | 裝置在 syslog 裡的名稱（FortiGate 的 devname），`webfilter` 與 `audit-source` 角色必填 |
 | `pcap` | `user`（預設 `pcap`）、`iface`（corosync 擷取的介面） |
+| `journal` | `false` 表示這台不送 journal。vendor 為 `linux` 或 `pve`、角色含 `node`、`qdevice`、`hypervisor` 或 `deadman` 的主機預設會送（v0.7），收集端除外 |
+| `ups` | `none`：這台 NAS 刻意不接 UPS，`NasUpsAbsent` 不響，readiness 的 `ups-present` 列為明示接受（v0.7）。只限角色 `nas` |
 
 | 角色 | 產生的設定 |
 |---|---|
 | `collector` | `collector-host` job、節點安裝參數 |
-| `node` | node_exporter target（`gb10` 或 `node` job） |
-| `journal` | allowlist `JOURNALD_FROM`、節點的 journal-upload 網址 |
+| `node` | node_exporter target（`node` job，或插件的 job，例如 gb10-ops 的 `gb10`） |
+| `journal` | allowlist `JOURNALD_FROM`、節點的 journal-upload 網址。Linux 與 PVE 主機預設就有（見上表 `journal`） |
 | `syslog` | allowlist `SYSLOG_FROM`（含 `also`） |
 | `audit-source` | allowlist `AUDIT_FROM`（515 埠） |
 | `pcap` | `PCAP_NODES`、節點的擷取設定檔與 sudoers |
@@ -100,6 +105,7 @@ alerting:
 | `webfilter` | `AUP_EXPECT` |
 | `admin` | `AUDIT_QUIET_FROM` |
 | `qdevice` | v0.3 只登錄，v0.5 起由 adapter 使用 |
+| `deadman` | `alerting.deadman.host` 指的主機：節點 bundle 裝 30ops-deadman，`deadman` job 抓它的 `/metrics`（v0.7） |
 | `switch`、`ap` | 有 `snmp.auth` 時由 switch-snmp 抓取（generic-snmp adapter，v0.7） |
 
 ## 時區與 cron

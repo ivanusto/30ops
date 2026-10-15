@@ -1,7 +1,7 @@
 #!/bin/sh
 # Start collector/compose.yml on a render of the sample site, with
 # throwaway volumes and secrets, and check what the merged stack must do:
-#   - Prometheus loaded the 69 rendered alert rules;
+#   - Prometheus loaded every rendered alert rule (as many as rules/*.yml has);
 #   - Grafana has the VictoriaLogs plugin baked in, the three provisioned
 #     datasources (VictoriaLogs answers its health check) and the dashboard;
 #   - Prometheus scrapes VictoriaLogs over the project network.
@@ -58,7 +58,8 @@ rules=$(get http://127.0.0.1:9090/api/v1/rules | python3 -c '
 import json, sys
 d = json.load(sys.stdin)["data"]["groups"]
 print(sum(1 for g in d for r in g["rules"] if r["type"] == "alerting"))')
-[ "$rules" = 69 ] || fail "prometheus loaded $rules alert rules, want 69"
+want=$(cat "$OPS30_ETC"/prometheus/rules/*.yml | grep -c '^ *- alert:')
+[ "$rules" = "$want" ] || fail "prometheus loaded $rules alert rules, want $want"
 echo "prometheus: $rules alert rules"
 
 wait_for 90 get "$G/api/health" || fail "grafana not healthy"
