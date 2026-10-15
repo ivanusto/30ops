@@ -8,6 +8,10 @@ summary: Thermal soak and unified memory guards for NVIDIA DGX Spark (GB10) node
 # a host may list the plugin when it has one of these roles and this vendor
 roles: [node]
 vendors: [linux]
+# the node bundle carries these files (paths in this directory) and
+# node-install.sh runs install.sh from them, after the host's roles
+install:
+  files: [install.sh, textfile/gb10-textfile.py, systemd/gb10-textfile.service, systemd/gb10-textfile.timer]
 # what the node writes; max_age_s is the threshold of its stale alert
 textfile:
   - {file: gb10.prom, prefix: gb10_textfile, max_age_s: 120}

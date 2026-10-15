@@ -38,6 +38,8 @@ before the machine was gone.
 | `bench/load-decode.py` | Drives sustained decode against an OpenAI compatible endpoint, for measuring power under load rather than at idle. |
 | `bench/summarize-samples.py` | Turns a sampler JSONL into one row of numbers, with the head and tail of the window trimmed. |
 | `examples/train-guarded.sh` | How to put a fine-tune run behind the gate and the watchdog. |
+| `textfile/gb10-textfile.py`, `systemd/gb10-textfile.*` | The node_exporter textfile the 30ops collector reads, every 10 s: hottest thermal zone, GPU temperature, power and utilisation, **thermal soak seconds** (continuous time at or above 88 C), the `NV_ERR_NO_MEMORY` count from dmesg, MemAvailable, and the HOT flag from `hw-sample.py` (present only while hw-sample runs with `--hot-flag /run/gb10/HOT`). Soak state survives between runs; a timer gap resets it. |
+| `plugin.yaml`, `install.sh`, `rules/`, `thresholds.yml`, `dashboard.py` | The 30ops plugin contract: what `30ops install node` puts on a host that lists the plugin, and the scrape job, alerts and dashboard row the collector adds ([docs/plugins.md](../../docs/plugins.md)). |
 | `systemd/` | A system unit and its threshold file that run the memory guard as an unprivileged service account with `CAP_KILL`. |
 
 ## Why a host level guard and not a container memory limit

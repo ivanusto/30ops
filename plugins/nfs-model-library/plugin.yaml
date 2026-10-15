@@ -6,3 +6,7 @@ license: Apache-2.0
 summary: One model library on a NAS share, one writer, every file with a checksum and a source
 roles: [node]
 vendors: [linux]
+# the node bundle carries these files (paths in this directory) and
+# node-install.sh runs install.sh from them, after the host's roles
+install:
+  files: [install.sh, mlib.py]

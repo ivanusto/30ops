@@ -163,10 +163,14 @@ jobs:
       - name: nfs-model-library
         working-directory: plugins/nfs-model-library
         run: python3 -m py_compile mlib.py && python3 -m unittest discover -s tests -v
+      - name: plugin contract hooks
+        run: shellcheck -s sh plugins/*/install.sh
       - name: gb10-ops
         working-directory: plugins/gb10-ops
         run: |
-          python3 -m compileall -q guards samplers bench
+          python3 -m compileall -q guards samplers bench textfile
+          python3 -m unittest discover -s tests -v
+          systemd-analyze verify systemd/gb10-textfile.service systemd/gb10-textfile.timer || true   # no /usr/local/bin/gb10-textfile.py on the runner
           bash -n examples/train-guarded.sh
           for f in guards/*.py samplers/*.py bench/*.py; do python3 "$f" --help > /dev/null; done
           systemd-analyze verify systemd/gb10-host-guard.service

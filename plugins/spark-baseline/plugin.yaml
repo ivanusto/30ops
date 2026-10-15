@@ -6,3 +6,7 @@ license: Apache-2.0
 summary: Plain-text state snapshots of a GPU node and an SSH hardening drop-in that refuses to lock you out
 roles: [node]
 vendors: [linux]
+# the node bundle carries these files (paths in this directory) and
+# node-install.sh runs install.sh from them, after the host's roles
+install:
+  files: [install.sh, baseline-snapshot.sh]

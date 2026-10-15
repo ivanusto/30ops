@@ -3,13 +3,14 @@
 # node` builds (it unpacks to /tmp/30ops-node-<host>/). It reads install.env
 # and runs the installers for the host's roles; each is safe to run again,
 # and a second run changes nothing.
-#   node        node_exporter (with gb10-textfile on a gb10-ops host); ufw,
-#               when active, lets SCRAPE_FROM reach 9100
+#   node        node_exporter; ufw, when active, lets SCRAPE_FROM reach 9100
 #   journal     systemd-journal-upload to JOURNAL_URL, from now on
 #   pcap        the capture units with the site's profiles and sudoers, and
 #               the collector's pull key forced to rrsync -ro
 #   hypervisor  the collector's key for the quorum check, forced to
 #               `pvecm status` and only from COLLECTOR, and linger for root
+# Then, for each plugin in PLUGINS, the plugin's own plugins/<name>/install.sh
+# (docs/plugins.md).
 # Self-contained: it does not source lib/ (docs/lib.md, node-side files).
 set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -17,14 +18,9 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=/dev/null
 . "$HERE/install.env"
 has() { case " $ROLES " in *" $1 "*) return 0 ;; esac; return 1; }
-plugin() { case " ${PLUGINS:-} " in *" $1 "*) return 0 ;; esac; return 1; }
 
 if has node; then
-  if plugin gb10-ops; then
-    sh "$HERE/collector/install-node.sh" "$NODE_EXPORTER_VERSION"
-  else
-    sh "$HERE/collector/install-node.sh" --plain "$NODE_EXPORTER_VERSION"
-  fi
+  sh "$HERE/collector/install-node.sh" --plain "$NODE_EXPORTER_VERSION"
   if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
     ufw allow proto tcp from "$SCRAPE_FROM" to any port 9100 comment '30ops node_exporter' >/dev/null
   fi
@@ -57,4 +53,9 @@ if has hypervisor && [ -s "$HERE/keys/quorum.pub" ]; then
     loginctl enable-linger root
   fi
 fi
-echo "30ops node-install: $HOST ($ROLES) done"
+for p in ${PLUGINS:-}; do
+  if [ -f "$HERE/plugins/$p/install.sh" ]; then
+    sh "$HERE/plugins/$p/install.sh"
+  fi
+done
+echo "30ops node-install: $HOST ($ROLES${PLUGINS:+; plugins $PLUGINS}) done"

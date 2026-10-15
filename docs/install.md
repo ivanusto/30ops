@@ -112,7 +112,8 @@ bin/30ops install node nas-primary --site site.yaml                      # 設�
 | 內容 | 何時 |
 |---|---|
 | `node-install.sh`、`install.env` | 一律 |
-| `collector/install-node.sh` 與 node_exporter 單元；有 gb10-ops 插件時加 gb10-textfile | 角色 node |
+| `collector/install-node.sh` 與 node_exporter 單元 | 角色 node |
+| `plugins/<名稱>/` 中 plugin.yaml `install.files` 列的檔案，`node-install.sh` 最後執行其 `install.sh` | 主機列出插件 |
 | `logs/node/install-journal-upload.sh` | 角色 journal |
 | `logs/pcap/` 的安裝程式、render 產出的 `etc/pcap/*.env` 與 `etc/sudoers.d/pcap`、`keys/pcap-pull.pub` | 角色 pcap |
 | `keys/quorum.pub` | 角色 hypervisor 且有 `pve.cluster` |

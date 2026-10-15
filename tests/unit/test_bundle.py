@@ -52,13 +52,20 @@ class Bundle(unittest.TestCase):
                   "etc/pcap/corosync.env", "etc/sudoers.d/pcap", "keys/quorum.pub", "keys/pcap-pull.pub"):
             self.assertIn(p + f, names)
         self.assertNotIn(p + "collector/install-node.sh", names)      # no node role
+        self.assertFalse([n for n in names if "/plugins/" in n])        # lists no plugin
         mode = dict((e[0], e[2]) for e in entries)
         self.assertEqual(mode[p + "node-install.sh"], 0o755)
         self.assertEqual(mode[p + "etc/sudoers.d/pcap"], 0o440)
 
     def test_gb10_node(self):
-        _, names = self.names("spark01")
-        self.assertIn("30ops-node-spark01/collector/textfile/gb10-textfile.py", names)
+        entries, names = self.names("spark01")
+        p = "30ops-node-spark01/plugins/gb10-ops/"
+        for f in ("install.sh", "textfile/gb10-textfile.py", "systemd/gb10-textfile.service",
+                  "systemd/gb10-textfile.timer"):
+            self.assertIn(p + f, names)
+        mode = dict((e[0], e[2]) for e in entries)
+        self.assertEqual(mode[p + "install.sh"], 0o755)
+        self.assertEqual(mode[p + "systemd/gb10-textfile.timer"], 0o644)
         self.assertNotIn("30ops-node-spark01/etc/pcap/corosync.env", names)   # not a hypervisor
         self.assertNotIn("30ops-node-spark01/keys/quorum.pub", names)
 

@@ -66,13 +66,12 @@ POSIX sh。`date -d @EPOCH` 在 GNU date 與 busybox date 都可用。
 
 | 檔案 | 執行位置 |
 |---|---|
-| `collector/textfile/gb10-textfile.py` | GB10 主機的 `/usr/local/bin` |
 | `adapters/nas/qnap/remote.sh` | 經 ssh 送到 NAS 的 sh 執行 |
 | `collector/node/node-install.sh` | 節點上，從 `30ops install node` 的 bundle 執行 |
 | `drills/pve-backup/canary.sh` | 還原演練的 VM 內，`/usr/local/bin/canary.sh` |
 | `drills/nas-backup/share-canary.sh` | NAS 的 cron |
 | `drills/nas-backup/nas-audit.sh` | NAS |
 | `drills/nas-backup/replica-verify.sh` | NAS 或副本主機 |
-| `plugins/` 全部 | 各自的節點 |
+| `plugins/` 全部 | 各自的節點（例如 `gb10-textfile.py`、各插件的 `install.sh`） |
 
 另外兩個檔案解析的是特定來源的格式，也豁免：`logs/firewall/fortigate-export-load.py` 讀 FortiGate 的 date、time、tz 欄位；`logs/firewall/aup-compare.sh` 是一次性的比對工具。

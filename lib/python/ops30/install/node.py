@@ -2,7 +2,9 @@
 
 The bundle is a tar.gz that unpacks to 30ops-node-<host>/ with
 node-install.sh (collector/node/), the installers for the host's roles, the
-rendered nodes/<host>/ files and the collector's public keys. It is built
+rendered nodes/<host>/ files, the collector's public keys, and the
+install files of each plugin the host lists (plugins/<name>/, plugin.yaml
+install:). It is built
 deterministically (sorted entries, mtime 0, uid 0, gzip mtime 0), so the
 same site gives the same bytes and its sha256 says what was installed.
 
@@ -21,13 +23,11 @@ import os
 import tarfile
 import tempfile
 
-from .. import site as S
+from .. import plugins, site as S
 from ..adapters import registry
 
 DRIVER = "collector/node/node-install.sh"
 NODE = ["collector/install-node.sh", "collector/systemd/node_exporter.service"]
-GB10 = ["collector/textfile/gb10-textfile.py", "collector/systemd/gb10-textfile.service",
-        "collector/systemd/gb10-textfile.timer"]
 JOURNAL = ["logs/node/install-journal-upload.sh"]
 PCAP = ["logs/pcap/install-pcap.sh", "logs/pcap/pcap-run.sh", "logs/pcap/pcap-seal.sh", "logs/pcap/pcap@.service",
         "logs/pcap/sudoers-pcap"]
@@ -54,12 +54,15 @@ def contents(site, tree, h, ops):
     name = f"30ops-node-{h['name']}"
     files = [DRIVER]
     if "node" in roles:
-        files += NODE + (GB10 if "gb10-ops" in h["plugins"] else [])
+        files += NODE
     if "journal" in roles:
         files += JOURNAL
     if "pcap" in roles:
         files += PCAP + sorted(f"logs/pcap/profiles/{f}" for f in os.listdir(f"{S.REPO}/logs/pcap/profiles")
                                if f.endswith(".env"))
+    for p in h["plugins"]:
+        if not plugins.fits(p, h):
+            files += plugins.install_files(p)
     out = []
     for f in files:
         with open(os.path.join(S.REPO, f), "rb") as fh:

@@ -36,14 +36,13 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 NODE_SIDE = [
-    "collector/textfile/gb10-textfile.py",      # copied to /usr/local/bin on the GB10 hosts
     "adapters/nas/qnap/remote.sh",              # piped to sh on the NAS over ssh
     "collector/node/node-install.sh",           # runs on the node from the install node bundle
     "drills/pve-backup/canary.sh",              # installed in the guest as /usr/local/bin/canary.sh
     "drills/nas-backup/share-canary.sh",        # runs on the NAS (cron) and reads the share
     "drills/nas-backup/nas-audit.sh",           # runs on the NAS
     "drills/nas-backup/replica-verify.sh",      # runs on the NAS or the replica host
-    "plugins/*",                                # node plugins ship on their own
+    "plugins/*",                                # node plugins ship on their own (gb10-textfile.py, install.sh)
 ]
 SOURCE_SPECIFIC = [
     "logs/firewall/fortigate-export-load.py",   # FortiGate date= time= tz= fields, not RFC 3339

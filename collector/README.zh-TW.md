@@ -6,14 +6,13 @@
 
 | 路徑 | 跑在哪 | 做什麼 |
 |---|---|---|
-| `textfile/gb10-textfile.py` | 每台 DGX Spark，systemd timer 每 10 秒 | 最熱的 thermal zone、GPU 溫度與功耗與使用率、**熱 soak 秒數**（88 度以上連續秒數）、dmesg 的 `NV_ERR_NO_MEMORY` 計數、MemAvailable、gb10-ops `hw-sample.py` 的 HOT 旗標（只有 hw-sample 以 `--hot-flag /run/gb10/HOT` 在跑時才會出現）。soak 狀態跨次保存，timer 斷掉就歸零 |
 | `prometheus/snmp-build.py` 與 `prometheus/snmp.yml` | 收集端 VM | 不靠 generator，直接從 QNAP 的 QTS-MIB（enterprises 55062，QuTS hero）解析 OID 產生 snmp_exporter 模組。磁碟與溫度、SMART 屬性、RAID、儲存池、共享資料夾（WORM、壓縮、去重）、風扇、CPU 與系統溫度、CPU 與記憶體、UPS、韌體、對外服務、已安裝套件，加上 IF-MIB 的網卡計數。只用 SNMP v3，範例是 authPriv（SHA、DES，QuTS hero 6.0.2 介面能選的最高組合），`security_level` 與協定要跟 NAS 上實際生效的一致，認證放 `snmp-auth.yml`（不入庫） |
 | `textfile/nas-textfile.sh` | 收集端主機，cron 每分鐘 | 執行 qnap adapter（`adapters/nas/qnap`，`30ops textfile nas`）。參數是 `LABEL=user@host`，`nas` 標籤與 SNMP 目標的 `nas` 對得起來。經 ssh 到每台 NAS，只收 MIB 沒有的東西，依名稱列的 ZFS 池、資料集已用、每資料集快照數與最新最舊時間與佔用、HBS 3 是否安裝。NAS 上不裝任何東西 |
 | `textfile/drills-textfile.py` | 收集端主機，cron 每 15 分鐘 | 讀三種演練、封存與封包驗證（來源 `logs`）、回退演練（來源 `changes`）的 `drills.jsonl`，v1 與舊的各工具格式都讀（[docs/drills-jsonl.md](../docs/drills-jsonl.md)），每個演練標籤只留最近一次，時間、結果、RTO、RPO、速率、最近一次成功 |
 | `prometheus/` | 收集端 VM | `prometheus.yml` 是抓取 job 與三種間隔（GPU 節點 15 秒，NAS 與 PVE 60 秒）；`30ops render` 加上場域標籤、file_sd 目標與 exporter 設定（`pve.yml`、`snmp-auth.yml`），寫到 `/etc/30ops/prometheus/`。`thresholds.yml` 是場域可在 `site.yaml` 的 `alerting.thresholds` 調整的告警門檻。`rules/` 是 69 條告警規則唯一的一份，render 時代入場域門檻（[docs/rules.md](../docs/rules.md)） |
 | `compose.yml` | 收集端 VM | 唯一的 compose 專案：Prometheus 3.5、pve-exporter、snmp-exporter、Alertmanager、Grafana（內含 VictoriaLogs 資料源外掛的 30ops 映像）與 VictoriaLogs，映像以 digest 釘住。場域設定（volume 名稱、保留期、時區、Grafana 埠、秘密檔、要跑哪些 exporter）來自 render 產生的 `/etc/30ops/compose.env`；volume 一律 external，名稱寫錯會停在啟動前，不會建出空的 TSDB。對區網開放的只有 Grafana 的 3000 與 VictoriaLogs（9428、syslog 514 與 515），Prometheus、Alertmanager 與 exporter 都只發佈到 127.0.0.1 |
-| `systemd/` | DGX Spark 與收集端 | node_exporter 單元、gb10-textfile 的 service 與 timer。收集端的 cron 由 `30ops render` 產生 `/etc/cron.d/30ops` |
-| `install-node.sh` | 每台 DGX Spark；`--collector` 給收集端 | 下載 node_exporter（arm64 或 amd64），對 release 的 sha256 校驗，安裝單元。DGX Spark 模式另裝 gb10-textfile 與 `/run/gb10`（tmpfiles.d）；`--collector` 只裝 node_exporter 與 textfile 目錄 |
+| `systemd/` | 每台節點與收集端 | node_exporter 單元。收集端的 cron 由 `30ops render` 產生 `/etc/cron.d/30ops`。gb10-textfile 的程式、service 與 timer 屬於 gb10-ops 插件（`plugins/gb10-ops/`，[docs/plugins.md](../docs/plugins.md)） |
+| `install-node.sh` | 每台節點與收集端 | 下載 node_exporter（arm64 或 amd64），對 release 的 sha256 校驗，安裝單元與 textfile 目錄。DGX Spark 上接著由 gb10-ops 插件的 `install.sh` 裝 gb10-textfile 與 `/run/gb10` |
 | `verify.sh` | 任何有 curl、ssh 與 python3 的機器 | 每個目標的 `up`、抓取秒數與樣本數，每個來源一個 Prometheus 的值與原始工具的值並列，演練表。NAS 端只用一般帳號讀得到的來源（`getsysinfo` 的溫度要 root） |
 | `prometheus/rules/thresholds.yml` | 收集端 VM | 數值告警（Day 20）。soak 達 180 秒（守護 240 秒動手，textfile 舊值、抓取跳階與規則評估最多吃掉 45 秒，Day 20 實測；gb10 群組因此每 15 秒評估一次）、MemAvailable 6 與 3 GiB、`NV_ERR_NO_MEMORY` 增量、儲存池 80 與 90 %、QuTS hero 回報的池與磁碟狀態字串、快照逾 2 天、失去法定人數與少一票、HA 資源異常、演練逾期與失敗。門檻是預設值，場域可覆寫，各自的出處見 [docs/rules.md](../docs/rules.md) |
 | `prometheus/rules/firewall.yml` | 收集端 VM | 防火牆判讀告警（Day 22），讀 onprem-logs 的 `firewall/fw-report.py` 由收集端 cron 每 10 分鐘寫的 `fw.prom`。報告過期、單一來源超過各道牆自己的門檻（各道牆的日誌限速差了好幾個數量級）、從沒擋過的新來源、NAS 登入失敗超過 NAS 自己的封鎖速率、預期會擋東西的牆 2 小時零筆 |
@@ -60,6 +59,7 @@ curl 'http://localhost:9116/snmp?module=qnap&auth=nas_v3&target=192.0.2.2'
 
 # 每台 DGX Spark
 sudo ./install-node.sh
+sudo ../plugins/gb10-ops/install.sh
 sudo ufw allow proto tcp from 192.0.2.49 to any port 9100   # 只放收集端
 curl -s localhost:9100/metrics | grep ^gb10_
 
