@@ -1,9 +1,10 @@
 #!/bin/sh
 # Run promtool on the alert rules as Prometheus gets them: render a site
 # (the sample site by default, which overrides no threshold), then check
-# the rendered rules and run collector/tests/rules_*test.yml against them.
-# The test files name their rules as rules/<file>.yml, next to which they
-# are copied.
+# the rendered rules and run collector/tests/rules_*test.yml against them,
+# plus plugins/<name>/tests/rules_*test.yml for each plugin whose rules the
+# site got (rules/plugin-<name>.yml). The test files name their rules as
+# rules/<file>.yml, next to which they are copied.
 #
 #   scripts/test-rules.sh [SITE_YAML]
 #
@@ -20,6 +21,14 @@ trap 'rm -rf "$tmp"' EXIT
 "$here/bin/30ops" render --site "$site" --out "$tmp" > /dev/null
 cd "$tmp/etc/30ops/prometheus"
 cp "$here"/collector/tests/rules_*test.yml .
+for d in "$here"/plugins/*/; do
+  p=$(basename "$d")
+  if [ -f "rules/plugin-$p.yml" ]; then
+    for t in "$d"tests/rules_*test.yml; do
+      if [ -f "$t" ]; then cp "$t" .; fi
+    done
+  fi
+done
 # shellcheck disable=SC2086 # PROMTOOL may be a command with arguments
 $promtool check rules rules/*.yml
 # shellcheck disable=SC2086

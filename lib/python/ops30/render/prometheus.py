@@ -1,11 +1,13 @@
 """prometheus.yml, targets/*.yml, pve.yml (from the pve adapter) and snmp-auth.yml.
 
 prometheus.yml is the repo's collector/prometheus/prometheus.yml (the job
-definitions are product, not site) with three changes: the site label, the
+definitions are product, not site) with four changes: the site label, the
 jobs that have no target dropped (victorialogs when the site collects no
-logs), and a node job for the plain Linux nodes.
+logs), a node job for the plain Linux nodes, and the scrape job of each
+plugin a host lists (plugin.yaml scrape:), before collector-host. A host
+whose plugin job replaces node is scraped by that job only.
 """
-from .. import site as S, yamlio
+from .. import plugins, site as S, yamlio
 from ..adapters import registry
 from . import SECRET, Output, header
 
@@ -32,20 +34,43 @@ def groups(hosts, port=None, extra=None):
 
 def targets(site):
     """job name -> (targets file, groups); a job without hosts is absent."""
-    hs = site["hosts"]
-    gb10 = [h for h in hs if "gb10-ops" in h["plugins"]]
-    jobs = {
-        "collector-host": ("collector.yml", groups(S.with_role(site, "collector"), 9100)),
-        "gb10": ("gb10.yml", groups(gb10, 9100)),
-        "node": ("node.yml", groups([h for h in S.with_role(site, "node") if h not in gb10], 9100)),
-        "pve": ("pve.yml", groups([h for h in S.with_role(site, "hypervisor") if h["vendor"] == "pve"])),
-    }
+    jobs = {"collector-host": ("collector.yml", groups(S.with_role(site, "collector"), 9100))}
+    taken = []
+    for job, sc, hs in plugin_jobs(site):
+        jobs[job] = (f"{job}.yml", groups(hs, sc["port"]))
+        if sc.get("replaces") == "node":
+            taken += hs
+    jobs["node"] = ("node.yml", groups([h for h in S.with_role(site, "node") if h not in taken], 9100))
+    jobs["pve"] = ("pve.yml", groups([h for h in S.with_role(site, "hypervisor") if h["vendor"] == "pve"]))
     nas = [h for h in S.with_role(site, "nas") if h.get("snmp")]
     auths = [h["snmp"]["auth"] for h in nas]
     default = auths[0] if auths else None
     jobs["nas-snmp"] = ("nas-snmp.yml", groups(
         nas, extra=lambda h: {} if h["snmp"]["auth"] == default else {"__param_auth": h["snmp"]["auth"]}))
     return {k: v for k, v in jobs.items() if v[1]}, default
+
+
+def plugin_jobs(site):
+    """[(job name, plugin.yaml scrape, hosts)] of the enabled plugins that have a job."""
+    out = []
+    for name in plugins.enabled(site):
+        sc = plugins.scrape(name)
+        if sc:
+            out.append((sc["job"], sc, plugins.hosts(site, name)))
+    return out
+
+
+def plugin_job(job, sc):
+    """The prometheus.yml job: the scrape settings first, then the targets
+    file, then the rest (relabelling), the order the jobs are written in."""
+    cfg = dict(sc.get("config") or {})
+    j = {"job_name": job}
+    for k in ("scrape_interval", "scrape_timeout", "metrics_path", "params"):
+        if k in cfg:
+            j[k] = cfg.pop(k)
+    j["file_sd_configs"] = [{"files": [f"targets/{job}.yml"]}]
+    j.update(cfg)
+    return j
 
 
 def logs_enabled(site):
@@ -66,6 +91,10 @@ def prometheus_yml(site, jobs, nas_auth):
         if j["job_name"] == "nas-snmp" and nas_auth:
             j["params"]["auth"] = [nas_auth]
         keep.append(j)
+    at = next((i for i, j in enumerate(keep) if j["job_name"] == "collector-host"), 0)
+    for job, sc, _ in reversed(plugin_jobs(site)):
+        if job in jobs:
+            keep.insert(at, plugin_job(job, sc))
     if "node" in jobs:
         # before victorialogs, where v0.3 put it
         at = next((i for i, j in enumerate(keep) if j["job_name"] == "victorialogs"), len(keep))

@@ -32,6 +32,17 @@ def alerts(tree):
     return out
 
 
+def all_sources():
+    """The core rule files and every plugin's."""
+    return rules.sources() + [src for _, src in rules.plugin_sources()]
+
+
+# the alerts of the sample site: 62 core and 7 from gb10-ops
+ALERTS = 69
+# alerts that moved to another group since v0.3.0, with the same evaluation interval
+REGROUPED = {"Gb10TextfileStale": ("pipeline", "gb10-pipeline")}
+
+
 def git_show(rev, path):
     r = subprocess.run(["git", "-C", str(ROOT), "show", f"{rev}:{path}"], capture_output=True, text=True)
     return r.stdout if r.returncode == 0 else None
@@ -41,7 +52,7 @@ class Rules(unittest.TestCase):
     def test_catalogue_and_placeholders_agree(self):
         cat = site.threshold_catalogue()
         used = set()
-        for src in rules.sources():
+        for src in all_sources():
             used |= set(rules.PLACEHOLDER.findall(Path(src).read_text()))
         self.assertEqual(used, set(cat))
         for k, v in cat.items():
@@ -52,8 +63,18 @@ class Rules(unittest.TestCase):
         for k, v in site.threshold_catalogue().items():
             self.assertTrue(set(v["alerts"]) <= names, k)
 
-    def test_69_alerts(self):
-        self.assertEqual(len(alerts(rules.render(resolved(), "x"))), 69)
+    def test_alert_count(self):
+        self.assertEqual(len(alerts(rules.render(resolved(), "x"))), ALERTS)
+
+    def test_plugin_rules_follow_the_hosts(self):
+        """A site whose hosts list no plugin gets no plugin rules."""
+        r = resolved()
+        for h in r["hosts"]:
+            h["plugins"] = []
+        tree = rules.render(r, "x")
+        self.assertNotIn(f"{rules.P}/plugin-gb10-ops.yml", tree)
+        self.assertFalse([a for a in alerts(tree) if a.startswith("Gb10")])
+        self.assertIn(f"{rules.P}/plugin-gb10-ops.yml", rules.render(resolved(), "x"))
 
     def test_defaults_match_v030(self):
         """With no override the rules mean what v0.3.0 shipped (expr, for,
@@ -76,6 +97,10 @@ class Rules(unittest.TestCase):
             self.assertEqual(norm, want, name)
             self.assertEqual(new[name][2], f'{e["record"]} == 0', name)
             new[name] = new[name][:2] + (ex,) + new[name][3:]
+        for name, (g_old, g_new) in REGROUPED.items():
+            self.assertEqual(new[name][0], g_new, name)
+            self.assertIsNone(new[name][1], name)
+            new[name] = (g_old,) + new[name][1:]
         self.assertEqual(new, was)
 
     def test_override_changes_only_its_alert(self):
@@ -116,8 +141,19 @@ class Rules(unittest.TestCase):
         for k in site.threshold_catalogue():
             self.assertIn(f"| `{k}` |", doc)
 
+    def test_alertmanager_base_names_real_alerts(self):
+        """Every alertname="X" in alertmanager.base.yml (routes, inhibit
+        rules; the gb10-ops ones among them) is an alert of the core rules
+        or of a plugin, so a rename cannot leave a dead matcher behind."""
+        names = set()
+        for src in all_sources():
+            names |= set(re.findall(r"- alert: (\S+)", Path(src).read_text()))
+        base = (ROOT / "collector" / "alertmanager" / "alertmanager.base.yml").read_text()
+        for name in re.findall(r'alertname="([^"]+)"', base):
+            self.assertIn(name, names)
+
     def test_no_day_references(self):
-        for src in rules.sources():
+        for src in all_sources():
             self.assertIsNone(re.search(r"\bDay \d+", Path(src).read_text()), src)
 
 

@@ -240,13 +240,24 @@ REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 THRESHOLDS = os.path.join(REPO, "collector", "prometheus", "thresholds.yml")
 # pairs that must stay in order: (lower, higher)
 THRESHOLD_ORDER = (("nas_pool_warn_pct", "nas_pool_crit_pct"), ("eol_crit_days", "eol_warn_days"),
-                   ("gb10_mem_crit_gib", "gb10_mem_warn_gib"),
                    ("nas_login_failures_warn", "nas_login_failures_crit"))
 
 
 def threshold_catalogue():
-    """collector/prometheus/thresholds.yml: key -> {default, unit, alerts, help}."""
-    return yamlio.load(THRESHOLDS)
+    """key -> {default, unit, alerts, help}: collector/prometheus/thresholds.yml,
+    then every plugin's thresholds.yml. A site may set a plugin's keys
+    whether or not a host lists the plugin; render only uses them when one does."""
+    cat = dict(yamlio.load(THRESHOLDS))
+    for name in plugins.available():
+        f = plugins.threshold_file(name)
+        if f:
+            cat.update(yamlio.load(f) or {})
+    return cat
+
+
+def threshold_order():
+    """Pairs (lower, higher) that must stay in order, the plugins' included."""
+    return THRESHOLD_ORDER + tuple(p for n in plugins.available() for p in plugins.threshold_order(n))
 
 
 def thresholds(site):
@@ -439,7 +450,7 @@ def _cross(doc, base, secrets, errs, warns):
                 errs.append(f"alerting.thresholds.{k} must be above 0")
         vals = {k: v["default"] for k, v in cat.items()}
         vals.update((k, v) for k, v in th.items() if _type_ok(N, v))
-        for lo, hi in THRESHOLD_ORDER:
+        for lo, hi in threshold_order():
             if (lo in th or hi in th) and not vals[lo] < vals[hi]:
                 errs.append(f"alerting.thresholds: {lo} ({vals[lo]}) must be below {hi} ({vals[hi]})")
 

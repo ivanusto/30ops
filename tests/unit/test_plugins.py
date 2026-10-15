@@ -21,6 +21,11 @@ TEXTFILE = {"file", "prefix", "max_age_s"}
 SCRAPE = {"job", "port", "replaces", "config"}
 
 
+def seconds(v):
+    m = re.fullmatch(r"(\d+)([smh])", v)
+    return int(m.group(1)) * {"s": 1, "m": 60, "h": 3600}[m.group(2)]
+
+
 def host(**kw):
     return {"name": "n1", "address": "192.0.2.10", "vendor": "linux", "roles": ["node"], **kw}
 
@@ -86,6 +91,19 @@ class Contract(unittest.TestCase):
                     m = re.search(rf"time\(\) - {t['prefix']}_last_run_timestamp > (\d+)", text)
                     self.assertTrue(m, f"no stale alert on {t['prefix']}_last_run_timestamp")
                     self.assertEqual(int(m.group(1)), t["max_age_s"])
+
+    def test_gb10_group_evaluates_fast_enough(self):
+        """The soak alert fires at 180 and the guard acts at 240. The textfile
+        age (up to 10 s), the scrape step (10 or 20 s) and the evaluation
+        wait use up to 45 s of that, so the gb10 group must evaluate every
+        15 s or less, and the gb10 job scrape as often. promtool test rules
+        steps all groups at the test file's interval and cannot catch this,
+        and the global evaluation_interval in prometheus.yml is 60 s."""
+        doc = yamlio.load(plugins.rule_files("gb10-ops")[0])
+        g = next(g for g in doc["groups"] if g["name"] == "gb10")
+        self.assertIn("interval", g, "gb10 group has no interval, it inherits the global 60 s")
+        self.assertLessEqual(seconds(g["interval"]), 15)
+        self.assertLessEqual(seconds(plugins.scrape("gb10-ops")["config"]["scrape_interval"]), 15)
 
     def test_fits(self):
         for name in plugins.available():

@@ -1,11 +1,12 @@
 """Grafana: datasource provisioning (Prometheus and Alertmanager always,
 VictoriaLogs when the site collects logs) and the dashboard, drawn by
-collector/grafana/build-dashboard.py with the site's thresholds. The
+collector/grafana/build-dashboard.py with the site's thresholds and the
+rows of the plugins its hosts list. The
 dashboard provider (collector/grafana/provisioning/dashboards/) is product
 and is mounted from the checkout."""
 import os
 
-from .. import site as S, yamlio
+from .. import plugins, site as S, yamlio
 from . import Output, header
 from .prometheus import logs_enabled
 
@@ -15,7 +16,7 @@ SRC = os.path.join(S.REPO, "collector", "grafana")
 
 def dashboard(site):
     mod = S._load_script(os.path.join(SRC, "build-dashboard.py"), "_ops30_dashboard")
-    return mod.render(S.thresholds(site))
+    return mod.render(S.thresholds(site), plugins.enabled(site))
 
 
 def render(site, sha):

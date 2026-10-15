@@ -1,7 +1,8 @@
 # Prometheus for the 30ops collector. The job definitions are product;
 # `30ops render` writes the site's copy to /etc/30ops/prometheus/ with the
 # site label, the targets/*.yml of each job, and without the jobs the site
-# has no targets for (victorialogs when it collects no logs).
+# has no targets for (victorialogs when it collects no logs), plus the jobs
+# of the plugins its hosts list.
 global:
   scrape_interval: 60s
   scrape_timeout: 10s
@@ -33,17 +34,8 @@ scrape_configs:
     static_configs:
       - targets: ["grafana:3000"]
 
-  # DGX Spark nodes: node_exporter with the textfile collector.
-  # 15 s so a 240 s soak budget is seen as 16 samples, not 4.
-  - job_name: gb10
-    scrape_interval: 15s
-    file_sd_configs:
-      - files: [targets/gb10.yml]
-    relabel_configs:
-      - source_labels: [__address__]
-        regex: "([^:]+):.*"
-        target_label: node
-        replacement: "$1"
+  # A plugin's job (plugins/<name>/plugin.yaml scrape:) goes here, before
+  # collector-host, when a host lists the plugin.
 
   # The host that runs nas-textfile.sh and drills-textfile.py exposes
   # them through its own node_exporter. One target, every NAS inside.

@@ -116,6 +116,13 @@
       "secret": false
     },
     {
+      "path": "etc/30ops/prometheus/rules/plugin-gb10-ops.yml",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "etc/30ops/prometheus/rules/staleness.yml",
       "mode": "0644",
       "owner": "root:root",

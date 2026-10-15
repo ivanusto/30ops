@@ -1,9 +1,7 @@
 # scripts/test-rules.sh runs this against the rendered rules (rules/*.yml)
 # Each case feeds a synthetic series and asserts which alert fires when.
-# Scrape interval below matches gb10 (15 s); NAS/PVE/drill cases use 60 s.
-# promtool steps every group at this evaluation_interval and ignores the
-# group's own interval, so it cannot see that prometheus.yml evaluates at
-# 60 s. tests/test_rules_config.py checks the gb10 group's 15 s instead.
+# NAS/PVE/drill cases use 60 s series. The gb10-ops plugin's cases are in
+# plugins/gb10-ops/tests/.
 rule_files:
   - rules/status.yml
   - rules/thresholds.yml
@@ -13,66 +11,9 @@ rule_files:
 evaluation_interval: 15s
 # the status recording rules first, as a step later would hold the NAS
 # alerts that read them back by one evaluation (Telnet at 10m, for: 10m)
-group_eval_order: [status, gb10, nas, pve, drills, pipeline, firewall]
+group_eval_order: [status, nas, pve, drills, pipeline, firewall]
 
 tests:
-  # Soak: Day 19 saw the guard trip at 240 while Prometheus held 227. The
-  # alert must be firing before the guard acts, so it fires at the first
-  # sample at or above 180 with no "for".
-  - interval: 15s
-    input_series:
-      - series: 'gb10_soak_seconds{job="gb10",node="192.0.2.131",instance="192.0.2.131:9100"}'
-        values: "0 21 36 51 66 81 96 111 126 141 156 171 186 201 216 227 0"
-    alert_rule_test:
-      - eval_time: 2m45s
-        alertname: Gb10SoakNearBudget
-        exp_alerts: []
-      - eval_time: 3m             # 13th sample = 186
-        alertname: Gb10SoakNearBudget
-        exp_alerts:
-          - exp_labels: {severity: warning, job: gb10, node: "192.0.2.131", instance: "192.0.2.131:9100"}
-            exp_annotations:
-              summary: "192.0.2.131 hottest zone above threshold for 186 s, guard trips at 240"
-              runbook: "the gb10-ops guard will kill the hottest process; move or pause the workload first"
-      - eval_time: 4m             # back to 0 after the guard
-        alertname: Gb10SoakNearBudget
-        exp_alerts: []
-
-  # Memory: 6 GiB warning needs a minute, 3 GiB critical is immediate.
-  - interval: 15s
-    input_series:
-      - series: 'gb10_mem_available_bytes{job="gb10",node="n1",instance="n1:9100"}'
-        values: "8e9 5e9 5e9 5e9 5e9 5e9 2e9"
-    alert_rule_test:
-      - eval_time: 15s
-        alertname: Gb10MemAvailableLow
-        exp_alerts: []
-      - eval_time: 1m15s
-        alertname: Gb10MemAvailableLow
-        exp_alerts:
-          - exp_labels: {severity: warning, job: gb10, node: n1, instance: "n1:9100"}
-            exp_annotations: {summary: "n1 MemAvailable 4.657GiB, below 6 GiB"}
-      - eval_time: 1m30s
-        alertname: Gb10MemAvailableCritical
-        exp_alerts:
-          - exp_labels: {severity: critical, job: gb10, node: n1, instance: "n1:9100"}
-            exp_annotations: {summary: "n1 MemAvailable 1.863GiB, below 3 GiB"}
-
-  # NV_ERR_NO_MEMORY counter moves once.
-  - interval: 15s
-    input_series:
-      - series: 'gb10_nv_err_no_memory_total{job="gb10",node="n1",instance="n1:9100"}'
-        values: "0x10 1 1 1 1"
-    alert_rule_test:
-      - eval_time: 2m
-        alertname: Gb10NvErrNoMemory
-        exp_alerts: []
-      - eval_time: 3m
-        alertname: Gb10NvErrNoMemory
-        exp_alerts:
-          - exp_labels: {severity: critical, job: gb10, node: n1, instance: "n1:9100"}
-            exp_annotations: {summary: "n1 logged NV_ERR_NO_MEMORY in the last 10m (unified memory exhaustion, precedes livelock)"}
-
   # Pool capacity crosses the 80 line and stays for 30 minutes.
   - interval: 1m
     input_series:

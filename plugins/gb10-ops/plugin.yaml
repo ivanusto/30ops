@@ -8,3 +8,27 @@ summary: Thermal soak and unified memory guards for NVIDIA DGX Spark (GB10) node
 # a host may list the plugin when it has one of these roles and this vendor
 roles: [node]
 vendors: [linux]
+# what the node writes; max_age_s is the threshold of its stale alert
+textfile:
+  - {file: gb10.prom, prefix: gb10_textfile, max_age_s: 120}
+# The hosts that list the plugin are scraped by this job instead of the
+# node job (replaces: node), at <address>:<port>. 15 s so a 240 s soak
+# budget is seen as 16 samples, not 4.
+scrape:
+  job: gb10
+  port: 9100
+  replaces: node
+  config:
+    scrape_interval: 15s
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: "([^:]+):.*"
+        target_label: node
+        replacement: "$1"
+rules: [rules/gb10.yml]
+thresholds: thresholds.yml
+# pairs that must stay in order: lower, higher
+threshold_order:
+  - [gb10_mem_crit_gib, gb10_mem_warn_gib]
+# rows(h, y, th) -> (panels, y): drawn after the first dashboard row
+dashboard: dashboard.py

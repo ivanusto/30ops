@@ -7,56 +7,14 @@
 # in braces: 30ops render fills it in from site.yaml alerting.thresholds or
 # the default in ../thresholds.yml.
 #
-# The soak budget is 240 s (the gb10-ops guard).
-# What Prometheus sees lags the guard: the textfile is up to 10 s old, the
-# scrape sees it in 10 or 20 s steps (10 s writes, 15 s scrapes), and the
-# rule is evaluated up to 15 s after the scrape. Measured on the lab: with
-# "> 200" the series sat at exactly 200, the next sample was 220, and the
-# alert fired 10.1 s before the guard. Worst case that threshold fires 5 s
-# after the guard, so the alert is ">= 180": 15 to 60 s ahead of it.
-# Memory lines are gb10-ops warn 6 GiB / act 3 GiB.
-#
 # Rule groups inherit the global evaluation_interval (60 s in
-# prometheus.yml). The gb10 group evaluates every 15 s instead: with 60 s
-# the soak alert would fire after the guard far more often than not.
+# prometheus.yml). The gb10-ops plugin's rules are in
+# plugins/gb10-ops/rules/.
 #
 # pve-exporter is scraped through both nodes and each one reports the
 # whole cluster, so every pve_up series exists twice (instance .9 and .5).
 # The pve rules aggregate the instance label away to alert once per object.
 groups:
-  - name: gb10
-    interval: 15s
-    rules:
-      - alert: Gb10SoakNearBudget
-        expr: gb10_soak_seconds >= 180
-        labels: {severity: warning}
-        annotations:
-          summary: "{{ $labels.node }} hottest zone above threshold for {{ $value }} s, guard trips at 240"
-          runbook: "the gb10-ops guard will kill the hottest process; move or pause the workload first"
-      - alert: Gb10HotFlag
-        expr: gb10_hot == 1
-        for: 2m
-        labels: {severity: warning}
-        annotations: {summary: "{{ $labels.node }} HOT flag set by hw-sample for 2m"}
-      - alert: Gb10MemAvailableLow
-        expr: gb10_mem_available_bytes < 6 * 1024 * 1024 * 1024
-        for: 1m
-        labels: {severity: warning}
-        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, below 6 GiB"}
-      - alert: Gb10MemAvailableCritical
-        expr: gb10_mem_available_bytes < 3 * 1024 * 1024 * 1024
-        labels: {severity: critical}
-        annotations: {summary: "{{ $labels.node }} MemAvailable {{ $value | humanize1024 }}B, below 3 GiB"}
-      - alert: Gb10NvErrNoMemory
-        expr: increase(gb10_nv_err_no_memory_total[10m]) > 0
-        labels: {severity: critical}
-        annotations: {summary: "{{ $labels.node }} logged NV_ERR_NO_MEMORY in the last 10m (unified memory exhaustion, precedes livelock)"}
-      - alert: Gb10TextfileErrors
-        expr: gb10_textfile_errors > 0
-        for: 5m
-        labels: {severity: warning}
-        annotations: {summary: "{{ $labels.node }} gb10-textfile has {{ $value }} failing sources"}
-
   - name: nas
     rules:
       - alert: NasPoolAbove80

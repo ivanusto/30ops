@@ -11,24 +11,8 @@
 # the alert history refer to them by name.
 #
 # Each entry: default, unit, the alerts that use it, one line of help.
-# docs/rules.md explains where each default came from.
-
-# gb10-ops plugin
-gb10_soak_warn_s:
-  default: 180
-  unit: s
-  alerts: [Gb10SoakNearBudget]
-  help: seconds the hottest zone has been above its limit; the guard acts at 240
-gb10_mem_warn_gib:
-  default: 6
-  unit: GiB
-  alerts: [Gb10MemAvailableLow]
-  help: MemAvailable warning line (the gb10-ops guard warns at 6 GiB)
-gb10_mem_crit_gib:
-  default: 3
-  unit: GiB
-  alerts: [Gb10MemAvailableCritical]
-  help: MemAvailable critical line (the gb10-ops guard acts at 3 GiB)
+# docs/rules.md explains where each default came from. A plugin brings its
+# own thresholds in plugins/<name>/thresholds.yml, in the same form.
 
 # NAS
 nas_pool_warn_pct:

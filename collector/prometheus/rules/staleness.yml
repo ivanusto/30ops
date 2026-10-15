@@ -8,11 +8,6 @@ groups:
         for: 5m
         labels: {severity: warning}
         annotations: {summary: "{{ $labels.job }} {{ $labels.instance }} not scraped for 5m"}
-      - alert: Gb10TextfileStale
-        expr: time() - gb10_textfile_last_run_timestamp > 120
-        for: 2m
-        labels: {severity: warning}
-        annotations: {summary: "gb10-textfile has not run on {{ $labels.instance }} for 2 minutes"}
       - alert: NasTextfileStale
         expr: time() - nas_textfile_last_run_timestamp > 600
         for: 5m

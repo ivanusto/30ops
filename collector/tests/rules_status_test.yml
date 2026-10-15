@@ -6,7 +6,7 @@ rule_files:
   - rules/thresholds.yml
 
 evaluation_interval: 1m
-group_eval_order: [status, gb10, nas, pve, drills]
+group_eval_order: [status, nas, pve, drills]
 
 tests:
   - interval: 1m

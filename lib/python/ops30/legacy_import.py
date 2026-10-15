@@ -15,7 +15,7 @@ import os
 import re
 from urllib.parse import urlparse
 
-from . import legacy as L, site as S, yamlio
+from . import legacy as L, plugins, site as S, yamlio
 
 SECRETS = "/etc/30ops/secrets"
 
@@ -102,10 +102,12 @@ def draft(root):
         h = d.host(a, "collector")
         h.update(vendor="linux", labels=labels)
         role(h, "collector")
-    for a, labels in tgroups("gb10"):
-        h = d.host(a)
-        h.update(vendor="linux", labels=labels, plugins=["gb10-ops"])
-        role(h, "node")
+    for name in plugins.available():
+        sc = plugins.scrape(name)
+        for a, labels in tgroups(sc["job"]) if sc else ():
+            h = d.host(a)
+            h.update(vendor="linux", labels=labels, plugins=sorted(set(h.get("plugins") or []) | {name}))
+            role(h, "node")
     for a, labels in tgroups("node"):
         h = d.host(a)
         h.update(vendor="linux", labels=labels)

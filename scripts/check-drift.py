@@ -11,8 +11,9 @@ mount units, compose.env and the like come from site.yaml through
 `30ops render`; a hand-written one in the repo is a finding.
 
 One source (v0.4):
-- alert rules live in collector/prometheus/rules/ only, every threshold
-  placeholder there is a key of collector/prometheus/thresholds.yml and
+- alert rules live in collector/prometheus/rules/ only, or in a plugin's
+  plugins/<name>/rules/ (v0.7); every threshold placeholder there is a key
+  of collector/prometheus/thresholds.yml or of a plugin's thresholds.yml,
   every key is used, and the rules cite docs/rules.md, not the series;
 - every datasource uid a dashboard uses is provisioned, and every job the
   rules and dashboards name is a scrape job;
@@ -59,6 +60,9 @@ THRESHOLDS = "collector/prometheus/thresholds.yml"
 PROMETHEUS = "collector/prometheus/prometheus.yml"
 DATASOURCES = "collector/grafana/provisioning/datasources/"
 DASHBOARDS = "collector/grafana/dashboards/"
+PLUGIN_RULES = "plugins/*/rules/*.yml"
+PLUGIN_THRESHOLDS = "plugins/*/thresholds.yml"
+PLUGIN_YAML = "plugins/*/plugin.yaml"
 RENDER_JOBS = {"node"}                      # added by render/prometheus.py
 BUILTIN_UIDS = {"-- Grafana --"}            # Grafana's own annotation source
 HAND_COPY = re.compile(r"merge by hand|change both together|Copy into|Drop into|Append under")
@@ -109,7 +113,7 @@ def read(path):
 def one_source(files):
     """The v0.4 checks: rules, thresholds, dashboards, jobs, hand copies, images."""
     errors = []
-    rules = [f for f in files if f.startswith(RULES_DIR) and f.endswith(".yml")]
+    rules = [f for f in files if (f.startswith(RULES_DIR) and f.endswith(".yml")) or fnmatch.fnmatch(f, PLUGIN_RULES)]
     for path in files:
         if path.endswith((".yml", ".yaml")) and not path.startswith(RULES_DIR) and not exempt(path):
             text = read(path)
@@ -124,7 +128,8 @@ def one_source(files):
                 if re.match(r"\s*image:", line) and not re.search(r"@sha256:[0-9a-f]{64}", line):
                     errors.append(f"{path}:{n}: image not pinned by digest")
 
-    keys = set(re.findall(r"^([a-z0-9_]+):\s*$", read(THRESHOLDS), re.M))
+    catalogues = [THRESHOLDS] + [f for f in files if fnmatch.fnmatch(f, PLUGIN_THRESHOLDS)]
+    keys = {k: c for c in catalogues for k in re.findall(r"^([a-z0-9_]+):\s*$", read(c), re.M)}
     used = set()
     for path in rules:
         text = read(path)
@@ -132,13 +137,16 @@ def one_source(files):
             for k in PLACEHOLDER.findall(line):
                 used.add(k)
                 if k not in keys:
-                    errors.append(f"{path}:{n}: ${{{k}}} is not a key of {THRESHOLDS}")
+                    errors.append(f"{path}:{n}: ${{{k}}} is not a key of {THRESHOLDS} or a plugin's thresholds.yml")
             if re.search(r"\bDay \d+", line):
                 errors.append(f"{path}:{n}: cite docs/rules.md, not the series")
-    for k in sorted(keys - used):
-        errors.append(f"{THRESHOLDS}: {k} is not used by any rule")
+    for k in sorted(set(keys) - used):
+        errors.append(f"{keys[k]}: {k} is not used by any rule")
 
     jobs = set(re.findall(r"job_name:\s*(\S+)", read(PROMETHEUS))) | RENDER_JOBS
+    for f in files:
+        if fnmatch.fnmatch(f, PLUGIN_YAML):
+            jobs |= set(re.findall(r"^  job:\s*(\S+)", read(f), re.M))
     uids = {u.strip("\"'") for f in files if f.startswith(DATASOURCES)
             for u in re.findall(r"^\s*uid:\s*(\S+)", read(f), re.M)} | BUILTIN_UIDS
     dashboards = [f for f in files if f.startswith(DASHBOARDS) and f.endswith(".json")]

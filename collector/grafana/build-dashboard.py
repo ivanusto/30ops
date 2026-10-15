@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build grafana/dashboards/onprem-overview.json.
 
-One dashboard, seven rows, each row answers one question an operator asks
-when paged at 03:00. The JSON is generated so the threshold lines come
+One dashboard, six rows plus one per plugin that draws any (plugin.yaml
+dashboard:), each row answers one question an operator asks when paged at
+03:00. The JSON is generated so the threshold lines come
 from the same place as the alert rules: collector/prometheus/thresholds.yml.
 The committed JSON uses the defaults; `30ops render` calls render() with a
 site's alerting.thresholds and writes /etc/30ops/grafana/dashboards/.
@@ -11,24 +12,22 @@ Grafana loads the JSON through provisioning with allowUiUpdates=false.
     ./build-dashboard.py            # writes dashboards/onprem-overview.json
     ./build-dashboard.py --check    # exit 1 if the JSON on disk is stale
 """
-import json, os, sys
+import importlib.util, json, os, sys, types
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "lib", "python"))
-from ops30 import site as ops30_site  # noqa: E402  (reads thresholds.yml, needs PyYAML)
+from ops30 import plugins as ops30_plugins, site as ops30_site  # noqa: E402  (reads thresholds.yml, needs PyYAML)
 
 DS = {"type": "prometheus", "uid": "prometheus"}
 OUT = os.path.join(HERE, "dashboards", "onprem-overview.json")
 
-SOAK_BUDGET = 240   # the gb10-ops guard acts here; not a site setting
 
 
 def use(th):
     """Set the thresholds build() draws: key -> value, as in thresholds.yml."""
-    global SOAK_WARN, MEM_WARN, MEM_CRIT, POOL_WARN, POOL_CRIT, DISK_TEMP_WARN
+    global TH, POOL_WARN, POOL_CRIT, DISK_TEMP_WARN
     global DRILL_STALE_DAYS, CLOUD_DRILL_STALE_DAYS, EOL_WARN_DAYS, EOL_CRIT_DAYS, RTO_TARGET
-    SOAK_WARN = th["gb10_soak_warn_s"]
-    MEM_WARN, MEM_CRIT = th["gb10_mem_warn_gib"] * 1024 ** 3, th["gb10_mem_crit_gib"] * 1024 ** 3
+    TH = th
     POOL_WARN, POOL_CRIT = th["nas_pool_warn_pct"], th["nas_pool_crit_pct"]
     DISK_TEMP_WARN = th["nas_disk_temp_c"]
     DRILL_STALE_DAYS, CLOUD_DRILL_STALE_DAYS = th["drill_max_age_days"], th["cloud_drill_max_age_days"]
@@ -192,9 +191,24 @@ def col(field, unit=None, width=None, decimals=None):
     return {"matcher": {"id": "byName", "options": field}, "properties": props}
 
 UPDOWN = vmap((1, "UP", "green"), (0, "DOWN", "red"))
+# what a plugin's rows() gets as h
+HELPERS = types.SimpleNamespace(row=row, panel=panel, stat=stat, bars=bars, ts=ts, table=table, target=target,
+                                steps=steps, vmap=vmap, cell=cell, col=col)
 
 
-def build():
+def plugin_rows(name):
+    """rows(h, y, th) from plugins/<name>/dashboard.py, or None."""
+    path = ops30_plugins.dashboard(name)
+    if not path:
+        return None
+    spec = importlib.util.spec_from_file_location(f"_ops30_dashboard_{name.replace('-', '_')}", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.rows
+
+
+def build(active=()):
+    """active: the plugins whose rows to draw, in order."""
     _id[0] = 0
     P = []
     y = 0
@@ -216,33 +230,12 @@ def build():
                                                              ("info", "info", "blue")), width=90)]))
     y += 6
 
-    # ---- Row 1: GPU nodes ------------------------------------------------
-    P.append(row("GPU 節點（DGX Spark）", y)); y += 1
-    P.append(stat("熱 soak 秒數", 0, y, 6, 5, "gb10_soak_seconds", "{{node}}", unit="s",
-                  thresholds=steps((None, "green"), (SOAK_WARN, "orange"), (SOAK_BUDGET, "red")),
-                  desc=f"最熱 thermal zone 連續 ≥ 88 °C 的秒數。守護在 {SOAK_BUDGET} s 動手，告警在 {SOAK_WARN} s，差額涵蓋 textfile 最多 10 s 的舊值、抓取 10 或 20 s 的跳階、規則評估最多 15 s"))
-    P.append(stat("可用記憶體", 6, y, 6, 5, "gb10_mem_available_bytes", "{{node}}", unit="bytes",
-                  thresholds=steps((None, "red"), (MEM_CRIT, "orange"), (MEM_WARN, "green")),
-                  desc="MemAvailable。統一記憶體看不到 GPU 配置，這個數掉到 6 GiB 以下 hw-sample 會警告，3 GiB 以下動手（gb10-ops）"))
-    P.append(stat("NV_ERR_NO_MEMORY（24h）", 12, y, 6, 5, "increase(gb10_nv_err_no_memory_total[24h])", "{{node}}",
-                  thresholds=steps((None, "green"), (1, "red")), decimals=0,
-                  desc="dmesg 裡 NV_ERR_NO_MEMORY 24 小時內增加的筆數。非零就是統一記憶體耗盡的早期訊號"))
-    P.append(stat("HOT 旗標", 18, y, 6, 5, "gb10_hot", "{{node}}",
-                  thresholds=steps((None, "green"), (1, "orange")), decimals=0,
-                  desc="hw-sample.py 立的 HOT 旗標，批次工作在階段之間要看它"))
-    y += 5
-    P.append(ts("溫度", 0, y, 12, 8,
-                [target("gb10_zone_temp_celsius", "zone {{node}}"), target("gb10_gpu_temp_celsius", "gpu {{node}}")],
-                unit="celsius", lines=((88, "orange"),), minv=30, maxv=100,
-                desc="最熱 zone 與 nvidia-smi 的 GPU 溫度。橘線 88 °C 是 soak 門檻"))
-    P.append(ts("soak 累積", 12, y, 12, 8,
-                [target("gb10_soak_seconds", "{{node}}")],
-                unit="s", lines=((SOAK_WARN, "orange"), (SOAK_BUDGET, "red")), minv=0, maxv=300,
-                desc="15 s 抓取下一次升溫約 15 個點，守護動手時歸零"))
-    y += 8
-    P.append(ts("GPU 功耗", 0, y, 12, 6, [target("gb10_gpu_power_watts", "{{node}}")], unit="watt"))
-    P.append(ts("GPU 使用率", 12, y, 12, 6, [target("gb10_gpu_utilization_percent", "{{node}}")], unit="percent", minv=0, maxv=100))
-    y += 6
+    # ---- the plugins' rows (plugins/<name>/dashboard.py) ---------------
+    for name in active:
+        rows = plugin_rows(name)
+        if rows:
+            panels, y = rows(HELPERS, y, TH)
+            P.extend(panels)
 
     # ---- Row 2: NAS ------------------------------------------------------
     P.append(row("儲存（QNAP NAS）", y)); y += 1
@@ -484,12 +477,13 @@ def lint(dash):
     return errs
 
 
-def render(th=None):
+def render(th=None, active=None):
     """The dashboard JSON (text) drawn with thresholds th (default: the
-    defaults); ValueError if the layout does not lint."""
+    defaults) and the rows of the plugins in active (default: every plugin,
+    which is the committed JSON); ValueError if the layout does not lint."""
     use(th or DEFAULTS)
     try:
-        dash = build()
+        dash = build(ops30_plugins.available() if active is None else active)
     finally:
         use(DEFAULTS)
     errs = lint(dash)
