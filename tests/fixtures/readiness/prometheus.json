@@ -1,0 +1,345 @@
+{
+ "_": "Answers of a fake Prometheus for the sample site's readiness plan (tests/test_golden.py, tests/unit/test_readiness.py). An expression not listed returns no series.",
+ "queries": {
+  "up": [
+   {
+    "metric": {
+     "job": "node",
+     "instance": "192.0.2.131:9100"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   },
+   {
+    "metric": {
+     "job": "pve",
+     "instance": "192.0.2.9"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "time() - nas_textfile_last_run_timestamp": [
+   {
+    "metric": {
+     "nas": "primary"
+    },
+    "value": [
+     0,
+     "40"
+    ]
+   },
+   {
+    "metric": {
+     "nas": "secondary"
+    },
+    "value": [
+     0,
+     "40"
+    ]
+   }
+  ],
+  "time() - drills_textfile_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "600"
+    ]
+   }
+  ],
+  "time() - pve_quorum_textfile_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "30"
+    ]
+   }
+  ],
+  "time() - eol_textfile_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "3600"
+    ]
+   }
+  ],
+  "time() - fw_report_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "300"
+    ]
+   }
+  ],
+  "time() - aup_report_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "300"
+    ]
+   }
+  ],
+  "time() - audit_report_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "300"
+    ]
+   }
+  ],
+  "time() - changes_textfile_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "500"
+    ]
+   }
+  ],
+  "time() - agent_gate_textfile_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "120"
+    ]
+   }
+  ],
+  "max(prometheus_notifications_alertmanagers_discovered)": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "pve_quorum_quorate": [
+   {
+    "metric": {
+     "cluster": "lab"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "pve_quorum_qdevice_votes": [
+   {
+    "metric": {
+     "cluster": "lab"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "(time() - max by (source) (drill_last_success_timestamp{source=\"pve\"})) / 86400 <= 30": [
+   {
+    "metric": {
+     "source": "pve"
+    },
+    "value": [
+     0,
+     "12"
+    ]
+   }
+  ],
+  "(time() - max by (source) (drill_last_success_timestamp{source=\"cloud\"})) / 86400 <= 90": [
+   {
+    "metric": {
+     "source": "cloud"
+    },
+    "value": [
+     0,
+     "40"
+    ]
+   }
+  ],
+  "nas_zfs_snapshot_newest_timestamp": [
+   {
+    "metric": {
+     "nas": "primary",
+     "dataset": "zpool1/share"
+    },
+    "value": [
+     0,
+     "1791800000"
+    ]
+   }
+  ],
+  "qnap_ups_status": [
+   {
+    "metric": {
+     "nas": "primary",
+     "qnap_ups_status": "-1"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   },
+   {
+    "metric": {
+     "nas": "secondary",
+     "qnap_ups_status": "-1"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "(time() - max(drill_last_success_timestamp{source=\"logs\",label=\"daily archive verify\"})) / 86400 <= 2": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "0.5"
+    ]
+   }
+  ],
+  "time() - fw_report_last_run_timestamp < 1800": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "300"
+    ]
+   }
+  ],
+  "time() - aup_report_last_run_timestamp < 1800": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "300"
+    ]
+   }
+  ],
+  "asset_eol_timestamp_seconds": [
+   {
+    "metric": {
+     "asset": "pve1",
+     "component": "Proxmox VE",
+     "kind": "os"
+    },
+    "value": [
+     0,
+     "1900000000"
+    ]
+   }
+  ],
+  "asset_eol_timestamp_seconds{kind!=\"licence\"} <= time() or asset_eol_unknown == 1": [
+   {
+    "metric": {
+     "asset": "fap-01",
+     "component": "firmware"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "change_record": [
+   {
+    "metric": {
+     "id": "CR-2026-0001",
+     "status": "done"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "audit_report_last_run_timestamp": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "1791900000"
+    ]
+   }
+  ],
+  "agent_gate_chain_ok == 1": [
+   {
+    "metric": {},
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "change_record{status=~\"approved|scheduled|in_progress|done|rolled_back\"}": [
+   {
+    "metric": {
+     "id": "CR-2026-0001",
+     "status": "done",
+     "implementer": "ops-a",
+     "approver": "ops-a"
+    },
+    "value": [
+     0,
+     "1"
+    ]
+   }
+  ],
+  "change_window_end_timestamp{status=\"done\"} > time() - 90 * 86400": [
+   {
+    "metric": {
+     "id": "CR-2026-0001",
+     "status": "done"
+    },
+    "value": [
+     0,
+     "1791000000"
+    ]
+   }
+  ],
+  "change_effort_minutes": [
+   {
+    "metric": {
+     "id": "CR-2026-0001"
+    },
+    "value": [
+     0,
+     "90"
+    ]
+   }
+  ],
+  "gb10_textfile_last_run_timestamp": [
+   {
+    "metric": {
+     "instance": "192.0.2.131:9100"
+    },
+    "value": [
+     0,
+     "1791900000"
+    ]
+   },
+   {
+    "metric": {
+     "instance": "192.0.2.141:9100"
+    },
+    "value": [
+     0,
+     "1791900000"
+    ]
+   }
+  ]
+ }
+}

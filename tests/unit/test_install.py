@@ -320,10 +320,11 @@ class InstallCollector(unittest.TestCase):
         jobs = collector.textfile_jobs(self.tree["etc/cron.d/30ops"].text)
         files = [os.path.basename(j[3]) for j in jobs]
         self.assertEqual(files, ["nas.prom", "drills.prom", "pve-quorum.prom", "eol.prom", "fw.prom", "aup.prom",
-                                 "audit.prom", "changes.prom", "agent-gate.prom"])
+                                 "audit.prom", "changes.prom", "agent-gate.prom", "readiness.prom"])
         fw = next(j for j in jobs if j[3].endswith("fw.prom"))
         self.assertEqual(fw[1].get("FW_EXPECT"), "fortigate:fgt-edge")
-        self.assertEqual(jobs[-1][0], "agent-gate")
+        self.assertEqual(jobs[-2][0], "agent-gate")
+        self.assertTrue(jobs[-1][2].endswith("|| true"), jobs[-1][2])
 
 
 if __name__ == "__main__":

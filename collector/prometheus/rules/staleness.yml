@@ -51,3 +51,9 @@ groups:
         for: 5m
         labels: {severity: warning}
         annotations: {summary: "pve-quorum-textfile has not run for 5 minutes, vote metrics are stale"}
+      # 30ops readiness runs from the collector's cron every 15 minutes.
+      - alert: ReadinessTextfileStale
+        expr: time() - readiness_textfile_last_run_timestamp > 3600
+        for: 10m
+        labels: {severity: info}
+        annotations: {summary: "readiness.prom is older than an hour (30ops readiness --plan in the collector's cron)"}

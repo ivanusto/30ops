@@ -30,3 +30,6 @@ AUDIT_QUIET_FROM="192.0.2.10 192.0.2.11"
 */15 * * * * metrics cd /opt/onprem-changes && git pull -q --ff-only && /opt/30ops/changes/scripts/changes-textfile.py --dir /opt/onprem-changes/changes --drills /opt/onprem-changes/drills/drills.jsonl --out /var/lib/node_exporter/textfile/changes.prom >> /var/log/30ops/changes.log 2>&1
 # the agent gate's textfile, as the gate's own user
 */5 * * * * agent-gate GATE_CONFIG=/etc/30ops/gate/config.json /opt/30ops/gate/bin/gatectl textfile --out /var/lib/node_exporter/textfile/agent-gate.prom >> /var/log/30ops/agent-gate.log 2>&1
+# the readiness checklist against the local Prometheus (the plan render wrote), as readiness.prom;
+# it exits 1 while an item is no, which is what readiness.prom says, not a failed run
+*/15 * * * * metrics /opt/30ops/bin/30ops readiness --plan /etc/30ops/readiness.json --no-local --format json --textfile /var/lib/node_exporter/textfile/readiness.prom > /var/log/30ops/readiness.json 2>> /var/log/30ops/readiness.log || true

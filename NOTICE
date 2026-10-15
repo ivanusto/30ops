@@ -19,7 +19,7 @@ repositories keep those tags unchanged.
   ivanusto/gb10-ops             plugins/gb10-ops/           (MIT up to v0.2.0)
   ivanusto/spark-baseline       plugins/spark-baseline/
   ivanusto/nfs-model-library    plugins/nfs-model-library/
-  ivanusto/onprem-ops-30days    checks/readiness/checklist.md, inventory/  (MIT up to v1.0.0)
+  ivanusto/onprem-ops-30days    checks/readiness/ (checklist.yaml, rewritten from lab/checklist.md), inventory/  (MIT up to v1.0.0)
 
 The author, sole copyright holder of the MIT-licensed parts, relicenses them
 under Apache-2.0 in this repository. Copies obtained from the original

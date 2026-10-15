@@ -36,3 +36,18 @@ threshold_order:
   - [gb10_mem_crit_gib, gb10_mem_warn_gib]
 # rows(h, y, th) -> (panels, y): drawn after the first dashboard row
 dashboard: dashboard.py
+# readiness items (checks/readiness/checklist.yaml form), asked when a host
+# lists the plugin; their ids become gb10-ops:<id>
+readiness:
+  - id: textfile-fresh
+    category: node-guard
+    question:
+      zh-TW: 每台 GB10 的 gb10-textfile 都在兩分鐘內更新嗎？
+      en: Has gb10-textfile run within two minutes on every GB10 node?
+    check: {type: promql, ok: 'gb10_textfile_last_run_timestamp', bad: 'time() - gb10_textfile_last_run_timestamp > 120', show: instance}
+  - id: host-guard
+    category: node-guard
+    question:
+      zh-TW: 每台 GB10 都跑著 gb10-host-guard（記憶體耗盡前終止程序）嗎？
+      en: Does gb10-host-guard (which ends a process before memory runs out) run on every GB10 node?
+    check: {type: manual, hint: "systemctl is-active gb10-host-guard on each node, and the date checked"}

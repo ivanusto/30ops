@@ -1,6 +1,6 @@
 # 告警規則
 
-規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 74 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
+規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 75 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
 
 - 告警名稱、等級與標籤是 Alertmanager 路由與抑制規則的依據（`collector/alertmanager/alertmanager.base.yml`），也是告警歷史的鍵，所以 v1 不改名。`NasPoolAbove80` 在門檻改成 85 之後仍叫這個名字。
 - 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。
@@ -65,6 +65,7 @@ alerting:
 | NasUnreachable | critical | 5m | 收集端無法以 SSH 讀取 NAS 的 zfs 資訊 |
 | DrillsTextfileStale | info | 10m | drills-textfile 超過 2 小時沒寫 |
 | PveQuorumTextfileStale | warning | 5m | pve-quorum-textfile 超過 5 分鐘沒寫，投票數指標已過期 |
+| ReadinessTextfileStale | info | 10m | readiness.prom 超過一小時沒更新，檢查收集端 cron 的 `30ops readiness --plan` 與 `readiness.log` |
 
 ## 數值告警（thresholds.yml）
 

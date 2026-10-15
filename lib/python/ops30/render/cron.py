@@ -52,6 +52,7 @@ TEXTFILES = {
     "audit.prom": ("audit_report", 1800),
     "changes.prom": ("changes_textfile", 3600),
     "agent-gate.prom": ("agent_gate_textfile", 1800),
+    "readiness.prom": ("readiness_textfile", 3600),
 }
 
 
@@ -153,6 +154,10 @@ def lines(site):
         add("# the agent gate's textfile, as the gate's own user",
             f"*/5 * * * * agent-gate GATE_CONFIG=/etc/30ops/gate/config.json {root}/gate/bin/gatectl textfile "
             f"--out {tf}/agent-gate.prom >> {log}/agent-gate.log 2>&1")
+    add("# the readiness checklist against the local Prometheus (the plan render wrote), as readiness.prom;",
+        "# it exits 1 while an item is no, which is what readiness.prom says, not a failed run",
+        f"*/15 * * * * {user} {root}/bin/30ops readiness --plan /etc/30ops/readiness.json --no-local "
+        f"--format json --textfile {tf}/readiness.prom > {log}/readiness.json 2>> {log}/readiness.log || true")
     return out
 
 

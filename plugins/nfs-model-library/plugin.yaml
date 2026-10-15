@@ -10,3 +10,10 @@ vendors: [linux]
 # node-install.sh runs install.sh from them, after the host's roles
 install:
   files: [install.sh, mlib.py]
+readiness:
+  - id: verify-scheduled
+    category: storage-backup
+    question:
+      zh-TW: 模型庫的 mlib verify 有排程執行，而且最近一次通過嗎？
+      en: Does mlib verify run on a schedule, and did the last run pass?
+    check: {type: manual, hint: "the timer or cron line that runs mlib verify, and the date of the last pass"}

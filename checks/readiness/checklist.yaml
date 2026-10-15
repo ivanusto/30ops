@@ -1,0 +1,228 @@
+# The readiness checklist (docs/readiness.md): what `30ops readiness`
+# asks of a site, in four categories, rewritten for the product from the
+# lab checklist of the 30-day series (provenance in docs/provenance.md).
+#
+# Each item:
+#   id        stable, also the key of site.yaml readiness.accept and .answers
+#   category  packaging | node-guard | storage-backup | change-mgmt
+#   question  zh-TW and en
+#   applies   optional; the item is only asked when the site has
+#               role: [r, ...]   a host with one of these roles
+#               site: worm       site.yaml has worm (logs archive)
+#               site: gate       site.yaml gate has targets (the agent gate is in use)
+#   check     how the answer is found:
+#     promql   ok: must return a series; bad: must return none (either or
+#              both); show: the label to list as evidence. ${key} is the
+#              site's threshold. Only series that collectors before 30ops
+#              already had, or that the item is about, so the check works
+#              against such a collector too.
+#     builtin  name: a check in lib/python/ops30/readiness.py
+#     site     name: decided from site.yaml alone, when render writes the plan
+#     local    doctor: the 30ops doctor checks to run (on the collector, as root)
+#     manual   hint: what to look at; yes only when site.yaml readiness.answers
+#              gives the evidence
+# A plugin adds its own items in plugin.yaml readiness:, in the same form,
+# asked when a host lists the plugin; their ids get the plugin name in front.
+version: 1
+items:
+  # ---------- packaging: is the collector what was released ----------
+  - id: pkg-images-pinned
+    category: packaging
+    question:
+      zh-TW: 收集端每個服務都跑 compose.yml 以 digest 釘住的映像嗎？
+      en: Does every collector service run the image digest compose.yml pins?
+    check: {type: local, doctor: [images]}
+  - id: pkg-render-clean
+    category: packaging
+    question:
+      zh-TW: 安裝在收集端的設定檔，與 site.yaml 現在 render 出來的相同嗎？
+      en: Are the files installed on the collector the ones site.yaml renders now?
+    check: {type: local, doctor: [render]}
+  - id: pkg-release-verified
+    category: packaging
+    question:
+      zh-TW: 安裝的版本來自 Release，下載後驗過 SHA256SUMS 與 attestation 嗎？
+      en: Did the installed version come from a Release, with SHA256SUMS and the attestation verified?
+    check: {type: manual, hint: "docs/install.md, download and verify; give the version and the date verified"}
+  - id: pkg-rollback
+    category: packaging
+    question:
+      zh-TW: 升級失敗時退得回上一版嗎（上一版 tarball 留著、volume 有備份）？
+      en: Can a failed upgrade go back to the previous version (its tarball kept, the volumes backed up)?
+    check: {type: manual, hint: "where the previous tarball and the volume backup are, and when the rollback was last tried"}
+
+  # ---------- node-guard: monitoring and the alert path ----------
+  - id: targets-up
+    category: node-guard
+    question:
+      zh-TW: 每個抓取目標都抓得到嗎？
+      en: Is every scrape target up?
+    check: {type: promql, ok: 'up', bad: 'up == 0', show: instance}
+  - id: textfiles-fresh
+    category: node-guard
+    question:
+      zh-TW: 收集端 cron 寫的每個 textfile 都在期限內更新嗎？
+      en: Is every textfile the collector's cron writes younger than its stale alert allows?
+    check: {type: builtin, name: textfiles_fresh}
+  - id: alert-path
+    category: node-guard
+    question:
+      zh-TW: Prometheus 找得到 Alertmanager，而且每個接收者都有送達的地方嗎？
+      en: Does Prometheus reach Alertmanager, and does every receiver send somewhere?
+    check: {type: builtin, name: alert_path}
+  - id: deadman
+    category: node-guard
+    question:
+      zh-TW: 收集端整台停掉時，有收集端以外的東西會發告警嗎（deadman）？
+      en: When the whole collector stops, does something outside it raise the alarm (deadman)?
+    check: {type: builtin, name: deadman}
+  - id: journald-coverage
+    category: node-guard
+    question:
+      zh-TW: 每台 Linux 與 PVE 主機的 journal 都送到收集端嗎？
+      en: Does every Linux and PVE host ship its journal to the collector?
+    check: {type: site, name: journald_coverage}
+  - id: switch-monitored
+    category: node-guard
+    question:
+      zh-TW: 交換器與無線基地台在監控裡，而且抓得到嗎？
+      en: Are the switches and access points monitored, and answering?
+    check: {type: builtin, name: switch_monitored}
+  - id: switch-in-assets
+    category: node-guard
+    question:
+      zh-TW: 每台交換器與基地台都在資產清單（assets.tsv）裡嗎？
+      en: Is every switch and access point a row of the asset list (assets.tsv)?
+    applies: {role: [switch, ap]}
+    check: {type: site, name: switch_in_assets}
+
+  # ---------- storage-backup: is there a copy, and does it restore ----------
+  - id: pve-quorum
+    category: storage-backup
+    question:
+      zh-TW: PVE 叢集有法定票數嗎？
+      en: Is the PVE cluster quorate?
+    applies: {role: [hypervisor]}
+    check: {type: promql, ok: 'pve_quorum_quorate', bad: 'pve_quorum_quorate == 0', show: cluster}
+  - id: qdevice-vote
+    category: storage-backup
+    question:
+      zh-TW: QDevice 有在投票嗎（兩節點叢集少一台還能活）？
+      en: Does the QDevice vote (so a two-node cluster survives one node)?
+    applies: {role: [qdevice]}
+    check: {type: promql, ok: 'pve_quorum_qdevice_votes', bad: 'pve_quorum_qdevice_votes == 0', show: cluster}
+  - id: restore-drill-pve
+    category: storage-backup
+    question:
+      zh-TW: PVE 還原演練在期限內通過過嗎？
+      en: Has a PVE restore drill passed within the drill age limit?
+    applies: {role: [hypervisor]}
+    check: {type: promql, ok: '(time() - max by (source) (drill_last_success_timestamp{source="pve"})) / 86400 <= ${drill_max_age_days}'}
+  - id: restore-drill-nas
+    category: storage-backup
+    question:
+      zh-TW: NAS 還原演練在期限內通過過嗎？
+      en: Has a NAS restore drill passed within the drill age limit?
+    applies: {role: [nas]}
+    check: {type: promql, ok: '(time() - max by (source) (drill_last_success_timestamp{source="nas"})) / 86400 <= ${drill_max_age_days}'}
+  - id: offsite-copy
+    category: storage-backup
+    question:
+      zh-TW: 異地（雲端）副本的還原演練在期限內通過過嗎？
+      en: Has a restore from the offsite (cloud) copy passed within its age limit?
+    check: {type: promql, ok: '(time() - max by (source) (drill_last_success_timestamp{source="cloud"})) / 86400 <= ${cloud_drill_max_age_days}'}
+  - id: nas-snapshots
+    category: storage-backup
+    question:
+      zh-TW: 每個有快照的資料集，最新快照都在期限內嗎？
+      en: Does every dataset with snapshots have a recent one?
+    applies: {role: [nas]}
+    check: {type: promql, ok: 'nas_zfs_snapshot_newest_timestamp', bad: '(time() - nas_zfs_snapshot_newest_timestamp) / 86400 > ${nas_snapshot_max_age_days}', show: dataset}
+  - id: ups-present
+    category: storage-backup
+    question:
+      zh-TW: 每台 NAS 都接了 UPS 嗎？
+      en: Does every NAS have a UPS?
+    applies: {role: [nas]}
+    check: {type: builtin, name: ups_present}
+  - id: backup-of-backup
+    category: storage-backup
+    question:
+      zh-TW: 備份目標本身也有備份嗎（第二台 NAS、HBS 3 或異地）？
+      en: Is the backup target itself backed up (a second NAS, HBS 3 or offsite)?
+    applies: {role: [nas]}
+    check: {type: manual, hint: "which job copies the backup NAS where, and when it last succeeded"}
+
+  # ---------- change-mgmt: logs, changes, audit ----------
+  - id: logs-worm
+    category: change-mgmt
+    question:
+      zh-TW: 日誌每天封存到 WORM，並且驗證通過嗎？
+      en: Are the logs archived to WORM every day, and verified?
+    applies: {site: worm}
+    check: {type: promql, ok: '(time() - max(drill_last_success_timestamp{source="logs",label="daily archive verify"})) / 86400 <= 2'}
+  - id: fw-reviewed
+    category: change-mgmt
+    question:
+      zh-TW: 防火牆的阻擋紀錄有在彙整與告警嗎？
+      en: Are the firewall drops collected and alerted on?
+    applies: {role: [firewall]}
+    check: {type: promql, ok: 'time() - fw_report_last_run_timestamp < 1800'}
+  - id: pcap
+    category: change-mgmt
+    question:
+      zh-TW: 封包擷取有進 WORM，而且驗證通過嗎？
+      en: Do the packet captures reach WORM, and verify?
+    applies: {role: [pcap]}
+    check: {type: promql, ok: '(time() - max(drill_last_success_timestamp{source="logs",label="pcap archive verify"})) / 86400 <= 2'}
+  - id: aup
+    category: change-mgmt
+    question:
+      zh-TW: 可接受使用（網頁過濾）的報表有在產生嗎？
+      en: Is the acceptable-use (web filter) report being written?
+    applies: {role: [webfilter]}
+    check: {type: promql, ok: 'time() - aup_report_last_run_timestamp < 1800'}
+  - id: eol
+    category: change-mgmt
+    question:
+      zh-TW: 資產都有生命週期日期，而且沒有已過期還在用的？
+      en: Does every asset have an end-of-life date, and is none past it?
+    check: {type: promql, ok: 'asset_eol_timestamp_seconds', bad: 'asset_eol_timestamp_seconds{kind!="licence"} <= time() or asset_eol_unknown == 1', show: asset}
+  - id: change-records
+    category: change-mgmt
+    question:
+      zh-TW: 變更以 Markdown 變更單記錄，而且收集端讀得到嗎？
+      en: Are changes recorded as Markdown change records the collector reads?
+    check: {type: promql, ok: 'change_record', bad: 'ALERTS{alertname="ChangeWindowOverrun",alertstate="firing"}', show: id}
+  - id: audit-attributed
+    category: change-mgmt
+    question:
+      zh-TW: 設備上的管理動作都對得到變更單嗎？
+      en: Does every management action on the devices match a change record?
+    applies: {role: [audit-source]}
+    check: {type: promql, ok: 'audit_report_last_run_timestamp', bad: 'ALERTS{alertname=~"AuditUnattributedFortigateChange|AuditUnattributedActions",alertstate="firing"}', show: alertname}
+  - id: rollback-drilled
+    category: change-mgmt
+    question:
+      zh-TW: 高風險變更的回退都演練過，而且不過期嗎？
+      en: Has the rollback of every high-risk change been drilled, recently?
+    check: {type: promql, ok: 'change_record', bad: 'ALERTS{alertname=~"ChangeRollbackUndrilled|ChangeRollbackDrillStale",alertstate="firing"}', show: id}
+  - id: agent-gate
+    category: change-mgmt
+    question:
+      zh-TW: 代理人閘道在跑，稽核鏈完整嗎？
+      en: Is the agent gate running, with its audit chain intact?
+    applies: {site: gate}
+    check: {type: promql, ok: 'agent_gate_chain_ok == 1', bad: 'time() - agent_gate_textfile_last_run_timestamp > 1800'}
+  - id: second-approver
+    category: change-mgmt
+    question:
+      zh-TW: 每張核准過的變更單，核准者都不是執行者本人嗎？
+      en: Is every approved change approved by someone other than its implementer?
+    check: {type: builtin, name: second_approver}
+  - id: change-effort
+    category: change-mgmt
+    question:
+      zh-TW: 近 90 天完成的變更單都記了人力時間（effort_min）嗎？
+      en: Does every change done in the last 90 days record its staff time (effort_min)?
+    check: {type: builtin, name: change_effort}

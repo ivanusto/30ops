@@ -1,6 +1,5 @@
 """The 30ops command: validate, render, import-legacy (v0.3), drill
-record / migrate (v0.2), textfile, install, doctor (v0.5). readiness
-arrives later."""
+record / migrate (v0.2), textfile, install, doctor (v0.5), readiness (v0.7)."""
 import argparse
 import difflib
 import json
@@ -239,6 +238,43 @@ def cmd_install_node(a):
     return node.install(r[0], tree, a.host, Ops(), bundle=a.bundle, ssh=a.ssh, out=lambda line: print(line, flush=True))
 
 
+def cmd_readiness(a):
+    import time
+    from . import promql, readiness, textfile
+    from .install.ops import Ops
+    ops = Ops(a.root)
+    local = None
+    if a.plan:
+        try:
+            with open(a.plan, encoding="utf-8") as f:
+                p = json.load(f)
+        except (OSError, ValueError) as e:
+            print(f"30ops readiness: {a.plan}: {e}", file=sys.stderr)
+            return 2
+    else:
+        r = _site(a)
+        if r is None:
+            return 2
+        p = readiness.plan(r[0])
+        if not a.no_local:
+            from . import doctor, render
+            tree = render.render(*r)
+
+            def local(names):
+                d = doctor.Doctor(r[0], tree, ops)
+                res = d.run(skip=set(doctor.Doctor.CHECKS) - set(names))
+                return [(x["status"], f"{x['check']}: {x['detail']}") for x in res]
+    base = a.prometheus or promql.LOCAL
+    if promql.query(ops, "vector(1)", base) is None:
+        print(f"30ops readiness: Prometheus at {base} did not answer", file=sys.stderr)
+        return 2
+    results = readiness.evaluate(p, lambda q: promql.query(ops, q, base), local)
+    if a.textfile:
+        textfile.write(a.textfile, readiness.textfile(results, time.time()))
+    sys.stdout.write(readiness.report(p, results, a.format))
+    return readiness.exit_code(results, a.strict)
+
+
 def cmd_doctor(a):
     from . import doctor, render
     from .install.ops import Ops
@@ -307,6 +343,18 @@ def parser():
     dr.add_argument("--skip", action="append", default=[], metavar="CHECK", help="leave a check out (repeatable)")
     dr.add_argument("--root", default="/", help=argparse.SUPPRESS)
     dr.set_defaults(f=cmd_doctor)
+
+    rd = sub.add_parser("readiness", help="answer the readiness checklist for the site (read-only)")
+    src = rd.add_mutually_exclusive_group()
+    src.add_argument("--site", default=site_default, help="default ./site.yaml or $OPS30_SITE")
+    src.add_argument("--plan", metavar="JSON", help="the plan render wrote (/etc/30ops/readiness.json), instead of site.yaml")
+    rd.add_argument("--prometheus", metavar="URL", help="the Prometheus to ask (default http://127.0.0.1:9090, the collector's own)")
+    rd.add_argument("--format", choices=["text", "md", "json"], default="text")
+    rd.add_argument("--textfile", metavar="PATH", help="also write readiness.prom here (atomically)")
+    rd.add_argument("--no-local", action="store_true", help="skip the doctor checks (anywhere but on the collector)")
+    rd.add_argument("--strict", action="store_true", help="exit 1 on unknown too, not only on no")
+    rd.add_argument("--root", default="/", help=argparse.SUPPRESS)
+    rd.set_defaults(f=cmd_readiness)
 
     t = sub.add_parser("textfile", help="collect one node_exporter textfile through its adapter (cron)")
     t.add_argument("name", choices=["nas", "pve-quorum"])

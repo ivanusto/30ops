@@ -1,0 +1,40 @@
+# HELP readiness_item One per readiness item: its id, category and status (docs/readiness.md)
+# TYPE readiness_item gauge
+readiness_item{id="pkg-release-verified",category="packaging",status="unknown"} 1
+readiness_item{id="pkg-rollback",category="packaging",status="unknown"} 1
+readiness_item{id="targets-up",category="node-guard",status="yes"} 1
+readiness_item{id="textfiles-fresh",category="node-guard",status="yes"} 1
+readiness_item{id="alert-path",category="node-guard",status="yes"} 1
+readiness_item{id="deadman",category="node-guard",status="no"} 1
+readiness_item{id="journald-coverage",category="node-guard",status="yes"} 1
+readiness_item{id="switch-monitored",category="node-guard",status="no"} 1
+readiness_item{id="pve-quorum",category="storage-backup",status="yes"} 1
+readiness_item{id="qdevice-vote",category="storage-backup",status="yes"} 1
+readiness_item{id="restore-drill-pve",category="storage-backup",status="yes"} 1
+readiness_item{id="restore-drill-nas",category="storage-backup",status="no"} 1
+readiness_item{id="offsite-copy",category="storage-backup",status="yes"} 1
+readiness_item{id="nas-snapshots",category="storage-backup",status="yes"} 1
+readiness_item{id="ups-present",category="storage-backup",status="no"} 1
+readiness_item{id="backup-of-backup",category="storage-backup",status="unknown"} 1
+readiness_item{id="logs-worm",category="change-mgmt",status="yes"} 1
+readiness_item{id="fw-reviewed",category="change-mgmt",status="yes"} 1
+readiness_item{id="pcap",category="change-mgmt",status="no"} 1
+readiness_item{id="aup",category="change-mgmt",status="yes"} 1
+readiness_item{id="eol",category="change-mgmt",status="no"} 1
+readiness_item{id="change-records",category="change-mgmt",status="yes"} 1
+readiness_item{id="audit-attributed",category="change-mgmt",status="yes"} 1
+readiness_item{id="rollback-drilled",category="change-mgmt",status="yes"} 1
+readiness_item{id="agent-gate",category="change-mgmt",status="yes"} 1
+readiness_item{id="second-approver",category="change-mgmt",status="no"} 1
+readiness_item{id="change-effort",category="change-mgmt",status="yes"} 1
+readiness_item{id="gb10-ops:textfile-fresh",category="node-guard",status="yes"} 1
+readiness_item{id="gb10-ops:host-guard",category="node-guard",status="unknown"} 1
+# HELP readiness_items Number of readiness items per status (every status is written, 0 included)
+# TYPE readiness_items gauge
+readiness_items{status="yes"} 18
+readiness_items{status="no"} 7
+readiness_items{status="unknown"} 4
+readiness_items{status="accepted"} 0
+# HELP readiness_textfile_last_run_timestamp Unix time of the last readiness run
+# TYPE readiness_textfile_last_run_timestamp gauge
+readiness_textfile_last_run_timestamp X

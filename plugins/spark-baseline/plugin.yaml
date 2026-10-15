@@ -10,3 +10,10 @@ vendors: [linux]
 # node-install.sh runs install.sh from them, after the host's roles
 install:
   files: [install.sh, baseline-snapshot.sh]
+readiness:
+  - id: snapshot
+    category: node-guard
+    question:
+      zh-TW: 每台節點都有近期的 baseline-snapshot，存在私有 repo 裡嗎？
+      en: Does every node have a recent baseline-snapshot, kept in a private repository?
+    check: {type: manual, hint: "where the snapshots are kept and the date of the newest"}

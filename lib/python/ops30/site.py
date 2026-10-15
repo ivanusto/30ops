@@ -161,6 +161,7 @@ SCHEMA = {
                 "targets": _f(("list", {"asset": _f(S, True), "ssh": _f(S, True)}))}),
     "assets": _f(S),
     "cost": _f(S),
+    "readiness": _f({"accept": _f(("map", S)), "answers": _f(("map", S))}),
 }
 
 
@@ -504,6 +505,9 @@ def _cross(doc, base, secrets, errs, warns):
         if isinstance(t, dict) and isinstance(t.get("asset"), str) and "/" not in t["asset"]:
             errs.append(f"gate.targets[{i}].asset must be asset/component")
 
+    from . import readiness
+    readiness.validate_site(doc, errs, warns)
+
     _files(doc, base, errs, warns)
 
 
@@ -597,6 +601,7 @@ def resolve(doc, base="."):
         hosts.append(h)
     r["hosts"] = hosts
     r["logs"] = doc.get("logs") or {}
+    r["readiness"] = doc.get("readiness") or {}
     r["alerting"] = dict(doc.get("alerting") or {})
     if r["alerting"].get("deadman"):
         dm = {"port": DEADMAN_PORT, "after_s": DEADMAN_AFTER_S, **r["alerting"]["deadman"]}

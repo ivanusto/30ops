@@ -15,7 +15,7 @@
 | `plugins/gb10-ops/` | ivanusto/gb10-ops | v0.2.0 之後 1 個 commit | `77ce25dc1fcc94996273324049184486c648b933` | MIT |
 | `plugins/spark-baseline/` | ivanusto/spark-baseline | v0.1.2 | `11fa1ce4721ae964f07c3b4f2ca817d85a4dcd64` | Apache-2.0 |
 | `plugins/nfs-model-library/` | ivanusto/nfs-model-library | v0.1.0 | `64dec6f217d2c1fe0158086afd5f24eaf4a324c9` | Apache-2.0 |
-| `checks/readiness/checklist.md`、`inventory/` | ivanusto/onprem-ops-30days（只取 `lab/checklist.md`、`lab/cost.yaml`、`scripts/cost.py`、`tests/test_cost.py`、`tests/cost-fixture.yaml`） | v1.0.0 | `e44faf6a101f174d76f88de2b4bd029bff5b34e0` | MIT |
+| `checks/readiness/`、`inventory/` | ivanusto/onprem-ops-30days（只取 `lab/checklist.md`、`lab/cost.yaml`、`scripts/cost.py`、`tests/test_cost.py`、`tests/cost-fixture.yaml`） | v1.0.0 | `e44faf6a101f174d76f88de2b4bd029bff5b34e0` | MIT（v0.7 起 `lab/checklist.md` 改寫為 `checks/readiness/checklist.yaml`，原文留在 git 歷史，對照見 `docs/readiness.md`） |
 
 ## 匯入時排除的內容
 

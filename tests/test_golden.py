@@ -212,6 +212,16 @@ def pve_quorum_qdevice_down(tmp):
     return p.stdout
 
 
+def readiness(tmp):
+    """The sample site's plan against the fake Prometheus answers."""
+    import json
+    sys.path.insert(0, str(ROOT / "lib" / "python"))
+    from ops30 import readiness as R, site
+    r = site.resolve(site.load(ROOT / "examples" / "sample-site" / "site.yaml"), str(ROOT / "examples" / "sample-site"))
+    table = json.loads((FIX / "readiness" / "prometheus.json").read_text())["queries"]
+    return R.textfile(R.evaluate(R.plan(r), lambda q: table.get(q, [])), NOW.timestamp())
+
+
 def sort_families(text):
     """Sort the sample lines inside each run of samples; HELP and TYPE lines
     and the order of the families stay where they are."""
@@ -228,7 +238,8 @@ def sort_families(text):
 
 
 WRITERS = {"changes": changes, "drills": drills, "eol": eol, "aup": aup, "fw": fw, "audit": audit, "gate": gate,
-           "nas": nas, "pve-quorum": pve_quorum, "pve-quorum-qdevice-down": pve_quorum_qdevice_down}
+           "nas": nas, "pve-quorum": pve_quorum, "pve-quorum-qdevice-down": pve_quorum_qdevice_down,
+           "readiness": readiness}
 SORTED = {"nas", "pve-quorum", "pve-quorum-qdevice-down"}
 
 

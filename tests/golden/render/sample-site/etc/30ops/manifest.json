@@ -186,6 +186,13 @@
       "secret": false
     },
     {
+      "path": "etc/30ops/readiness.json",
+      "mode": "0644",
+      "owner": "root:root",
+      "sha256": "X",
+      "secret": false
+    },
+    {
       "path": "etc/cron.d/30ops",
       "mode": "0644",
       "owner": "root:root",
