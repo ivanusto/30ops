@@ -150,6 +150,9 @@ def readers(site):
     smtp = (site["alerting"].get("smtp") or {}).get("password")
     if smtp:
         put(smtp, str(NOBODY), 0o400, "alertmanager (compose secret)")
+    hc = (site["alerting"].get("deadman") or {}).get("healthchecks")
+    if hc:
+        put(hc, str(NOBODY), 0o400, "alertmanager (compose secret deadman_url)")
     return {k: v[:2] for k, v in want.items()}
 
 
@@ -482,9 +485,10 @@ def stack(ctx):
         if svc in want and svc not in new and any(p in ctx.changed for p in paths):
             r.change(f"recreate {svc} (its config is a single-file mount)", lambda s=svc: r.check(ops.run(
                 [*ctx.compose, "up", "-d", "--force-recreate", "--no-deps", s], timeout=300)))
-    smtp = RC.env(ctx.site)["OPS30_SMTP_PASSWORD_FILE"].lstrip("/")
-    if "alertmanager" not in new and smtp in ctx.changed:
-        r.change("recreate alertmanager (smtp secret)", lambda: r.check(ops.run(
+    env = RC.env(ctx.site)
+    secrets = {env[k].lstrip("/") for k in ("OPS30_SMTP_PASSWORD_FILE", "OPS30_DEADMAN_URL_FILE")}
+    if "alertmanager" not in new and secrets & set(ctx.changed):
+        r.change("recreate alertmanager (smtp or deadman_url secret)", lambda: r.check(ops.run(
             [*ctx.compose, "up", "-d", "--force-recreate", "--no-deps", "alertmanager"], timeout=300)))
     if "grafana" not in new and any(p.startswith("etc/30ops/grafana/") or p == RC.GRAFANA_ADMIN.lstrip("/")
                                     for p in ctx.changed):

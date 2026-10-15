@@ -29,6 +29,7 @@ def profiles(site):
 def env(site):
     col = site["collector"]
     smtp = (site["alerting"].get("smtp") or {}).get("password")
+    hc = (site["alerting"].get("deadman") or {}).get("healthchecks")
     return {
         "COMPOSE_PROJECT_NAME": "30ops",
         "COMPOSE_PROFILES": ",".join(profiles(site)),
@@ -44,6 +45,7 @@ def env(site):
         "OPS30_GRAFANA_PORT": str(col["grafana_port"]),
         "OPS30_GRAFANA_ADMIN_FILE": GRAFANA_ADMIN,
         "OPS30_SMTP_PASSWORD_FILE": S.secret_file(site, smtp) if smtp else "/dev/null",
+        "OPS30_DEADMAN_URL_FILE": S.secret_file(site, hc) if hc else "/dev/null",
     }
 
 

@@ -18,6 +18,14 @@ route:
   repeat_interval: 12h
   routes:
   - matchers:
+    - alertname="Watchdog"
+    receiver: deadman
+    group_by:
+    - alertname
+    group_wait: 0s
+    group_interval: 1m
+    repeat_interval: 1m
+  - matchers:
     - alertname="Gb10SoakNearBudget"
     receiver: ops-warning
     group_wait: 0s
@@ -45,6 +53,7 @@ receivers:
   email_configs:
   - to: ops@example.net
     send_resolved: false
+- name: deadman
 inhibit_rules:
 - source_matchers:
   - alertname="TargetDown"

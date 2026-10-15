@@ -1,6 +1,19 @@
 # Is the pipeline alive. Thresholds on the numbers themselves (soak, pool
 # capacity, drill age) are in thresholds.yml. docs/rules.md explains each.
 groups:
+  # Always firing. Alertmanager sends it every minute to the deadman
+  # receiver only (site.yaml alerting.deadman): 30ops-deadman on another
+  # host, or an external check URL, raises the alarm when the pushes stop,
+  # which is the one failure the collector cannot report itself (host,
+  # Prometheus, rules or Alertmanager down). No instance label and severity
+  # none, so no inhibit rule and no severity route catches it.
+  - name: meta
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        labels: {severity: none}
+        annotations: {summary: "always firing: the collector, its rules and its alert path are alive"}
+
   - name: pipeline
     rules:
       - alert: TargetDown

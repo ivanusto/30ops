@@ -37,8 +37,10 @@ def all_sources():
     return rules.sources() + [src for _, src in rules.plugin_sources()]
 
 
-# the alerts of the sample site: 62 core and 7 from gb10-ops
-ALERTS = 69
+# the alerts of the sample site: 63 core and 7 from gb10-ops
+ALERTS = 70
+# alerts added after v0.3.0
+NEW = {"Watchdog"}
 # alerts that moved to another group since v0.3.0, with the same evaluation interval
 REGROUPED = {"Gb10TextfileStale": ("pipeline", "gb10-pipeline")}
 
@@ -89,6 +91,9 @@ class Rules(unittest.TestCase):
             text = git_show("v0.3.0", f"collector/prometheus/rules/{name}")
             old[name] = rules.Output(text)
         new, was = alerts(rules.render(resolved(), "x")), alerts(old)
+        self.assertEqual(set(new) - set(was), NEW)
+        for name in NEW:
+            del new[name]
         for _, _, e in status.entries():
             name, m, lab = e["alert"], e["metric"], e["label"]
             g, iv, ex, f, labels = was[name]

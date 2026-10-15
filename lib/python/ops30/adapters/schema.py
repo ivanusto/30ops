@@ -18,8 +18,8 @@ KINDS = {
                    "capabilities": ("facts", "quorum", "backup_jobs", "restore_test", "exporter_config")},
     "network": {"roles": ("switch", "ap"),
                 "capabilities": ("interfaces", "sensors", "uptime")},
-    "os": {"roles": ("collector", "node", "journal", "pcap", "qdevice"),
-           "capabilities": ("journal", "node_exporter", "pcap")},
+    "os": {"roles": ("collector", "node", "journal", "pcap", "qdevice", "deadman"),
+           "capabilities": ("journal", "node_exporter", "pcap", "deadman")},
 }
 
 # how a capability is delivered

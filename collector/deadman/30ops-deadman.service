@@ -1,0 +1,31 @@
+# 30ops-deadman: installed by collector/deadman/install-deadman.sh on the
+# deadman host (site.yaml alerting.deadman.host).
+[Unit]
+Description=30ops deadman: alert when the collector stops pushing its Watchdog
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+EnvironmentFile=/etc/30ops-deadman/deadman.env
+ExecStart=/usr/bin/python3 -I /usr/local/lib/30ops-deadman/30ops-deadman.py
+LoadCredential=smtp:/etc/30ops-deadman/smtp.pass
+DynamicUser=yes
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

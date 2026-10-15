@@ -1,6 +1,7 @@
 """What each node needs from the site: nodes/<host>/install.env for the
-node installers, and for capture nodes the pcap profiles and the sudoers
-drop-in that names them. The profiles are the repo's
+node installers, for capture nodes the pcap profiles and the sudoers
+drop-in that names them, and for the deadman host the settings of
+30ops-deadman (etc/30ops-deadman/deadman.env). The profiles are the repo's
 logs/pcap/profiles/*.env with the site's peer and interface put in."""
 import os
 import re
@@ -50,6 +51,22 @@ def sudoers(names):
             "%pcap-ops ALL=(root) NOPASSWD: PCAP_START, PCAP_STOP, PCAP_STATUS\n")
 
 
+def deadman_env(site):
+    """30ops-deadman's settings (collector/deadman/30ops-deadman.py)."""
+    dm, al = site["alerting"]["deadman"], site["alerting"]
+    col = S.host(site, site["collector"]["host"])
+    env = {"SITE": site["site"]["id"], "LISTEN": f"0.0.0.0:{dm['port']}",
+           "COLLECTOR": " ".join([col["address"]] + col["also"]), "AFTER_S": str(dm["after_s"])}
+    if dm["email"] and al.get("smtp"):
+        smtp = al["smtp"]
+        env.update(EMAIL_TO=" ".join(dm["email"]), SMTP_SMARTHOST=smtp["smarthost"], SMTP_FROM=smtp["from"],
+                   SMTP_USERNAME=smtp.get("username", ""),
+                   SMTP_REQUIRE_TLS="true" if smtp.get("require_tls", True) else "false")
+    if dm["webhook"]:
+        env["WEBHOOK"] = " ".join(dm["webhook"])
+    return env
+
+
 def render(site, sha):
     col = S.host(site, site["collector"]["host"])["address"]
     peer = site["logs"].get("pcap", {}).get("peer")
@@ -57,7 +74,7 @@ def render(site, sha):
     out = {}
     for h in site["hosts"]:
         roles = set(h["roles"])
-        if not roles & {"node", "journal", "pcap", "collector"}:
+        if not roles & {"node", "journal", "pcap", "collector", "deadman"}:
             continue
         env = {"HOST": h["name"], "ROLES": " ".join(h["roles"]), "COLLECTOR": col,
                "SCRAPE_FROM": col, "NODE_EXPORTER_VERSION": NODE_EXPORTER}
@@ -68,6 +85,9 @@ def render(site, sha):
         if "pcap" in roles:
             env["PCAP_PROFILES"] = " ".join(profile_names(h))
         d = f"nodes/{h['name']}"
+        if "deadman" in roles and S.deadman_host(site) and S.deadman_host(site)["name"] == h["name"]:
+            out[f"{d}/etc/30ops-deadman/deadman.env"] = Output(header(sha) + "".join(
+                f'{k}="{v}"\n' for k, v in deadman_env(site).items()))
         out[f"{d}/install.env"] = Output(header(sha) + "".join(f'{k}="{v}"\n' for k, v in env.items()))
         if "pcap" in roles:
             names = profile_names(h)

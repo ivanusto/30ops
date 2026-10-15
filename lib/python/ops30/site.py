@@ -19,14 +19,15 @@ VERSION = 1
 LOCALES = ("zh-TW", "en")
 VENDORS = ("linux", "pve", "qnap", "fortigate", "generic-snmp")
 ROLES = ("collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "syslog",
-         "firewall", "audit-source", "webfilter", "admin", "switch", "ap")
+         "firewall", "audit-source", "webfilter", "admin", "switch", "ap", "deadman")
 # A Linux or PVE host in one of these roles ships its journal to the
 # collector unless it says journal: false (resolve() adds the role). The
 # collector is left out: it is where the journals go.
 JOURNAL_BY_DEFAULT = {"node", "qdevice", "hypervisor"}
 JOURNAL_VENDORS = ("linux", "pve")
 # roles that need a vendor, because something on the collector talks to the host
-MANAGED = {"collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "firewall", "switch", "ap"}
+MANAGED = {"collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "firewall", "switch", "ap",
+           "deadman"}
 PLUGINS = plugins.available()   # plugins/*/plugin.yaml
 SNMP_AUTH = ("MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512")
 SNMP_PRIV = ("DES", "AES", "AES192", "AES256", "AES192C", "AES256C")
@@ -39,7 +40,12 @@ VOLUME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]+$")
 RETENTION_RE = re.compile(r"^[1-9][0-9]*[hdwy]$")
 SIZE_RE = re.compile(r"^[1-9][0-9]*([KMGT]i?B)?$")
 # keys whose value is a secret: in site.yaml they name an entry of credentials
-SECRET_KEYS = {"password", "priv_password", "token", "passphrase", "secret", "key"}
+SECRET_KEYS = {"password", "priv_password", "token", "passphrase", "secret", "key", "healthchecks"}
+# alerting.deadman: the port 30ops-deadman listens on and how long a silence
+# it allows (Alertmanager pushes the Watchdog every one to two minutes)
+DEADMAN_PORT = 9095
+DEADMAN_AFTER_S = 300
+DEADMAN_MIN_AFTER_S = 180
 
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 HOSTNAME_RE = re.compile(r"^(?=.{1,253}$)([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)(\.[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*$")
@@ -144,7 +150,10 @@ SCHEMA = {
                                 "password": _f(S), "require_tls": _f(B)}),
                     "receivers": _f(("map", {"email": _f(("list", S)), "webhook": _f(("list", S)),
                                              "send_resolved": _f(B)}), True),
-                    "thresholds": _f(("map", N))}),
+                    "thresholds": _f(("map", N)),
+                    "deadman": _f({"host": _f(S), "port": _f(I), "after_s": _f(I),
+                                   "email": _f(("list", S)), "webhook": _f(("list", S)),
+                                   "healthchecks": _f(S)})}),
     "changes": _f({"clone": _f(S), "state_dir": _f(S), "remote": _f(S)}),
     "gate": _f({"principal": _f(S), "home": _f(S), "approval_ttl_s": _f(I),
                 "approvers": _f(("list", S)),
@@ -442,12 +451,36 @@ def _cross(doc, base, secrets, errs, warns):
             if r not in rec:
                 errs.append(f"alerting.receivers.{r} is required (the route tree sends to it)")
         for r, v in rec.items():
+            if r == "deadman":
+                errs.append("alerting.receivers.deadman is reserved: set alerting.deadman instead")
+                continue
             if r not in RECEIVERS:
                 warns.append(f"alerting.receivers.{r}: no route sends to it")
             if isinstance(v, dict) and not (v.get("email") or v.get("webhook")):
                 warns.append(f"alerting.receivers.{r} has no email and no webhook: its alerts go nowhere")
         if any(isinstance(v, dict) and v.get("email") for v in rec.values()) and not al.get("smtp"):
             errs.append("alerting.smtp is required when a receiver has email")
+    dm = al.get("deadman") if isinstance(al, dict) else None
+    deadmen = [h.get("name") for h in hosts if "deadman" in (h.get("roles") or [])]
+    if isinstance(dm, dict):
+        if not dm.get("host") and not dm.get("healthchecks"):
+            errs.append("alerting.deadman needs a host (30ops-deadman) or healthchecks (an external check URL), or both")
+        if isinstance(dm.get("host"), str):
+            ref("alerting.deadman.host", dm["host"], "deadman")
+            if dm["host"] in by_name and "collector" in (by_name[dm["host"]].get("roles") or []):
+                errs.append("alerting.deadman.host must not be the collector: it watches the collector from outside")
+        a = dm.get("after_s")
+        if isinstance(a, int) and not isinstance(a, bool) and a < DEADMAN_MIN_AFTER_S:
+            errs.append(f"alerting.deadman.after_s must be at least {DEADMAN_MIN_AFTER_S} "
+                        "(the Watchdog is pushed every one to two minutes)")
+        pt = dm.get("port")
+        if isinstance(pt, int) and not isinstance(pt, bool) and not 1024 <= pt < 65536:
+            errs.append(f"alerting.deadman.port {pt} must be 1024 to 65535 (30ops-deadman runs unprivileged)")
+        if dm.get("email") and not al.get("smtp"):
+            errs.append("alerting.smtp is required when alerting.deadman has email")
+    for n in deadmen:
+        if not (isinstance(dm, dict) and dm.get("host") == n):
+            warns.append(f"host {n} has role deadman but alerting.deadman.host does not name it")
     th = al.get("thresholds") if isinstance(al, dict) else None
     if isinstance(th, dict):
         cat = threshold_catalogue()
@@ -559,7 +592,13 @@ def resolve(doc, base="."):
         hosts.append(h)
     r["hosts"] = hosts
     r["logs"] = doc.get("logs") or {}
-    r["alerting"] = doc.get("alerting") or {}
+    r["alerting"] = dict(doc.get("alerting") or {})
+    if r["alerting"].get("deadman"):
+        dm = {"port": DEADMAN_PORT, "after_s": DEADMAN_AFTER_S, **r["alerting"]["deadman"]}
+        crit = (r["alerting"].get("receivers") or {}).get("ops-critical") or {}
+        dm.setdefault("email", list(crit.get("email") or []))
+        dm.setdefault("webhook", list(crit.get("webhook") or []))
+        r["alerting"]["deadman"] = dm
     r["base"] = os.path.abspath(base)
     return r
 
@@ -573,6 +612,12 @@ def host(site, name):
 
 def with_role(site, role):
     return [h for h in site["hosts"] if role in h["roles"]]
+
+
+def deadman_host(site):
+    """The host alerting.deadman.host names, or None."""
+    n = (site["alerting"].get("deadman") or {}).get("host")
+    return host(site, n) if n else None
 
 
 def secret_file(site, name):

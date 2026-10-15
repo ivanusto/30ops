@@ -42,6 +42,9 @@ def targets(site):
             taken += hs
     jobs["node"] = ("node.yml", groups([h for h in S.with_role(site, "node") if h not in taken], 9100))
     jobs["pve"] = ("pve.yml", groups([h for h in S.with_role(site, "hypervisor") if h["vendor"] == "pve"]))
+    dh = S.deadman_host(site)
+    if dh:
+        jobs["deadman"] = ("deadman.yml", groups([dh], site["alerting"]["deadman"]["port"]))
     nas = [h for h in S.with_role(site, "nas") if h.get("snmp")]
     auths = [h["snmp"]["auth"] for h in nas]
     default = auths[0] if auths else None

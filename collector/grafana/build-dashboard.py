@@ -222,8 +222,8 @@ def build(active=()):
                   'count(ALERTS{alertstate="firing",severity="warning"}) or vector(0)', "warning",
                   thresholds=steps((None, "green"), (1, "orange"))))
     P.append(table("firing 清單", 8, y, 16, 6,
-                   [target('ALERTS{alertstate="firing"}', instant=True, fmt="table")],
-                   desc="每一列是一條規則對一組標籤，與 Alertmanager 收到的是同一份。嚴重度與規則名稱來自 prometheus/rules",
+                   [target('ALERTS{alertstate="firing",alertname!="Watchdog"}', instant=True, fmt="table")],
+                   desc="每一列是一條規則對一組標籤，與 Alertmanager 收到的是同一份。嚴重度與規則名稱來自 prometheus/rules。永遠在 firing 的 Watchdog 只給 deadman，不列在這裡",
                    hide=("Value", "alertstate"), sort="severity",
                    order=("alertname", "severity"),
                    overrides=[cell("severity", mappings=vmap(("critical", "critical", "red"), ("warning", "warning", "orange"),

@@ -82,6 +82,13 @@ scrape_configs:
       - target_label: __address__
         replacement: snmp-exporter:9116
 
+  # 30ops-deadman on the deadman host (site.yaml alerting.deadman.host):
+  # when the collector last pushed its Watchdog. A dead deadman host is
+  # TargetDown like any other target.
+  - job_name: deadman
+    file_sd_configs:
+      - files: [targets/deadman.yml]
+
   # The log store. The scratch image cannot run a healthcheck, so the
   # generic TargetDown rule on this job stands in for one.
   - job_name: victorialogs

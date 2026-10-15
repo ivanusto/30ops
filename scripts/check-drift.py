@@ -38,6 +38,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE_SIDE = [
     "adapters/nas/qnap/remote.sh",              # piped to sh on the NAS over ssh
     "collector/node/node-install.sh",           # runs on the node from the install node bundle
+    "collector/deadman/*",                      # 30ops-deadman and its installer, on the deadman host
     "drills/pve-backup/canary.sh",              # installed in the guest as /usr/local/bin/canary.sh
     "drills/nas-backup/share-canary.sh",        # runs on the NAS (cron) and reads the share
     "drills/nas-backup/nas-audit.sh",           # runs on the NAS

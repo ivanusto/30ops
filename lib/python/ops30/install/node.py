@@ -29,6 +29,9 @@ from ..adapters import registry
 DRIVER = "collector/node/node-install.sh"
 NODE = ["collector/install-node.sh", "collector/systemd/node_exporter.service"]
 JOURNAL = ["logs/node/install-journal-upload.sh"]
+DEADMAN = ["collector/deadman/install-deadman.sh", "collector/deadman/30ops-deadman.py",
+           "collector/deadman/30ops-deadman.service"]
+DEADMAN_SMTP = "/tmp/30ops-deadman-smtp"   # install-deadman.sh moves it to /etc/30ops-deadman/smtp.pass
 PCAP = ["logs/pcap/install-pcap.sh", "logs/pcap/pcap-run.sh", "logs/pcap/pcap-seal.sh", "logs/pcap/pcap@.service",
         "logs/pcap/sudoers-pcap"]
 
@@ -57,6 +60,8 @@ def contents(site, tree, h, ops):
         files += NODE
     if "journal" in roles:
         files += JOURNAL
+    if "deadman" in roles:
+        files += DEADMAN
     if "pcap" in roles:
         files += PCAP + sorted(f"logs/pcap/profiles/{f}" for f in os.listdir(f"{S.REPO}/logs/pcap/profiles")
                                if f.endswith(".env"))
@@ -90,6 +95,16 @@ def contents(site, tree, h, ops):
         else:
             warns.append(f"{key} is missing (install collector first); the node gets no quorum key")
     return sorted(out), warns
+
+
+def deadman_smtp(site, h):
+    """The collector's SMTP password file when h is the deadman host and the
+    deadman sends mail, else None."""
+    dh = S.deadman_host(site)
+    smtp = site["alerting"].get("smtp") or {}
+    if not dh or dh["name"] != h["name"] or not smtp.get("password") or not site["alerting"]["deadman"]["email"]:
+        return None
+    return S.secret_file(site, smtp["password"])
 
 
 def build(entries):
@@ -129,7 +144,7 @@ def install(site, tree, name, ops, bundle=None, ssh=None, out=print):
             out(f"  {i}. {step}")
     if not any(k in ks for k in ("os", "hypervisor")) or f"nodes/{h['name']}/install.env" not in tree:
         if not appliance:
-            out(f"refused: {h['name']} has no role a node bundle serves (node, journal, pcap, hypervisor)")
+            out(f"refused: {h['name']} has no role a node bundle serves (node, journal, pcap, hypervisor, deadman)")
             return 2
         return 0
     entries, warns = contents(site, tree, h, ops)
@@ -147,6 +162,9 @@ def install(site, tree, name, ops, bundle=None, ssh=None, out=print):
         out("on the node, as a user with sudo:")
         out(f"  scp {path} {dest}:/tmp/ && ssh -t {dest} "
             f"'tar xzf /tmp/{fname} -C /tmp && sudo sh /tmp/30ops-node-{h['name']}/node-install.sh'")
+        if deadman_smtp(site, h):
+            out(f"  and put the SMTP password ({deadman_smtp(site, h)} on the collector) in "
+                "/etc/30ops-deadman/smtp.pass (root, 0600), then: sudo systemctl restart 30ops-deadman")
         return 0
     dest = ssh or (f"{h['ssh']['user']}@{h['address']}" if h.get("ssh") else None)
     if not dest:
@@ -165,9 +183,20 @@ def _over_ssh(site, h, dest, data, digest, fname, ops, out):
             out(f"error: copying the bundle to {dest}: {p.stderr.strip()}")
             return 1
         out(f"copied {fname} (sha256 {digest}) to {dest}")
+        pw = deadman_smtp(site, h)
+        if pw:
+            raw = ops.read(pw)
+            if raw is None:
+                out(f"warning: cannot read {pw} here; put the SMTP password in /etc/30ops-deadman/smtp.pass "
+                    f"on {h['name']} yourself (root, 0600)")
+            else:
+                p = ops.pipe(["ssh", *cm, dest, f"umask 077 && cat > {DEADMAN_SMTP}"], raw)
+                if p.returncode != 0:
+                    out(f"error: copying the SMTP password to {dest}: {p.stderr.strip()}")
+                    return 1
         rc = ops.run_tty(["ssh", "-t", *cm, dest,
                           f"rm -rf {d} && tar xzf /tmp/{fname} -C /tmp && {sudo}sh {d}/node-install.sh; "
-                          f"rc=$?; rm -rf {d} /tmp/{fname}; exit $rc"])
+                          f"rc=$?; rm -rf {d} /tmp/{fname}; rm -f {DEADMAN_SMTP}; exit $rc"])
         if rc != 0:
             out(f"error: node-install.sh on {dest} exited {rc}")
             return 1

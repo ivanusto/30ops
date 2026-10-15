@@ -9,6 +9,8 @@
 #               the collector's pull key forced to rrsync -ro
 #   hypervisor  the collector's key for the quorum check, forced to
 #               `pvecm status` and only from COLLECTOR, and linger for root
+#   deadman     30ops-deadman, which alerts when the collector stops
+#               pushing its Watchdog (collector/deadman/)
 # Then, for each plugin in PLUGINS, the plugin's own plugins/<name>/install.sh
 # (docs/plugins.md).
 # Self-contained: it does not source lib/ (docs/lib.md, node-side files).
@@ -53,6 +55,10 @@ if has hypervisor && [ -s "$HERE/keys/quorum.pub" ]; then
     loginctl enable-linger root
   fi
 fi
+if has deadman && [ -f "$HERE/etc/30ops-deadman/deadman.env" ]; then
+  sh "$HERE/collector/deadman/install-deadman.sh" "$HERE/etc/30ops-deadman/deadman.env"
+fi
+
 for p in ${PLUGINS:-}; do
   if [ -f "$HERE/plugins/$p/install.sh" ]; then
     sh "$HERE/plugins/$p/install.sh"

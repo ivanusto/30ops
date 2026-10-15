@@ -1,5 +1,5 @@
-# Debian and Ubuntu hosts: the collector itself, nodes, the QDevice VM, and
-# the OS side of a PVE node.
+# Debian and Ubuntu hosts: the collector itself, nodes, the QDevice VM, the
+# deadman host, and the OS side of a PVE node.
 adapter: 1
 kind: os
 vendor: linux
@@ -18,3 +18,7 @@ capabilities:
     face: install
     status: implemented
     ref: logs/pcap/install-pcap.sh
+  deadman:
+    face: install
+    status: implemented
+    ref: collector/deadman/install-deadman.sh

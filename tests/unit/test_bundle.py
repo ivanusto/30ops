@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "lib" / "python"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from ops30 import render  # noqa: E402
+from ops30 import render, site  # noqa: E402
 from ops30.install import node  # noqa: E402
-from test_install import FakeOps, site_for  # noqa: E402
+from test_install import SAMPLE, FakeOps, site_for  # noqa: E402
 
 
 class Bundle(unittest.TestCase):
@@ -68,6 +68,24 @@ class Bundle(unittest.TestCase):
         self.assertEqual(mode[p + "systemd/gb10-textfile.timer"], 0o644)
         self.assertNotIn("30ops-node-spark01/etc/pcap/corosync.env", names)   # not a hypervisor
         self.assertNotIn("30ops-node-spark01/keys/quorum.pub", names)
+
+    def test_deadman_node(self):
+        doc = site.load(SAMPLE / "site.yaml")
+        doc["hosts"].append({"name": "watcher", "address": "192.0.2.150", "vendor": "linux", "roles": ["deadman"]})
+        doc["alerting"]["deadman"] = {"host": "watcher"}
+        s = site.resolve(doc, str(SAMPLE))
+        tree = render.render(s, "x")
+        entries, _ = node.contents(s, tree, site.host(s, "watcher"), self.ops)
+        names = [e[0] for e in entries]
+        p = "30ops-node-watcher/"
+        for f in ("node-install.sh", "install.env", "etc/30ops-deadman/deadman.env",
+                  "collector/deadman/install-deadman.sh", "collector/deadman/30ops-deadman.py",
+                  "collector/deadman/30ops-deadman.service"):
+            self.assertIn(p + f, names)
+        self.assertNotIn(p + "collector/install-node.sh", names)
+        self.assertEqual(node.deadman_smtp(s, site.host(s, "watcher")),
+                         site.secret_file(s, s["alerting"]["smtp"]["password"]))
+        self.assertIsNone(node.deadman_smtp(s, site.host(s, "spark01")))
 
     def test_bundle_file_and_appliances(self):
         lines = []

@@ -198,7 +198,7 @@
    "id": 4,
    "type": "table",
    "title": "firing 清單",
-   "description": "每一列是一條規則對一組標籤，與 Alertmanager 收到的是同一份。嚴重度與規則名稱來自 prometheus/rules",
+   "description": "每一列是一條規則對一組標籤，與 Alertmanager 收到的是同一份。嚴重度與規則名稱來自 prometheus/rules。永遠在 firing 的 Watchdog 只給 deadman，不列在這裡",
    "datasource": {
     "type": "prometheus",
     "uid": "prometheus"
@@ -215,7 +215,7 @@
       "type": "prometheus",
       "uid": "prometheus"
      },
-     "expr": "ALERTS{alertstate=\"firing\"}",
+     "expr": "ALERTS{alertstate=\"firing\",alertname!=\"Watchdog\"}",
      "refId": "A",
      "legendFormat": "__auto",
      "instant": true,

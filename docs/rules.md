@@ -1,6 +1,6 @@
 # 告警規則
 
-規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 69 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
+規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 70 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
 
 - 告警名稱、等級與標籤是 Alertmanager 路由與抑制規則的依據（`collector/alertmanager/alertmanager.base.yml`），也是告警歷史的鍵，所以 v1 不改名。`NasPoolAbove80` 在門檻改成 85 之後仍叫這個名字。
 - 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。
@@ -57,6 +57,7 @@ alerting:
 
 | 告警 | 等級 | 持續 | 意義與處置 |
 |---|---|---|---|
+| Watchdog | none | | 永遠在 firing。Alertmanager 每分鐘只送給 deadman 接收者（`site.yaml` 的 `alerting.deadman`），推送停了由收集端以外的 30ops-deadman 或外部檢查網址發告警。不會出現在一般接收者 |
 | TargetDown | warning | 5m | 某個 scrape 目標連不上。先看主機是否開機、node_exporter 或 exporter 是否在跑、防火牆是否擋住 |
 | Gb10TextfileStale | warning | 2m | gb10-textfile 超過 2 分鐘沒寫，檢查節點上的 timer |
 | NasTextfileStale | warning | 5m | nas-textfile 超過 10 分鐘沒寫，檢查收集端 cron 與到 NAS 的 SSH |

@@ -11,7 +11,7 @@ rule_files:
 evaluation_interval: 15s
 # the status recording rules first, as a step later would hold the NAS
 # alerts that read them back by one evaluation (Telnet at 10m, for: 10m)
-group_eval_order: [status, nas, pve, drills, pipeline, firewall]
+group_eval_order: [status, nas, pve, drills, meta, pipeline, firewall]
 
 tests:
   # Pool capacity crosses the 80 line and stays for 30 minutes.
@@ -368,3 +368,19 @@ tests:
             exp_annotations: {summary: "pve1 dropped 700 packets from 192.0.2.51 in the last hour (pvefw)"}
           - exp_labels: {severity: warning, job: collector-host, source: docker-user, host: collector, src: "192.0.2.52"}
             exp_annotations: {summary: "collector dropped 40 packets from 192.0.2.52 in the last hour (docker-user)"}
+
+  # Watchdog fires from the first evaluation, with nothing but its severity
+  # (no instance: no inhibit rule matches it), and never stops.
+  - interval: 1m
+    input_series: []
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: {severity: none}
+            exp_annotations: {summary: "always firing: the collector, its rules and its alert path are alive"}
+      - eval_time: 3h
+        alertname: Watchdog
+        exp_alerts:
+          - exp_labels: {severity: none}
+            exp_annotations: {summary: "always firing: the collector, its rules and its alert path are alive"}

@@ -20,6 +20,15 @@ route:
   group_interval: 5m
   repeat_interval: 12h
   routes:
+    # Watchdog always fires (rules/staleness.yml). It goes to the deadman
+    # receiver and nowhere else, every minute: 30ops-deadman on another host
+    # (or an external check URL) alerts when the pushes stop.
+    - matchers: [alertname="Watchdog"]
+      receiver: deadman
+      group_by: [alertname]
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
     # The soak alert is a warning, but it is only useful before the guard
     # acts (15 to 60 s later), so it skips the 30 s batching.
     - matchers: [alertname="Gb10SoakNearBudget"]
@@ -48,6 +57,8 @@ receivers:
     email_configs:
       - to: "ops@example.net"
         send_resolved: false
+  # render fills it from site.yaml alerting.deadman; empty, Watchdog goes nowhere
+  - name: deadman
 
 inhibit_rules:
   # Pipeline dead: do not page for every number the pipeline stopped reporting.

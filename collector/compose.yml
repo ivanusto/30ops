@@ -74,9 +74,10 @@ services:
     volumes:
       - ${OPS30_ETC:?}/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       - alertmanager-data:/alertmanager
-    # alertmanager.yml reads it as smtp_auth_password_file; the container
-    # runs as nobody (65534), so the file is owned by 65534, mode 0400
-    secrets: [smtp]
+    # alertmanager.yml reads them as smtp_auth_password_file and the deadman
+    # webhook's url_file; the container runs as nobody (65534), so the files
+    # are owned by 65534, mode 0400
+    secrets: [smtp, deadman_url]
     ports: ["127.0.0.1:9093:9093"]
 
   grafana:
@@ -153,6 +154,8 @@ secrets:
     file: ${OPS30_GRAFANA_ADMIN_FILE:?}
   smtp:
     file: ${OPS30_SMTP_PASSWORD_FILE:?}   # /dev/null when the site sends no mail
+  deadman_url:
+    file: ${OPS30_DEADMAN_URL_FILE:?}     # /dev/null without alerting.deadman.healthchecks
 
 volumes:
   prometheus-data:
