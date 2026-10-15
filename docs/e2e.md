@@ -12,7 +12,9 @@
 | 告警 | 假 NAS 的 pool 轉 DEGRADED 後，`NasPoolNotOnline` 在 Alertmanager 為 active，webhook 收件端收到 firing（route 到 ops-critical） |
 | 日誌 | NAS 的 syslog（514）、FortiGate 的事件日誌（515，帶 `audit=fortigate`）、收集端自己的 journal（journal-upload）都進 VictoriaLogs；不在允許清單的來源被 DOCKER-USER 丟棄，並在 kernel log 留下 DROP 紀錄 |
 | 封存 | 前一天（UTC，已結束的一天）由 `archive-day.sh` 寫到經 NFSv4 掛載的 WORM 代用目錄，MANIFEST.tsv 列出 syslog、audit、journald 三種來源，`verify-archive.sh --against-live` 通過並寫入 drills v1 紀錄 |
+| deadman 與交換器 | deadman 主機（watcher）的 node bundle 裝在測試主機上，單元以 `NetworkNamespacePath` 在 namespace 內以 192.0.2.41 執行；`deadman` job 看得到推送且 `deadman_alerting` 為 0，webhook 收件端的一般路徑從沒收到 Watchdog，deadman 也沒發出 `CollectorSilent`；sw-core 的 `switch-snmp` 為 up 且有 `sysUpTime`（v0.7） |
 | 健檢 | `doctor --format json` 沒有 fail，warn 只能出現在 `tests/e2e/allowed-warn.txt`（目前是空的） |
+| readiness | `30ops readiness --site --format json`（以 root，含 doctor 的本機檢查）每一題的結果都在 `check.py` 的 `READINESS` 允許的範圍內，退出碼為 0；假 LAN 答不了的題目在 e2e 的 site.yaml 以 `readiness.accept` 寫明理由，NAS 沒接 UPS 由 `ups: none` 接受（v0.7） |
 | 資源 | 所有容器的記憶體合計低於 3 GiB（現場收集端是 2 vCPU、4 GB） |
 
 證據放在 `$OUT`（預設 `/var/tmp/ops30e2e`）：每個階段的輸出、targets 與告警的 API 回應、compose 與各單元的日誌、textfile、doctor 的 json，以及 `summary.txt`。CI 失敗時會上傳成 artifact `e2e-evidence`。
@@ -27,6 +29,8 @@
  │   alertmanager、grafana、      │         │ 192.0.2.9   pve1  sshd（pvecm）、API 8006 │
  │   victorialogs、exporters     │         │ 192.0.2.5   pve2  同上                   │
  │ node_exporter、cron、          │         │ 192.0.2.99  fgt-edge  API 10443          │
+ │                               │         │ 192.0.2.40  sw-core  snmpd（IF-MIB）      │
+ │                               │         │ 192.0.2.41  watcher  30ops-deadman 9095  │
  │   journal-upload              │         │ 192.0.2.250 webhook 收件端 9999          │
  │ nfsd（WORM 代用，經 DNAT 成     │         │ 192.0.2.66  不在允許清單的來源            │
  │   192.0.2.2:2049）            │         └─────────────────────────────────────────┘
@@ -45,7 +49,9 @@
 | PVE 的 quorum | 同一個 sshd，`192.0.2.9` 與 `192.0.2.5` 強制回傳 fixture 的 `pvecm status` |
 | PVE API | `httpfakes.py`，自簽 TLS，驗 API token，回應一個 quorate 的兩節點叢集、每節點一個 storage、沒有 guest，端點依 pve-exporter 3.5.5 實際呼叫的路徑 |
 | FortiGate API | `httpfakes.py`，Bearer token，回應 fixture 的授權狀態 |
-| SNMP | net-snmp 的 snmpd，SNMPv3（SHA、AES），QNAP 的 enterprise OID 由 `snmp/pass-persist.py` 供應，資料由 `snmp/build-data.py` 讀 `collector/prometheus/snmp.yml` 合成：表格兩列、狀態字串與列舉取健康值。不是真實 NAS 的 walk |
+| SNMP | net-snmp 的 snmpd，SNMPv3（SHA、AES），QNAP 的 enterprise OID 由 `snmp/pass-persist.py` 供應，資料由 `snmp/build-data.py` 讀 `collector/prometheus/snmp.yml` 合成：表格兩列、狀態字串與列舉取健康值，UPS 為 `-1`（沒接）。不是真實 NAS 的 walk |
+| 交換器 | 第二個 snmpd 只聽 192.0.2.40，同一個 SNMPv3 帳號，只回 net-snmp 自己的 `sysUpTime`、`sysName` 與 namespace 介面的 IF-MIB 表（`if_mib` 模組） |
+| deadman | 真的 30ops-deadman 與單元，由 watcher 的 node bundle 安裝；drop-in 只加 `NetworkNamespacePath=/run/netns/ops30e2e`，其餘照產品設定 |
 | WORM | 主機上的 nfs-kernel-server 匯出暫存目錄，主機 nat OUTPUT 把 `192.0.2.2:2049` 轉到本機，所以 render 出的掛載單元原封不動地掛載。掛載點是 `/srv/worm` 而不是範例場域的 `/mnt/worm`：GitHub runner 的 fstab 有一筆指向不存在磁碟的 `/mnt`，失敗的 `mnt.mount` 會讓 `/mnt` 底下的每個掛載都失敗 |
 | 告警收件 | `httpfakes.py` 把每個 POST 寫進 `/run/ops30e2e/webhook.jsonl` |
 

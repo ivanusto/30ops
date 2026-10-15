@@ -115,6 +115,7 @@ bin/30ops install node nas-primary --site site.yaml                      # 設�
 | `collector/install-node.sh` 與 node_exporter 單元 | 角色 node |
 | `plugins/<名稱>/` 中 plugin.yaml `install.files` 列的檔案，`node-install.sh` 最後執行其 `install.sh` | 主機列出插件 |
 | `logs/node/install-journal-upload.sh` | 角色 journal |
+| `collector/deadman/` 的 30ops-deadman、單元檔與安裝程式，render 產出的 `etc/30ops-deadman/deadman.env` | 角色 deadman |
 | `logs/pcap/` 的安裝程式、render 產出的 `etc/pcap/*.env` 與 `etc/sudoers.d/pcap`、`keys/pcap-pull.pub` | 角色 pcap |
 | `keys/quorum.pub` | 角色 hypervisor 且有 `pve.cluster` |
 
@@ -127,17 +128,32 @@ bundle 是確定性的：條目排序，mtime、uid、gid 都是 0，gzip 檔頭
 | node | node_exporter（版本相同時不下載，單元檔沒變時不重啟）；ufw 啟用時允許 `SCRAPE_FROM` 連 9100 |
 | journal | systemd-journal-upload 送到收集端，從現在開始送；設定沒變時不重啟 journald 與上傳程式 |
 | pcap | 擷取單元、render 產出的設定檔與 sudoers，收集端的拉取金鑰限定為 `rrsync -ro` |
+| deadman | 30ops-deadman 與它的單元（`DynamicUser`，SMTP 密碼以 `LoadCredential` 讀 `/etc/30ops-deadman/smtp.pass`）；ufw 啟用時只允許收集端連 9095。見下方 [deadman](#deadman) |
 | hypervisor | 收集端的金鑰限定只能從收集端執行 `pvecm status`，`loginctl enable-linger root`。PVE 的 `/root/.ssh/authorized_keys` 是指向 `/etc/pve/priv` 的 symlink（叢集共用），所以直接附加到實際檔案，不用 rename 取代，否則 symlink 會變成本機檔案 |
 
-每一步都可以重複執行，第二次執行不會有任何變更。
+最後依 `install.env` 的 `PLUGINS` 逐一執行各插件的 `plugins/<名稱>/install.sh`（[plugins.md](plugins.md)）。每一步都可以重複執行，第二次執行不會有任何變更。
 
 ### 經 ssh
 
-上傳與執行走同一條 ControlMaster 連線：先以 `cat > /tmp/...` 傳 bundle，再開一個互動 session 執行 `sudo sh node-install.sh`，sudo 要密碼時可以直接輸入。有 pcap 或 hypervisor 角色時，順便從這條已驗證的連線讀節點的 host key，寫進收集端 `metrics` 的 `known_hosts`，cron 的拉取與 quorum 檢查才不會在第一次連線時盲目信任。不是以 root 執行時，改為印出要執行的指令。
+上傳與執行走同一條 ControlMaster 連線：先以 `cat > /tmp/...` 傳 bundle，再開一個互動 session 執行 `sudo sh node-install.sh`，sudo 要密碼時可以直接輸入。deadman 主機要寄信時，收集端上 `alerting.smtp.password` 的憑證檔會先以同一條連線送到 `/tmp/30ops-deadman-smtp`（權限 0600），由安裝程式移到 `/etc/30ops-deadman/smtp.pass`；收集端讀不到那個檔案，或用 `--bundle` 時，改為印出手動步驟。有 pcap 或 hypervisor 角色時，順便從這條已驗證的連線讀節點的 host key，寫進收集端 `metrics` 的 `known_hosts`，cron 的拉取與 quorum 檢查才不會在第一次連線時盲目信任。不是以 root 執行時，改為印出要執行的指令。
 
 ### 設備
 
 NAS、防火牆、交換器不裝任何東西，`install node` 改印出該 adapter 的設定步驟（SNMP v3 唯讀帳號、ssh 帳號與金鑰、QuLog 記錄傳送、FortiGate 的唯讀 API 帳號與 syslogd2、syslogd3）。改設備設定之前先備份並開變更單。
+
+## deadman
+
+收集端整台停掉時（主機、Prometheus、規則或 Alertmanager 任何一個），它自己發不出告警。v0.7 的做法是反過來：收集端每分鐘證明自己還活著，收集端以外的東西在證明停止時發告警。
+
+- 規則 `Watchdog`（`rules/staleness.yml`）永遠在 firing，沒有 instance 標籤、等級是 `none`，任何抑制規則與等級路由都不會碰到它。
+- Alertmanager 路由的第一條把 `alertname="Watchdog"` 送到 `deadman` 接收者，`group_interval` 與 `repeat_interval` 都是 1 分鐘，`continue: false`，所以一般接收者永遠收不到它。CI 以 `amtool config routes test` 確認。
+- `deadman` 接收者依 `alerting.deadman`：
+  - `host`：webhook 到該主機的 30ops-deadman（`http://<host>:9095/alertmanager`）。30ops-deadman 只收收集端位址送來、含 firing Watchdog 的推送；`after_s`（預設 300 秒）沒收到就以 SMTP 與 webhook 發出 `CollectorSilent`，之後每 6 小時提醒一次，推送恢復時再發一次恢復通知。webhook 的內容是 Alertmanager 的 webhook 格式，接 Alertmanager 的工具可以直接收。剛啟動時給 `after_s` 的寬限。
+  - `healthchecks`：外部檢查服務的 ping 網址（例如 healthchecks.io），Alertmanager 以 `url_file` 從 compose secret `deadman_url` 讀取，由外部服務在推送停止時通知。
+  - 兩者可以並用。
+- 收集端的 `deadman` 抓取 job 讀 30ops-deadman 的 `/metrics`（`deadman_last_push_timestamp_seconds`、`deadman_alerting`、`deadman_notifications_total`）；deadman 主機本身停了，是一般的 `TargetDown`。
+- deadman 主機選收集端以外、也不跟收集端放在同一台實體主機上的機器。範例場域用 QDevice VM：它跑在 NAS 上，不在 PVE 叢集裡。
+- 收集端維護超過 `after_s` 就會觸發 deadman，`change-mark` 的靜默蓋不到它（靜默在收集端自己的 Alertmanager 裡）。維護前先通知收件者，或在變更單的影響段寫明。
 
 ## 檢查：`30ops doctor`
 

@@ -4,13 +4,13 @@ adapter 定義 30ops 怎麼跟某一類設備的某個廠商溝通。每個 adap
 
 ## kind 與角色
 
-| kind | site.yaml 角色 | 能力 | v0.5 的 adapter |
+| kind | site.yaml 角色 | 能力 | adapter |
 |---|---|---|---|
 | nas | nas | facts、health、snapshots、share_canary、snmp_module、syslog_profile | qnap |
 | firewall | firewall、audit-source、webfilter | facts、licences、audit_source、config_backup、syslog_profile、managed_aps | fortigate |
 | hypervisor | hypervisor | facts、quorum、backup_jobs、restore_test、exporter_config | pve |
-| network | switch、ap | interfaces、sensors、uptime | generic-snmp |
-| os | collector、node、journal、pcap、qdevice | journal、node_exporter、pcap | linux |
+| network | switch、ap | interfaces、sensors、uptime | generic-snmp（interfaces 與 uptime 自 v0.7 實作，sensors 留到 v1.x） |
+| os | collector、node、journal、pcap、qdevice、deadman | journal、node_exporter、pcap、deadman | linux |
 
 `30ops validate` 對每台主機的每個角色找 adapter：先找 `adapters/<該角色的 kind>/<vendor>/`。若是 os 類角色，主機廠商的 adapter.yaml 寫了 `os:`，就改用那個 os adapter（例如 PVE 節點的 journal 與 pcap 由 `os/linux` 處理）。找不到就是錯誤。
 
@@ -68,6 +68,23 @@ status:
 - render 產出 `rules/status.yml`，每項一條 recording rule `<kind>:<metric>:ok`（[rules.md](rules.md)）。
 - 契約測試檢查：metric 在 `snmp.yml` 裡、`alert` 存在，而且它的 expr 正好是 `<record> == 0`。
 
+## 存在對照
+
+`presence:` 回答設備在不在，而不是狀態好不好（v0.7）。QuTS hero 沒接 UPS 時回 `-1`，狀態對照把它當健康（不存在的 UPS 沒有故障），存在對照則把它記成不存在：
+
+```yaml
+presence:
+  - {record: "nas:ups:present", metric: qnap_ups_status, label: qnap_ups_status, absent: "-1", alert: NasUpsAbsent}
+```
+
+- render 在 `rules/status.yml` 加一條 recording rule，`absent` 比對到為 0，其他為 1，保留來源序列的 label。
+- record 名稱不帶廠商（`<kind>:<設備>:present`），其他來源（例如 NUT）可以餵同一個告警。
+- 契約測試檢查：鍵齊全、record 格式、metric 在 `snmp.yml` 裡、`alert` 存在且以 `<record> == 0` 開頭。
+
+## generic-snmp
+
+交換器與基地台不裝任何東西：收集端的 snmp_exporter 以 `collector/prometheus/snmp.yml` 的 `if_mib` 模組（`snmp-build.py` 的 `IF_MIB_MODULE`，標準 OID，不需要 MIB 檔）走訪 `sysUpTime`、`sysName` 與 IF-MIB 的介面表（`ifAdminStatus`、`ifOperStatus`、錯誤、流量、速度，以 `ifName` 與 `ifAlias` 標記）。角色 `switch` 或 `ap` 且有 `snmp.auth` 的主機進 `switch-snmp` job，目標帶 `switch` label（主機名稱，或 `labels.switch`），告警見 [rules.md](rules.md) 的 network 一節。
+
 ## ops30_adapter_info
 
 既有指標不加 `vendor` label（加了會變成新序列，切換時 TSDB 斷開），改由 render 產出靜態的 `<textfile_dir>/30ops-adapters.prom`，每台主機每個 kind 一筆：
@@ -76,7 +93,7 @@ status:
 ops30_adapter_info{name="nas-primary",kind="nas",vendor="qnap",version="1",nas="primary"} 1
 ```
 
-最後一個 label 是該 kind 既有序列用來指主機的 label（nas 用 `nas`，hypervisor 用 `cluster`，firewall 用 `host`，os 用 `instance`），需要 vendor 時以它 join，例如 `nas_up * on (nas) group_left (vendor) ops30_adapter_info{kind="nas"}`。
+最後一個 label 是該 kind 既有序列用來指主機的 label（nas 用 `nas`，hypervisor 用 `cluster`，firewall 用 `host`，network 用 `switch`，os 用 `instance`），需要 vendor 時以它 join，例如 `nas_up * on (nas) group_left (vendor) ops30_adapter_info{kind="nas"}`。
 
 ## data 函式
 

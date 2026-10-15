@@ -38,6 +38,9 @@ Python 3.12 標準函式庫；只有讀寫 site.yaml 的 `yamlio` 需要 PyYAML�
 | `yamlio` | `load`、`loads`：SafeLoader，重複鍵報錯，日期保持字串；`dumps`：固定順序的 block style |
 | `site` | site.yaml：`load`、`validate(doc, base, strict, secrets)` 回傳 `(errors, warnings)`、`resolve` 補預設值，見 [site-yaml.md](site-yaml.md) |
 | `render` | `render(site, sha)` 回傳安裝路徑到 `Output` 的對照，`write(tree, out)`，見 [render.md](render.md) |
+| `plugins` | `plugins/*/plugin.yaml`：`available()`（只 glob，不需 PyYAML）、`meta`、`enabled(site)`、`fits(name, host)`、規則、門檻、抓取 job、安裝檔與 readiness 題目，見 [plugins.md](plugins.md)（v0.7） |
+| `promql` | Prometheus HTTP API 的唯讀查詢：`query(ops, expr, base)`、`targets(ops, base)`；doctor 與 readiness 共用（v0.7） |
+| `readiness` | `plan(site)`、`evaluate(plan, query, local)`、`report`、`textfile`、`exit_code`，見 [readiness.md](readiness.md)（v0.7） |
 | `legacy` | 舊佈局的語意比對 `compare(tree, root, site)`；`legacy_import.draft(root)` 從舊佈局草擬 site.yaml |
 | `cli` | `30ops` 指令：`validate`、`render`、`import-legacy`、`drill record`、`drill migrate` |
 

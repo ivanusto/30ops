@@ -1,14 +1,14 @@
 # 告警規則
 
-規則只有一份，放在 `collector/prometheus/rules/`。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`，Prometheus 只載入這個輸出。共 75 條告警。另有 render 由 adapter 狀態對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
+規則只有一份，放在 `collector/prometheus/rules/`；插件的規則放在插件自己的 `plugins/<名稱>/rules/`（[plugins.md](plugins.md)），只在有主機列出插件時載入。`30ops render` 讀這些檔案，代入場域的門檻後寫到 `/etc/30ops/prometheus/rules/`（插件的寫成 `plugin-<名稱>.yml`），Prometheus 只載入這個輸出。核心 68 條告警，gb10-ops 插件 7 條，範例場域共 75 條。另有 render 由 adapter 狀態與存在對照產生的 recording rule（`rules/status.yml`，見下方 nas 一節），不在這份目錄裡。
 
 - 告警名稱、等級與標籤是 Alertmanager 路由與抑制規則的依據（`collector/alertmanager/alertmanager.base.yml`），也是告警歷史的鍵，所以 v1 不改名。`NasPoolAbove80` 在門檻改成 85 之後仍叫這個名字。
-- 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。
-- 測試：`collector/tests/rules_*test.yml`，由 `scripts/test-rules.sh` 對 render 產出執行 `promtool check rules` 與 `promtool test rules`。
+- 等級的意思：`critical` 立即通知並每 2 小時重送，`warning` 合併 30 秒後通知，`info` 只進每日摘要。`none` 只有 `Watchdog`，只送 deadman（[install.md](install.md#deadman)）。
+- 測試：`collector/tests/rules_*test.yml` 與插件的 `plugins/<名稱>/tests/rules_*test.yml`，由 `scripts/test-rules.sh` 對 render 產出執行 `promtool check rules` 與 `promtool test rules`。
 
 ## 門檻
 
-規則裡可由場域調整的數字寫成 `${鍵}`，鍵與預設值定義在 `collector/prometheus/thresholds.yml`。場域在 `site.yaml` 覆寫：
+規則裡可由場域調整的數字寫成 `${鍵}`，鍵與預設值定義在 `collector/prometheus/thresholds.yml`，插件的在 `plugins/<名稱>/thresholds.yml`。場域在 `site.yaml` 覆寫：
 
 ```yaml
 alerting:
@@ -59,7 +59,6 @@ alerting:
 |---|---|---|---|
 | Watchdog | none | | 永遠在 firing。Alertmanager 每分鐘只送給 deadman 接收者（`site.yaml` 的 `alerting.deadman`），推送停了由收集端以外的 30ops-deadman 或外部檢查網址發告警。不會出現在一般接收者 |
 | TargetDown | warning | 5m | 某個 scrape 目標連不上。先看主機是否開機、node_exporter 或 exporter 是否在跑、防火牆是否擋住 |
-| Gb10TextfileStale | warning | 2m | gb10-textfile 超過 2 分鐘沒寫，檢查節點上的 timer |
 | NasTextfileStale | warning | 5m | nas-textfile 超過 10 分鐘沒寫，檢查收集端 cron 與到 NAS 的 SSH |
 | NasSnmpNoData | warning | 5m | SNMP 走訪回來不到 50 筆。通常是 NAS 要求的安全等級（authPriv）高於設定，走訪回傳空結果但 up 仍為 1 |
 | NasUnreachable | critical | 5m | 收集端無法以 SSH 讀取 NAS 的 zfs 資訊 |
@@ -69,7 +68,7 @@ alerting:
 
 ## 數值告警（thresholds.yml）
 
-### gb10（gb10-ops 插件，每 15 秒評估一次）
+### gb10（gb10-ops 插件，`plugins/gb10-ops/rules/gb10.yml`，每 15 秒評估一次）
 
 | 告警 | 等級 | 持續 | 門檻 | 意義與處置 |
 |---|---|---|---|---|
@@ -79,6 +78,7 @@ alerting:
 | Gb10MemAvailableCritical | critical | | `gb10_mem_crit_gib` | 可用記憶體低於防護動作線 |
 | Gb10NvErrNoMemory | critical | | | 10 分鐘內出現 NV_ERR_NO_MEMORY，統一記憶體耗盡，通常接著就是停擺 |
 | Gb10TextfileErrors | warning | 5m | | gb10-textfile 有來源讀取失敗 |
+| Gb10TextfileStale | warning | 2m | | gb10-textfile 超過 2 分鐘沒寫，檢查節點上的 timer（群組 `gb10-pipeline`，60 秒評估） |
 
 ### nas
 
@@ -96,11 +96,12 @@ alerting:
 | NasTelnetEnabled | warning | 10m | | Telnet 被打開，屬於強化設定回退 |
 | NasMemoryFragmented | warning | 10m | | 帶 GPU 的 NAS，Normal zone 6 小時內都沒有 512 KiB 以上的空閒區塊；GPU 容器可能無法啟動，在空檔重開 NAS |
 
-狀態字串（NasDiskNotGood、NasPoolStatusNotReady、NasUpsNotOnline、NasTelnetEnabled）先由 qnap adapter 正規化，告警只比對結果：
+狀態字串（NasDiskNotGood、NasPoolStatusNotReady、NasUpsNotOnline、NasTelnetEnabled）與 UPS 是否存在（NasUpsAbsent）先由 qnap adapter 正規化，告警只比對結果：
 
 - `adapters/nas/qnap/adapter.yaml` 的 `status:` 列出哪些字串算健康，值取自 QuTS hero 6.0.2 的第一次 walk：硬碟 `Good`（不分大小寫）、儲存池 `ready`、UPS `online` 開頭或 `-1`（沒接 UPS）。
 - render 把每一項轉成 `rules/status.yml` 的 recording rule `nas:<metric>:ok`，健康為 1、其他為 0，保留來源序列的所有 label（含狀態字串），所以告警的 label 與 annotation 不變。告警是 `nas:<metric>:ok == 0`。
 - 硬碟、儲存池、UPS 是 fail closed：沒見過的字串會觸發告警，這是刻意的設計。Telnet 是 fail open：只有 `yes` 會觸發。
+- `presence:` 宣告「設備存在與否」：UPS 回 `-1` 為不存在，render 寫成 `nas:ups:present`（不帶廠商名稱，日後 NUT 可共用），`NasUpsAbsent` 讀它，並以 `unless on (nas) ops30_ups_none == 1` 略過 `site.yaml` 寫了 `ups: none` 的 NAS。
 - 換韌體或換廠商時只改 adapter.yaml 的對照，規則不動。recording rule 與告警在不同群組，告警最多晚一個評估間隔（60 秒）看到結果。
 
 ### pve

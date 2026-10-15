@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.7.0（2026-10-15）
+
+- `30ops readiness [--site | --plan] [--prometheus URL] [--format text|md|json] [--textfile] [--no-local] [--strict]`：依 `checks/readiness/checklist.yaml`（由系列索引的 `lab/checklist.md` 改寫，四類 30 題）與插件的題目，回答一個場域的維運現況。每題以 promql、builtin、site、local（doctor 的檢查）或 manual 判定為是、否、未知，`site.yaml` 新的 `readiness.accept` 寫了理由的改列明示接受，`readiness.answers` 給人工題證據。PromQL 只用 30ops 之前的收集端就有的序列，所以也能對舊收集端執行。render 寫 `etc/30ops/readiness.json`（計畫），收集端 cron 每 15 分鐘以它寫 `readiness.prom`（`readiness_item`、`readiness_items`），新告警 `ReadinessTextfileStale`。見 `docs/readiness.md`。
+- 收集端 deadman：新規則 `Watchdog`（永遠 firing、等級 none），Alertmanager 路由第一條每分鐘只送 `deadman` 接收者。新角色 `deadman` 與 `alerting.deadman`（`host`、`healthchecks`、`port`、`after_s`、`email`、`webhook`）。`collector/deadman/30ops-deadman.py`（標準函式庫、節點端）收推送，`after_s` 沒收到就寄信與送 webhook（Alertmanager 格式的 `CollectorSilent`），每 6 小時提醒、恢復時通知，`/metrics` 供 `deadman` 抓取 job。`install node` 為 deadman 主機裝它與 systemd 單元（DynamicUser、LoadCredential），SMTP 密碼經 ssh 送達。外部檢查網址以 compose secret `deadman_url` 與 webhook 的 `url_file` 讀取。CI 以 `amtool config routes test` 確認 Watchdog 只到 deadman。
+- 交換器與基地台：`snmp.yml` 加標準的 `if_mib` 模組（`snmp-build.py` 的 `IF_MIB_MODULE`），角色 `switch`、`ap` 且有 `snmp.auth` 的主機進 `switch-snmp` job（帶 `switch` label），compose 的 snmp profile 隨之啟用。新告警 `SwitchDown`（critical，抑制同目標的 TargetDown）、`SwitchSnmpNoData`、`SwitchInterfaceDown`（已啟用、7 天內曾經 up、現在 down 的埠）。generic-snmp 的 interfaces 與 uptime 改為已實作，sensors 留到 v1.x。
+- UPS：qnap adapter 的新 `presence:` 把 `qnap_ups_status` 為 `-1` 記成沒接 UPS（`nas:ups:present`），新告警 `NasUpsAbsent`（info，1 小時）；NAS 主機寫 `ups: none` 時以 `30ops-adapters.prom` 的 `ops30_ups_none` 略過，readiness 列為明示接受。
+- journald：vendor 為 linux 或 pve、角色含 node、qdevice、hypervisor 或 deadman 的主機預設加上 journal 角色，`journal: false` 可關，收集端不預設。
+- 變更單選填 `effort_min`（整數分鐘，`check.py` 驗證），`changes-textfile.py` 新增 `change_effort_minutes{id}`，既有 family 不變。
+- 插件契約：每個插件的 `plugin.yaml` 宣告名稱、版本、授權、可裝的角色與廠商、安裝檔（`install.sh` 為唯一 hook）、textfile、抓取 job、規則、門檻、儀表板列與 readiness 題目；`site.PLUGINS` 改由目錄探索，主機列了插件卻沒有對應角色或廠商時 validate 報錯。gb10-ops 的規則、門檻、儀表板列、抓取 job、gb10-textfile 與 systemd 單元都移進 `plugins/gb10-ops/`，render 只在有主機列出時加入（`rules/plugin-gb10-ops.yml`）；範例與現場場域的規則語意、`prometheus.yml` 與儀表板不變，`Gb10TextfileStale` 移到 60 秒評估的 `gb10-pipeline` 群組。`node-install.sh` 先裝 node_exporter，再逐一執行插件的 `install.sh`；`install-node.sh` 不再有 gb10 模式。spark-baseline 與 nfs-model-library 也有 hook。check-drift 把 `plugins/*/rules/` 認作第二個合法的規則來源。見 `docs/plugins.md`。
+- `render --compare-legacy`：30ops 刻意新增的項目（deadman 與 switch-snmp job、deadman 接收者與路由、SwitchDown 的抑制、readiness 的 cron 行、預設送 journal 的主機）改為 `note:`，不算差異。現場快照仍為 0 個差異。
+- `lib/python/ops30/promql.py`：doctor 與 readiness 共用的 Prometheus 查詢，可指定位址。
+- 範例場域：QDevice VM 兼 deadman 主機（改用 IP）、核心交換器 `sw-core`、兩台 NAS 的 `ups: none`、readiness 的接受與答案範例。e2e：第二個 snmpd 代交換器，deadman 以 bundle 安裝並在 namespace 內執行，`check.py deadman` 與 `check.py readiness`（逐題比對狀態）；同一分鐘與 cron 撞鎖時 job 重試。
+- 修正：compose-smoke 不再寫死 69 條規則；`legacy.compare` 讀檔不留下未關閉的檔案。
+- 告警：核心 68 條加 gb10-ops 7 條，範例場域 75 條（新增 Watchdog、NasUpsAbsent、SwitchDown、SwitchSnmpNoData、SwitchInterfaceDown、ReadinessTextfileStale）。
+
 ## v0.6.0（2026-10-14）
 
 - 端到端測試 `tests/e2e/run.sh`：在拋棄式 Ubuntu 24.04 主機上，把這個 commit 的 release tarball 裝成 `tests/e2e/site.yaml` 的收集端，再以 network namespace 裡的假 LAN 代替設備（`tests/e2e/fakes/`）：sshd 代 NAS（假 zpool、zfs、getcfg）與 PVE 的 `pvecm status`，snmpd 加 pass_persist 以 `snmp.yml` 合成的 QNAP OID 回應 SNMPv3，`httpfakes.py` 代 PVE API、FortiGate API 與告警的 webhook 收件端，主機上的 NFS 匯出代 WORM 資料夾。驗證項目：第二次 install 0 個變更；每個 target up、`expected-metrics.txt` 的名稱都在、規則全數載入；pool 轉 DEGRADED 後 `NasPoolNotOnline` 經 Alertmanager 送到 webhook；syslog、FortiGate 事件日誌與 journald 進 VictoriaLogs，不在允許清單的來源被 DOCKER-USER 丟棄並留下 DROP 紀錄；前一天封存到 NFS 並通過 `verify-archive.sh --against-live`；doctor 無 fail；容器合計低於 3 GiB。見 `docs/e2e.md`。

@@ -164,7 +164,13 @@ for user, env, cmd, tf in textfile_jobs(open("/etc/cron.d/30ops").read()):
 else:
     sys.exit(f"no cron job writes {sys.argv[1]}")
 PYEOF
-  sh "$OUT/job.sh" || fail "the job for $1 failed"
+  # cron runs the same job every minute and the textfile commands take a
+  # lock ("the previous run is still going"): try again after it is done
+  n=0
+  until sh "$OUT/job.sh"; do
+    n=$((n + 1)); [ "$n" -lt 4 ] || fail "the job for $1 failed"
+    sleep 10
+  done
 }
 job nas.prom
 job pve-quorum.prom
