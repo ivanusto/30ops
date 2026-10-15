@@ -1,0 +1,8 @@
+# The plugin contract (docs/plugins.md).
+plugin: 1
+name: spark-baseline
+version: 1
+license: Apache-2.0
+summary: Plain-text state snapshots of a GPU node and an SSH hardening drop-in that refuses to lock you out
+roles: [node]
+vendors: [linux]

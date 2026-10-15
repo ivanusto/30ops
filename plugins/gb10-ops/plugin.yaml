@@ -1,0 +1,10 @@
+# The plugin contract (docs/plugins.md). Every key below is read by 30ops;
+# tests/unit/test_plugins.py checks the file against the directory.
+plugin: 1
+name: gb10-ops
+version: 1
+license: Apache-2.0
+summary: Thermal soak and unified memory guards for NVIDIA DGX Spark (GB10) nodes, with their metrics
+# a host may list the plugin when it has one of these roles and this vendor
+roles: [node]
+vendors: [linux]

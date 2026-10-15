@@ -12,7 +12,7 @@ import os
 import re
 import zoneinfo
 
-from . import yamlio
+from . import plugins, yamlio
 from .adapters import registry, schema
 
 VERSION = 1
@@ -22,7 +22,7 @@ ROLES = ("collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas",
          "firewall", "audit-source", "webfilter", "admin", "switch", "ap")
 # roles that need a vendor, because something on the collector talks to the host
 MANAGED = {"collector", "node", "journal", "pcap", "hypervisor", "qdevice", "nas", "firewall", "switch", "ap"}
-PLUGINS = ("gb10-ops", "spark-baseline", "nfs-model-library")
+PLUGINS = plugins.available()   # plugins/*/plugin.yaml
 SNMP_AUTH = ("MD5", "SHA", "SHA224", "SHA256", "SHA384", "SHA512")
 SNMP_PRIV = ("DES", "AES", "AES192", "AES256", "AES192C", "AES256C")
 SNMP_LEVEL = ("noAuthNoPriv", "authNoPriv", "authPriv")
@@ -311,6 +311,9 @@ def _cross(doc, base, secrets, errs, warns):
             errs.append(f"{p}.ssh is required for the quorum check (pve.cluster is set)")
         if roles & {"webfilter", "audit-source"} and not h.get("syslog"):
             errs.append(f"{p}.syslog.devname is required for roles webfilter and audit-source")
+        for j, pl in enumerate(h.get("plugins") or []) if isinstance(h.get("plugins"), list) else ():
+            if pl in PLUGINS and (why := plugins.fits(pl, h)):
+                errs.append(f"{p}.plugins[{j}]: {why}")
         if isinstance(h.get("snmp"), dict):
             auths = ((doc.get("snmp") or {}).get("auths") or {})
             if h["snmp"].get("auth") not in auths:

@@ -1,0 +1,8 @@
+# The plugin contract (docs/plugins.md).
+plugin: 1
+name: nfs-model-library
+version: 1
+license: Apache-2.0
+summary: One model library on a NAS share, one writer, every file with a checksum and a source
+roles: [node]
+vendors: [linux]
