@@ -14,6 +14,7 @@ window_start:
 window_end: 
 silence: 
 tags: 
+effort_min: 
 ---
 
 ## 目的

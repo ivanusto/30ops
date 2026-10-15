@@ -102,6 +102,14 @@ class Check(unittest.TestCase):
         e = self.errs("CR-2026-0001-x.md", variant(self.text, agent="agent:Ops Bot"))
         self.assertTrue(any("is not agent:<name>" in x for x in e), e)
 
+    def test_effort_min(self):
+        self.assertEqual(self.errs("CR-2026-0001-x.md", variant(self.text, effort_min="0")), [])
+        self.assertEqual(self.errs("CR-2026-0001-x.md", variant(self.text, effort_min=None)), [])
+        self.assertEqual(self.errs("CR-2026-0001-x.md", variant(self.text, effort_min="")), [])
+        for bad in ("-5", "1.5", "90m", "an hour"):
+            e = self.errs("CR-2026-0001-x.md", variant(self.text, effort_min=bad))
+            self.assertTrue(any("is not a whole number of minutes" in x for x in e), (bad, e))
+
     def test_window_rules(self):
         t = variant(self.text, window_end="2026-10-11T21:00:00+08:00")
         self.assertTrue(any("window_end is not after" in x for x in self.errs("CR-2026-0001-x.md", t)))

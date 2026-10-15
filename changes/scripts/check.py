@@ -23,6 +23,9 @@ Rules, in the order they are reported
   agent     optional (Day 29): the agents that may work under this record
             through onprem-agent-gate, each `agent:<name>`; the gate denies
             any call whose record does not name its principal here
+  effort    optional (v0.7): effort_min, the staff minutes the change took
+            (preparation, the window and the follow-up), a whole number;
+            changes-textfile turns it into change_effort_minutes
 
 Exit 0 when every file passes, 1 otherwise. The CI runs it on every push;
 the GitHub branch protection (one review, not by the author) is what makes
@@ -109,6 +112,9 @@ def check_file(path, assets=None):
             errs.append(f"{name}: status {status} needs window_start and window_end as RFC 3339 with an offset")
         elif we <= ws:
             errs.append(f"{name}: window_end is not after window_start")
+    effort = str(meta.get("effort_min", "")).strip()
+    if effort and not re.fullmatch(r"\d+", effort):
+        errs.append(f"{name}: effort_min {effort!r} is not a whole number of minutes")
     agents = meta.get("agent", "")
     agents = agents if isinstance(agents, list) else [a.strip() for a in str(agents).split(",") if a.strip()]
     for a in agents:

@@ -21,6 +21,7 @@ Metrics
     change_rollback_last_drill_timestamp{id}                      unix time of the last rollback drill of this record
     change_rollback_last_drill_result{id}                         1 OK, 0 FAIL
     change_rollback_drills_total{id}                              rollback drills recorded for this record
+    change_effort_minutes{id}                                     staff minutes, for records with effort_min (v0.7)
     changes_textfile_last_run_timestamp
 """
 import argparse
@@ -94,6 +95,11 @@ def render(files, now, drills=None):
     for of, (_, _, n) in sorted(drills.items()):
         if of in ids:
             L.append(f'change_rollback_drills_total{{id="{esc(of)}"}} {n}')
+    textfile.family(L, "change_effort_minutes", "Staff minutes recorded in the change record (effort_min)")
+    for m in recs:
+        e = str(m.get("effort_min", "")).strip()
+        if e.isdigit():
+            L.append(f'change_effort_minutes{{id="{esc(m["id"])}"}} {int(e)}')
     textfile.family(L, "changes_textfile_last_run_timestamp", "Unix time of the last changes-textfile run")
     L.append(f"changes_textfile_last_run_timestamp {int(now)}")
     return "\n".join(L) + "\n"

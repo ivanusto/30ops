@@ -14,6 +14,7 @@ window_start: 2026-10-11T22:00:00+08:00
 window_end: 2026-10-11T23:00:00+08:00
 silence: alertname=PveQdeviceAbsent
 tags: pve, qdevice, debian, eol
+effort_min: 90
 ---
 
 ## 目的

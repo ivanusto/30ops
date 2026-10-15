@@ -25,6 +25,9 @@ change_rollback_last_drill_result{id="CR-2026-0001"} 1
 # HELP change_rollback_drills_total Rollback drills recorded for this record
 # TYPE change_rollback_drills_total counter
 change_rollback_drills_total{id="CR-2026-0001"} 2
+# HELP change_effort_minutes Staff minutes recorded in the change record (effort_min)
+# TYPE change_effort_minutes gauge
+change_effort_minutes{id="CR-2026-0001"} 90
 # HELP changes_textfile_last_run_timestamp Unix time of the last changes-textfile run
 # TYPE changes_textfile_last_run_timestamp gauge
 changes_textfile_last_run_timestamp X
