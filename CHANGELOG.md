@@ -1,5 +1,9 @@
 # Changelog
 
+## 未發行
+
+- `logs/behavior/`：行為偵測。`events.py`（Zeek、FortiGate、Windows 安全事件、VictoriaLogs 讀成一種事件結構）、`pseudonymize.py`（HMAC 假名、前綴保留的位址、三個等級、金鑰在 repo 外、`--vault` 給保管人）、`summarize.py`（每使用者日 25 個計數、對本人或同職務或全站基線的 z、新實體、規則分數、中文摘要）、`detect.py`（小模型初篩全部、大模型只讀被標記的，Ollama 或規則後端，hash 鏈與 `verify`，run manifest 記模型、提示與輸入的 sha256）、`evaluate.py`（對注入排程表的 Precision、Recall、F1、每使用者日偽陽性率與 bootstrap 95% 區間、六類情境、兩段放行、三層延遲，Markdown、json、`behavior.prom`）、`synth.py`（40 人 35 天的合成場域，四個難例，六類情境各 5 次注入）、`run.sh`。`tests/smoke-behavior.sh` 與 `tests/test_behavior.py` 不用模型與 VictoriaLogs。見 `logs/behavior/README.md`。
+
 ## v0.7.0（2026-10-15）
 
 - `30ops readiness [--site | --plan] [--prometheus URL] [--format text|md|json] [--textfile] [--no-local] [--strict]`：依 `checks/readiness/checklist.yaml`（由系列索引的 `lab/checklist.md` 改寫，四類 30 題）與插件的題目，回答一個場域的維運現況。每題以 promql、builtin、site、local（doctor 的檢查）或 manual 判定為是、否、未知，`site.yaml` 新的 `readiness.accept` 寫了理由的改列明示接受，`readiness.answers` 給人工題證據。PromQL 只用 30ops 之前的收集端就有的序列，所以也能對舊收集端執行。render 寫 `etc/30ops/readiness.json`（計畫），收集端 cron 每 15 分鐘以它寫 `readiness.prom`（`readiness_item`、`readiness_items`），新告警 `ReadinessTextfileStale`。見 `docs/readiness.md`。

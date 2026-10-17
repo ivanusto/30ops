@@ -27,6 +27,7 @@
 | `tests/smoke-aup.sh` | CI 與本機 | fixture 上線上等於離線、檔案對帳（行數 = 解析 + 略過）、webfilter 以外的行不計、textfile 寫出每個緊急類別且沉默的 FortiGate 寫 0、沒有時間的行被載入器略過並成為唯一的差異 |
 | `audit/audit-report.py`、`audit/ignore.txt`、`audit/queries.md` | 收集端，cron 每 10 分鐘與每週一 08:45 | Day 27。管線裡早就有的每一種管理動作（FortiGate 設定變更與管理員登入、Proxmox 任務、sudo 與 SSH 登入、QuLog 事件，Day 29 起加上 [onprem-agent-gate](https://github.com/ivanusto/onprem-agent-gate) 的每一個決定）對 onprem-changes clone 裡的變更窗。有單子的、沒單子的、被 `ignore.txt` 排除的、窗內沒有 change 標記的已完成單子。Markdown 給人看，`audit.prom` 給 `collector/prometheus/rules/audit.yml` |
 | `audit/fortigate-syslogd3.md` | FortiGate、收集端 | FortiGate 的事件日誌走自己的 syslog 目的地到 515，收集端第二個監聽器加 `audit="fortigate"`，事件成為獨立的串流與封存來源（`audit-<設備名稱>`），traffic 照舊不進 WORM |
+| `behavior/` | 收集端或推論節點 | 行為偵測。`events.py` 把 Zeek、FortiGate、Windows 安全事件匯出與 VictoriaLogs 讀成一種事件結構；`pseudonymize.py` 把帳號、主機、共享區換成帶金鑰的 HMAC 假名、位址保留前綴改寫、名稱與路徑截短、時間取整（三個等級，金鑰由別人保管）；`summarize.py` 把一個人一天的事變成計數、對本人基線的 z 與一段短文；`detect.py` 用小模型讀每個使用者日、大模型只讀被標記的（Ollama，或 CI 用的規則後端），每個判讀接進 hash 鏈；`evaluate.py` 對注入排程表算 Precision、Recall、F1、每使用者日偽陽性率與 bootstrap 區間、六類情境、兩段、三層延遲，Markdown、json 與 `behavior.prom`。`synth.py` 是帶六類注入的合成場域，沒有場域資料也能跑完整條路（[behavior/README.md](behavior/README.md)） |
 | `tests/smoke-audit.sh` | CI 與本機 | 兩個監聽器、每種動作各一行、三張假變更單。歸因、忽略清單、缺標記、textfile，以及封存把 `audit-*` 當獨立來源匯出而 traffic 被跳過 |
 
 ## 為什麼不是 Graylog、Loki 或只用 QuLog Center
@@ -59,6 +60,7 @@ sh tests/smoke-firewall.sh
 sh tests/smoke-pcap.sh                                 # root 時會在 lo 真抓一次，SMOKE_PCAP_REAL=0 可略過
 sh tests/smoke-aup.sh                                  # 跟 smoke.sh 一樣要 VLBIN 或 docker
 sh tests/smoke-audit.sh
+sh tests/smoke-behavior.sh && python3 -m unittest tests/test_behavior.py
 ```
 
 ## 授權

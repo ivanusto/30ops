@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""events: the one event shape the behaviour pipeline reads, and the loaders
+that produce it from what a site already has.
+
+    events.py probe --from-jsonl events.jsonl
+    events.py load  --zeek conn.log --zeek files.log --fortigate fgt.log --winsec sec.jsonl --out events.jsonl
+    events.py load  --vl http://127.0.0.1:9428 --window 7d --fw-host fgt-edge --out events.jsonl
+
+One line per event, JSON, UTF-8. Keys that every kind carries:
+
+    ts        RFC 3339, UTC
+    kind      net.conn | net.file | auth.logon | file.access | print.job | usb.attach | fw.utm
+    user      account the action is attributed to ("" when the source has none)
+    src_host  workstation or server the action came from
+    source    zeek | fortigate | ad | speslog | print | endpoint | synth
+
+Per kind (absent keys mean "the source did not say"):
+
+    net.conn    dst, dst_name, dst_port, proto, service, bytes_out, bytes_in, duration_s, category, action
+    net.file    dst, dst_name, filename, bytes, direction (up|down)
+    auth.logon  dst (the host logged on to), logon_type, result (success|failure), method
+    file.access dst (file server), share, path, action (read|write|delete|rename|copy), bytes
+    print.job   dst (print server), pages, filename
+    usb.attach  device
+    fw.utm      dst, dst_name, category, app, action (allow|block)
+
+Hostnames and addresses are the site's real ones at this stage; pseudonymize.py
+is the next step and nothing after it sees these files.
+
+Standard library only.
+"""
+import argparse, collections, json, os, re, sys, urllib.parse, urllib.request
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
+from ops30 import rfc3339  # noqa: E402
+
+KINDS = ("net.conn", "net.file", "auth.logon", "file.access", "print.job", "usb.attach", "fw.utm")
+REQUIRED = ("ts", "kind", "user", "src_host", "source")
+
+# ------------------------------------------------------------------ helpers
+
+def read_lines(path):
+    with open(path, encoding="utf-8", errors="replace") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if line:
+                yield line
+
+
+def write_jsonl(path, events):
+    n = 0
+    out = sys.stdout if path in (None, "-") else open(path, "w", encoding="utf-8")
+    try:
+        for e in events:
+            out.write(json.dumps(e, ensure_ascii=False, separators=(",", ":")) + "\n")
+            n += 1
+    finally:
+        if out is not sys.stdout:
+            out.close()
+    return n
+
+
+def epoch_to_ts(x):
+    try:
+        return rfc3339.from_epoch(int(float(x)))
+    except (TypeError, ValueError):
+        return None
+
+
+def valid(e):
+    """A loader's output must carry the common keys and a known kind."""
+    return all(k in e for k in REQUIRED) and e["kind"] in KINDS and rfc3339.parse(e["ts"]) is not None
+
+
+def check(events):
+    bad = 0
+    for e in events:
+        if not valid(e):
+            bad += 1
+        else:
+            yield e
+    if bad:
+        print(f"events: {bad} line(s) dropped, missing keys or bad time", file=sys.stderr)
+
+
+# ------------------------------------------------------------------ jsonl
+
+def from_jsonl(path):
+    for line in read_lines(path):
+        try:
+            yield json.loads(line)
+        except ValueError:
+            continue
+
+
+# ------------------------------------------------------------------ zeek
+# conn.log and files.log, TSV with the #fields header or JSON lines
+# (LogAscii::use_json=T). Zeek has no user; the site joins user to source
+# address through its logon events, summarize.py does that join.
+
+ZEEK_SERVICE_PORT = {"ssl": 443, "http": 80, "dns": 53, "smb": 445, "rdp": 3389, "ssh": 22}
+
+
+def zeek_rows(path):
+    fields = None
+    for line in read_lines(path):
+        if line.startswith("{"):
+            try:
+                yield json.loads(line)
+            except ValueError:
+                continue
+            continue
+        if line.startswith("#fields"):
+            fields = line.split("\t")[1:]
+            continue
+        if line.startswith("#") or fields is None:
+            continue
+        cols = line.split("\t")
+        yield {k: (None if v == "-" else v) for k, v in zip(fields, cols)}
+
+
+def num(x, default=0):
+    try:
+        return int(float(x))
+    except (TypeError, ValueError):
+        return default
+
+
+def from_zeek(path):
+    for r in zeek_rows(path):
+        ts = epoch_to_ts(r.get("ts"))
+        if ts is None:
+            continue
+        if "id.orig_h" in r and "orig_bytes" in r:          # conn.log
+            yield {"ts": ts, "kind": "net.conn", "user": "", "src_host": r.get("id.orig_h", ""),
+                   "src_ip": r.get("id.orig_h", ""), "dst": r.get("id.resp_h", ""), "dst_port": num(r.get("id.resp_p")),
+                   "proto": (r.get("proto") or "").lower(), "service": r.get("service") or "",
+                   "bytes_out": num(r.get("orig_bytes")), "bytes_in": num(r.get("resp_bytes")),
+                   "duration_s": num(r.get("duration")), "source": "zeek"}
+        elif "fuid" in r:                                     # files.log
+            src = (r.get("tx_hosts") or [""])[0] if isinstance(r.get("tx_hosts"), list) else (r.get("tx_hosts") or "").split(",")[0]
+            dst = (r.get("rx_hosts") or [""])[0] if isinstance(r.get("rx_hosts"), list) else (r.get("rx_hosts") or "").split(",")[0]
+            yield {"ts": ts, "kind": "net.file", "user": "", "src_host": src, "src_ip": src, "dst": dst,
+                   "filename": r.get("filename") or "", "bytes": num(r.get("total_bytes") or r.get("seen_bytes")),
+                   "direction": "up" if r.get("is_orig") in (True, "T") else "down", "source": "zeek"}
+
+
+# ------------------------------------------------------------------ fortigate
+# syslog key=value lines: traffic (forward), utm (webfilter, app-ctrl) and
+# event/vpn logins. The same lines whether read from a file or VictoriaLogs.
+
+LOGFMT = re.compile(r'(\w+)=("([^"\\]|\\.)*"|\S+)')
+
+
+def logfmt(line):
+    d = {}
+    for m in LOGFMT.finditer(line):
+        v = m.group(2)
+        if v.startswith('"') and v.endswith('"'):
+            v = v[1:-1]
+        d[m.group(1)] = v
+    return d
+
+
+def fgt_ts(d):
+    if d.get("eventtime"):                      # nanoseconds since epoch on 6.2 and later
+        t = d["eventtime"]
+        return epoch_to_ts(int(t) / 1e9 if len(t) > 12 else t)
+    if d.get("date") and d.get("time"):
+        tz = d.get("tz", "+0000")
+        return rfc3339.format(rfc3339.parse(f"{d['date']}T{d['time']}{tz[:3]}:{tz[3:]}")) if rfc3339.parse(f"{d['date']}T{d['time']}{tz[:3]}:{tz[3:]}") else None
+    return None
+
+
+def from_fortigate_lines(lines):
+    for line in lines:
+        d = logfmt(line)
+        ts = fgt_ts(d)
+        if ts is None or "type" not in d:
+            continue
+        user = d.get("user") or d.get("unauthuser") or ""
+        src = d.get("srcname") or d.get("srcip") or ""
+        base = {"ts": ts, "user": user, "src_host": src, "src_ip": d.get("srcip", ""), "source": "fortigate"}
+        if d["type"] == "traffic":
+            yield {**base, "kind": "net.conn", "dst": d.get("dstip", ""), "dst_name": d.get("hostname") or d.get("dstname") or "",
+                   "dst_port": num(d.get("dstport")), "proto": {"6": "tcp", "17": "udp"}.get(d.get("proto"), d.get("proto", "")),
+                   "service": (d.get("service") or "").lower(), "bytes_out": num(d.get("sentbyte")), "bytes_in": num(d.get("rcvdbyte")),
+                   "duration_s": num(d.get("duration")), "category": d.get("catdesc", ""), "action": d.get("action", "")}
+        elif d["type"] == "utm":
+            yield {**base, "kind": "fw.utm", "dst": d.get("dstip", ""), "dst_name": d.get("hostname") or d.get("url", "").split("/")[0],
+                   "category": d.get("catdesc") or d.get("appcat", ""), "app": d.get("app", ""),
+                   "action": "block" if d.get("action") in ("blocked", "block", "deny") else "allow"}
+        elif d["type"] == "event" and d.get("subtype") in ("vpn", "user"):
+            if d.get("action") in ("tunnel-up", "ssl-login-fail", "auth-logon", "ssl-new-con") or d.get("logdesc", "").lower().find("login") >= 0:
+                ok = d.get("result", d.get("status", "")) in ("OK", "success", "")  and "fail" not in d.get("action", "")
+                yield {**base, "kind": "auth.logon", "dst": d.get("devname", "vpn"), "logon_type": "vpn",
+                       "result": "success" if ok else "failure", "method": d.get("tunneltype", "vpn")}
+
+
+def from_fortigate(path):
+    return from_fortigate_lines(read_lines(path))
+
+
+# ------------------------------------------------------------------ windows security (speslog export)
+# One JSON object per line with at least EventID, TimeCreated and the
+# EventData the site's collector flattened. Keys differ by exporter, so
+# every lookup tries the common spellings.
+
+def pick(d, *names, default=""):
+    for n in names:
+        if n in d and d[n] not in (None, ""):
+            return d[n]
+        ed = d.get("EventData") or d.get("event_data") or {}
+        if isinstance(ed, dict) and n in ed and ed[n] not in (None, ""):
+            return ed[n]
+    return default
+
+
+def from_winsec(path):
+    for line in read_lines(path):
+        try:
+            d = json.loads(line)
+        except ValueError:
+            continue
+        eid = str(pick(d, "EventID", "event_id", "winlog.event_id"))
+        t = pick(d, "TimeCreated", "@timestamp", "timestamp", "ts")
+        ts = rfc3339.format(rfc3339.parse(t)) if rfc3339.parse(str(t)) else epoch_to_ts(t)
+        if ts is None:
+            continue
+        host = pick(d, "Computer", "computer_name", "host")
+        user = pick(d, "TargetUserName", "SubjectUserName", "user")
+        if eid in ("4624", "4625"):
+            yield {"ts": ts, "kind": "auth.logon", "user": user, "src_host": pick(d, "WorkstationName", "IpAddress") or host,
+                   "src_ip": pick(d, "IpAddress"), "dst": host, "logon_type": num(pick(d, "LogonType"), 0),
+                   "result": "success" if eid == "4624" else "failure", "method": pick(d, "AuthenticationPackageName"), "source": "ad"}
+        elif eid in ("5145", "4663"):
+            path_ = pick(d, "RelativeTargetName", "ObjectName")
+            yield {"ts": ts, "kind": "file.access", "user": user, "src_host": pick(d, "IpAddress") or host, "dst": host,
+                   "share": pick(d, "ShareName"), "path": path_,
+                   "action": "write" if re.search(r"Write|Add|%%4417|%%4418", str(pick(d, "AccessMask", "AccessList"))) else
+                             ("delete" if re.search(r"DELETE|%%1537", str(pick(d, "AccessMask", "AccessList"))) else "read"),
+                   "bytes": num(pick(d, "Bytes", "bytes"), 0), "source": "speslog"}
+        elif eid in ("307",):                                   # PrintService operational: document printed
+            yield {"ts": ts, "kind": "print.job", "user": user, "src_host": pick(d, "Param4", "ClientMachine") or host, "dst": host,
+                   "pages": num(pick(d, "Param8", "Pages"), 0), "filename": pick(d, "Param2", "Document"), "source": "print"}
+        elif eid in ("6416", "2003", "2100"):                   # PnP new device / DriverFrameworks-UserMode
+            yield {"ts": ts, "kind": "usb.attach", "user": user, "src_host": host,
+                   "device": pick(d, "DeviceDescription", "ClassName", default="usb"), "source": "endpoint"}
+
+
+# ------------------------------------------------------------------ VictoriaLogs
+
+def vl_query(vl, query, limit):
+    data = urllib.parse.urlencode({"query": query, "limit": str(limit)}).encode()
+    with urllib.request.urlopen(urllib.request.Request(vl.rstrip("/") + "/select/logsql/query", data=data), timeout=120) as r:
+        for line in r.read().decode("utf-8", "replace").splitlines():
+            if line.strip():
+                try:
+                    yield json.loads(line)
+                except ValueError:
+                    continue
+
+
+def from_vl(vl, window, fw_host, limit):
+    """FortiGate traffic and utm from the 514 listener, SSH logins and
+    failures from journald. The same shapes audit-report.py reads."""
+    fw = f'hostname:={fw_host} ' if fw_host else ""
+    for r in vl_query(vl, f'_time:{window} {fw}("type=\\"traffic\\"" OR "type=\\"utm\\"" OR "subtype=\\"vpn\\"")', limit):
+        for e in from_fortigate_lines([r.get("_msg", "")]):
+            yield e
+    for r in vl_query(vl, f'_time:{window} SYSLOG_IDENTIFIER:in(sshd, sshd-session) ("Accepted " OR "Failed password")', limit):
+        m = re.search(r"(Accepted|Failed) (\S+) for (?:invalid user )?(\S+) from (\S+)", r.get("_msg", ""))
+        ts = rfc3339.format(rfc3339.parse(r.get("_time", ""))) if rfc3339.parse(r.get("_time", "")) else None
+        if not m or ts is None:
+            continue
+        yield {"ts": ts, "kind": "auth.logon", "user": m.group(3), "src_host": m.group(4), "src_ip": m.group(4),
+               "dst": r.get("_HOSTNAME", r.get("hostname", "")), "logon_type": "ssh",
+               "result": "success" if m.group(1) == "Accepted" else "failure", "method": m.group(2), "source": "ad"}
+
+
+# ------------------------------------------------------------------ cli
+
+def probe(events):
+    by = collections.Counter(); users = set(); lo = hi = None
+    for e in events:
+        by[(e["kind"], e["source"])] += 1
+        if e.get("user"):
+            users.add(e["user"])
+        lo = e["ts"] if lo is None or e["ts"] < lo else lo
+        hi = e["ts"] if hi is None or e["ts"] > hi else hi
+    print(f"{sum(by.values())} events, {len(users)} users, {lo} to {hi}")
+    for (k, s), n in sorted(by.items()):
+        print(f"  {k:12s} {s:10s} {n}")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    for name in ("load", "probe"):
+        p = sub.add_parser(name)
+        p.add_argument("--from-jsonl", action="append", default=[])
+        p.add_argument("--zeek", action="append", default=[])
+        p.add_argument("--fortigate", action="append", default=[])
+        p.add_argument("--winsec", action="append", default=[])
+        p.add_argument("--vl"); p.add_argument("--window", default="7d"); p.add_argument("--fw-host", default="")
+        p.add_argument("--limit", type=int, default=500000)
+        p.add_argument("--out", default="-")
+    a = ap.parse_args()
+
+    def gen():
+        for p in a.from_jsonl:
+            yield from from_jsonl(p)
+        for p in a.zeek:
+            yield from from_zeek(p)
+        for p in a.fortigate:
+            yield from from_fortigate(p)
+        for p in a.winsec:
+            yield from from_winsec(p)
+        if a.vl:
+            yield from from_vl(a.vl, a.window, a.fw_host, a.limit)
+
+    events = sorted(check(gen()), key=lambda e: e["ts"])
+    if a.cmd == "probe":
+        probe(events)
+    else:
+        n = write_jsonl(a.out, events)
+        if a.out != "-":
+            print(f"wrote {n} events to {a.out}")
+
+
+if __name__ == "__main__":
+    main()

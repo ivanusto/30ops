@@ -101,8 +101,11 @@ jobs:
         working-directory: logs
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - run: shellcheck -s sh archive/*.sh node/*.sh collector/*.sh firewall/*.sh pcap/*.sh tests/*.sh
-      - run: python3 -m py_compile firewall/fw-report.py firewall/aup-report.py firewall/fortigate-export-load.py pcap/pcap-stat.py audit/audit-report.py
+      - run: shellcheck -s sh archive/*.sh node/*.sh collector/*.sh firewall/*.sh pcap/*.sh behavior/*.sh tests/*.sh
+      - run: python3 -m py_compile firewall/fw-report.py firewall/aup-report.py firewall/fortigate-export-load.py pcap/pcap-stat.py audit/audit-report.py behavior/*.py
+      - run: python3 -W error -m unittest tests/test_behavior.py
+      - name: smoke-behavior (synthetic site, rules backend)
+        run: sh tests/smoke-behavior.sh
       - run: systemd-analyze verify pcap/pcap@.service || true   # the runner has no /etc/pcap/*.env
       - run: sudo visudo -cf pcap/sudoers-pcap
       - name: smoke (VictoriaLogs in docker, syslog + journald in, archive + verify out)

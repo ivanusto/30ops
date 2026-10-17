@@ -27,6 +27,7 @@ Log collection and retention for a small on-prem AI lab. Two DGX Spark nodes and
 | `tests/smoke-aup.sh` | CI and local | online == offline on the fixture, the file reconciles (lines = parsed + skipped), non-webfilter lines stay out, textfile writes every urgent category and a silent FortiGate as 0, a line without a time is skipped by the loader and shows up as the one difference |
 | `audit/audit-report.py`, `audit/ignore.txt`, `audit/queries.md` | collector, cron every 10 min and Monday 08:45 | Day 27. Every administrative action the pipeline already holds (FortiGate config changes and admin logins, Proxmox tasks, sudo and SSH logins, QuLog events, and since Day 29 the decisions of [onprem-agent-gate](https://github.com/ivanusto/onprem-agent-gate)) matched against the change windows in an onprem-changes clone: attributed, unattributed, ignored by `ignore.txt`, and done records whose window has no change-mark line. Markdown for people, `audit.prom` for `collector/prometheus/rules/audit.yml` |
 | `audit/fortigate-syslogd3.md` | FortiGate, collector | The FortiGate's event log on its own syslog destination to port 515; the collector's second listener stamps `audit="fortigate"`, so the events are their own stream and their own archive source (`audit-<devname>`) while the traffic log stays out of the WORM share |
+| `behavior/` | collector or an inference node | Behaviour detection. `events.py` reads Zeek, FortiGate, Windows security exports and VictoriaLogs into one event schema; `pseudonymize.py` replaces every account, host and share by a keyed HMAC pseudonym, rewrites addresses prefix-preserving, cuts names and paths and floors time (three levels, the key held by someone else); `summarize.py` turns a day of one user into counts with the z against that user's own baseline and a short text; `detect.py` runs a small model over every user-day and a large one over what it flags (Ollama, or a rules backend for CI) and appends each decision to a hash chain; `evaluate.py` scores against an injection schedule (precision, recall, F1, false positives per user-day with bootstrap intervals, per scenario, per stage, latency per layer), Markdown, json and `behavior.prom`. `synth.py` is a synthetic site with six injected scenarios so the whole path runs without site data ([behavior/README.md](behavior/README.md)) |
 | `tests/smoke-audit.sh` | CI and local | Two listeners, one line of every action shape, three fake change records: attribution, ignore list, missing marks, the textfile, and the archive exporting `audit-*` as its own source while the traffic is skipped |
 
 ## Why not Graylog, Loki, or QuLog Center alone
@@ -69,6 +70,7 @@ sh tests/smoke-firewall.sh
 sh tests/smoke-pcap.sh                                 # as root it also captures on lo; SMOKE_PCAP_REAL=0 skips that
 sh tests/smoke-aup.sh                                  # VLBIN or docker, like smoke.sh
 sh tests/smoke-audit.sh
+sh tests/smoke-behavior.sh && python3 -m unittest tests/test_behavior.py
 ```
 
 ## License
