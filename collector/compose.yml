@@ -53,7 +53,7 @@ services:
   snmp-exporter:
     <<: *restart
     profiles: [snmp]
-    image: prom/snmp-exporter:v0.29.0@sha256:272ff087c314fb1e384b7ba7e555f020cc0c072fb23f0dc1d1cb51b48067efdc
+    image: prom/snmp-exporter:v0.31.0@sha256:e5f1aba929145cea2a3bad89c29959efaec0dc26fb87e3761414616a1a392c1c
     command:
       - --config.file=/etc/snmp_exporter/snmp.yml
       - --config.file=/etc/snmp_exporter/snmp-auth.yml
