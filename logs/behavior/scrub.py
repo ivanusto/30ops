@@ -283,7 +283,7 @@ def cmd_dict(a):
         with open(path, newline="", encoding="utf-8-sig", errors="replace") as f:
             for r in csv.DictReader(f):
                 for c in cols.split(","):
-                    vocab.update(x.strip().lower() for x in re.split(r"[,|]", r.get(c) or ""))
+                    vocab.update(x.strip().lower() for x in re.split(r"[,|_\-\s]", r.get(c) or ""))
         for v in vocab:
             if terms.get(v) == "user":
                 del terms[v]
