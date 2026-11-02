@@ -256,6 +256,17 @@ class Scrub(unittest.TestCase):
         self.assertNotIn("root", t); self.assertNotIn("ab", t); self.assertEqual(t["web01"], "host"); self.assertEqual(t["example.net"], "domain")
         self.assertEqual(self.sc().text("sshd: authentication failed"), "sshd: authentication failed")
 
+    def test_terms_need_letters_and_time_is_not_ipv6(self):
+        t = {}
+        scrub.add_term(t, "host", "203.0.113.9:443"); scrub.add_term(t, "host", "12345")
+        self.assertEqual(t, {})
+        s = self.sc()
+        self.assertEqual(s.text("at 13:55:36 ok"), "at 13:55:36 ok")
+        self.assertNotIn("2001:db8", s.text("from 2001:db8::1 ok"))
+        out = s.text("srv01-backup srv01_db x.srv01.example.org")
+        self.assertNotIn("srv01", out)
+        self.assertNotIn("abc", s.text('referer "/a/b.php?x=abc"'))
+
     def test_levels_and_unknown_column_fails_safe(self):
         with tempfile.TemporaryDirectory() as d:
             src = os.path.join(d, "a.csv")

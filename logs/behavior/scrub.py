@@ -40,11 +40,12 @@ GENERIC = {"root", "admin", "administrator", "system", "user", "users", "test", 
            "wazuh", "ossec", "sshd", "cron", "local", "default", "com", "net", "org", "tw", "lan", "internal", "corp", "gov", "edu", "support", "service", "sys", "bin", "pi", "git"}
 PUBLIC_SUFFIX = {"com", "net", "org", "info", "biz", "io", "gov", "edu", "tw", "local", "lan", "internal", "corp", "cn", "jp", "hk", "uk", "au", "de", "ru", "xyz", "top", "cc", "me", "co", "ai", "app", "dev"}
 
-RE_URLQ = re.compile(r"(https?://[^\s\"'<>?#]+|\s/[^\s\"'<>?#]*)\?[^\s\"'<>]*")
+RE_URLQ = re.compile(r"([\w/.%~:-]*/[\w/.%~:-]*)\?[^\s\"'<>]*")
 RE_EMAIL = re.compile(r"[\w.+%-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
 RE_MAC = re.compile(r"\b(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}\b")
 RE_IP4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
-RE_IP6 = re.compile(r"(?<![\w:])(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}(?![\w:])")
+# whole addresses or ones with "::"; three groups of digits is a time of day
+RE_IP6 = re.compile(r"(?<![\w:])(?:(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,6}:(?:[0-9a-fA-F]{1,4}(?::[0-9a-fA-F]{1,4}){0,5})?|::(?:[0-9a-fA-F]{1,4}:){0,5}[0-9a-fA-F]{1,4})(?![\w:])")
 RE_DOMUSER = re.compile(r"\b[A-Za-z][A-Za-z0-9_-]{1,30}\\{1,2}(?![A-Za-z]:)[A-Za-z0-9_.$-]{2,}")
 RE_WINHOME = re.compile(r"(?i)((?:[a-z]:)?\\{1,2}users\\{1,2})[^\\\"'\s]+")
 RE_UNIXHOME = re.compile(r"(/(?:home|Users)/)[^/\"'\s:]+")
@@ -58,6 +59,17 @@ RE_TOKEN = re.compile(r"\b(?:[uhsi]-[0-9a-f]{10})\b")
 TEMPLATE = [(RE_TOKEN, "<id>"), (RE_IP4, "<ip>"), (re.compile(r"\b[0-9a-fA-F]{8,}\b"), "<hex>"), (re.compile(r"\d+"), "<n>")]
 
 
+def term_regex(names):
+    """A name counts wherever it stands apart from letters and digits, so
+    srv01-backup, srv01_db and backup.srv01 all give srv01 away. Longest first."""
+    if not names:
+        return None
+    parts = []
+    for n in sorted(names, key=len, reverse=True):
+        parts.append(re.escape(n) if not n.isascii() else r"(?<![A-Za-z0-9])" + re.escape(n) + r"(?![A-Za-z0-9])")
+    return re.compile("|".join(parts), re.I)
+
+
 class Scrubber:
     def __init__(self, key, level, terms=()):
         self.p = Pseudonymizer(key, level)
@@ -67,8 +79,7 @@ class Scrubber:
         for t in terms:
             real = t["real"].lower()
             self.map[real] = self.p.name(t["kind"], real, {"user": "u", "host": "h", "domain": "d"}.get(t["kind"], "h"))
-        names = sorted(self.map, key=len, reverse=True)
-        self.re = re.compile("|".join(re.escape(n) if not n.isascii() else r"(?<![\w.-])" + re.escape(n) + r"(?![\w-])" for n in names), re.I) if names else None
+        self.re = term_regex(self.map)
 
     def _ip(self, m):
         s = m.group(0)
@@ -81,7 +92,8 @@ class Scrubber:
         self.hits["domain"] += 1
         labels = m.group(0).lower().split(".")
         keep = 3 if len(labels) >= 3 and ".".join(labels[-2:]) in TWO_LEVEL_TLD else 2
-        return ".".join(labels[-keep:])
+        cut = ".".join(labels[-keep:])
+        return self.map.get(cut, cut)
 
     def _term(self, m):
         self.hits["dictionary"] += 1
@@ -218,7 +230,7 @@ def private_gzip(path):
 
 def add_term(out, kind, value):
     v = str(value or "").strip().lower()
-    if not v or v in GENERIC or len(v) < 3 or RE_IP4.fullmatch(v):
+    if not v or v in GENERIC or len(v) < 3 or not re.search(r"[^\W\d_]", v):     # a name has letters; 10.1:443 is not one
         return
     out[v] = kind if out.get(v) != "user" else "user"
     if kind == "host" and "." in v:
@@ -228,7 +240,7 @@ def add_term(out, kind, value):
         keep = 3 if len(labels) >= 3 and ".".join(labels[-2:]) in TWO_LEVEL_TLD else 2
         dom = ".".join(labels[-keep:])
         # a private zone's registered name is the organisation's name
-        if len(labels) >= 2 and labels[-keep] not in GENERIC and len(labels[-keep]) >= 3:
+        if len(labels) >= 2 and labels[-1] in PUBLIC_SUFFIX and labels[-keep] not in GENERIC and len(labels[-keep]) >= 3:
             out.setdefault(dom, "domain")
             out.setdefault(labels[-keep], "domain")
 
@@ -264,12 +276,24 @@ def cmd_dict(a):
                 if "\t" in line:
                     kind, v = line.rstrip("\n").split("\t", 1)
                     add_term(terms, kind, v)
+    dropped = 0
+    for spec in a.vocab:      # words of the product's own rule vocabulary: an account called the same is not a secret
+        path, cols = spec.rsplit(":", 1)
+        vocab = set()
+        with open(path, newline="", encoding="utf-8-sig", errors="replace") as f:
+            for r in csv.DictReader(f):
+                for c in cols.split(","):
+                    vocab.update(x.strip().lower() for x in re.split(r"[,|]", r.get(c) or ""))
+        for v in vocab:
+            if terms.get(v) == "user":
+                del terms[v]
+                dropped += 1
     fd = os.open(a.out, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
         for v, kind in sorted(terms.items()):
             f.write(json.dumps({"kind": kind, "real": v}, ensure_ascii=False) + "\n")
     c = collections.Counter(terms.values())
-    print(f"scrub dict: {n} rows read, {len(terms)} terms {dict(c)}")
+    print(f"scrub dict: {n} rows read, {len(terms)} terms {dict(c)}, {dropped} dropped as rule vocabulary")
 
 
 # ------------------------------------------------------------------ csv
@@ -395,11 +419,21 @@ def cmd_verify(a):
     """How often each file still contains a dictionary term. Counts per file and
     per kind only; the terms themselves never go to the terminal."""
     terms = load_terms(a.terms)
-    names = sorted({t["real"] for t in terms}, key=len, reverse=True)
     kinds = {t["real"]: t["kind"] for t in terms}
-    rx = re.compile("|".join(re.escape(n) if not n.isascii() else r"(?<![\w.-])" + re.escape(n) + r"(?![\w-])" for n in names), re.I) if names else None
+    rx = term_regex(kinds)
     total = 0
     for path in a.files:
+        if a.by_column and ".csv" in path:
+            by = collections.Counter()
+            csv.field_size_limit(1 << 30)
+            with gzip.open(path, "rt", encoding="utf-8", errors="replace", newline="") as f:
+                for row in csv.DictReader(f):
+                    for col, v in row.items():
+                        if rx and v:
+                            for m in rx.finditer(v):
+                                by[(col, kinds.get(m.group(0).lower(), "?"), "gap" if len(m.group(0)) < 5 else "long")] += 1
+            for k, v in sorted(by.items()):
+                print(f"  {k[0]:20s} {k[1]:7s} {k[2]:5s} {v}")
         c, lines = collections.Counter(), 0
         op = gzip.open(path, "rt", encoding="utf-8", errors="replace") if path.endswith(".gz") else open(path, encoding="utf-8", errors="replace")
         with op as f:
@@ -418,6 +452,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     d = sub.add_parser("dict")
     d.add_argument("--csv", action="append", default=[], help="file.csv:col,col=user,col=host")
+    d.add_argument("--vocab", action="append", default=[], help="file.csv:col,col words that are the product's, not the site's")
     d.add_argument("--wazuh-tar", action="append", default=[]); d.add_argument("--extra", action="append", default=[]); d.add_argument("--out", required=True)
     for name in ("csv", "wazuh"):
         p = sub.add_parser(name)
@@ -429,7 +464,7 @@ def main():
             p.add_argument("--which", choices=("alerts", "archives"), default="alerts")
             p.add_argument("--template-limit", type=int, default=2000000, help="distinct shapes kept in memory; the rest are counted, not sampled")
     v = sub.add_parser("verify")
-    v.add_argument("--terms", required=True); v.add_argument("files", nargs="+")
+    v.add_argument("--terms", required=True); v.add_argument("--by-column", action="store_true"); v.add_argument("files", nargs="+")
     a = ap.parse_args()
     {"dict": cmd_dict, "csv": cmd_csv, "wazuh": cmd_wazuh, "verify": cmd_verify}[a.cmd](a)
 

@@ -8,7 +8,7 @@ measurable.
     pii_audit.py sample --templates t.tsv --top 2000 --random 3000 --seed 7 --out sample.jsonl
     pii_audit.py canary --sample sample.jsonl --key-file K --n 300 --base-url URL --model M --api-key-file F --out canary.json
     pii_audit.py audit  --sample sample.jsonl --base-url URL --model M --api-key-file F --out flagged.jsonl --stats stats.json
-    pii_audit.py review --flagged flagged.jsonl --out reviewed.json     # a person, at a terminal
+    pii_audit.py review --flagged flagged.jsonl --out reviewed.json --terms-out extra.tsv   # a person, at a terminal; extra.tsv feeds scrub.py dict --extra
 
 Log lines are written by whoever sent the request. The model gets no tools, only
 JSON comes back, and the prompt says the lines are data. Flagged text is written
@@ -267,6 +267,7 @@ def cmd_review(a):
     rows = read_jsonl(a.flagged)
     c = collections.Counter()
     types = collections.Counter()
+    keep = {}
     for r in rows:
         tty.write(f"\n[{c['seen'] + 1}/{len(rows)}] x{r.get('n')} {r.get('source')}\n{r['text']}\n")
         for s in r["spans"]:
@@ -281,7 +282,13 @@ def cmd_review(a):
         if ans == "y":
             for s in r["spans"]:
                 types[s["type"]] += 1
+                kind = "user" if re.search(r"(?i)帳號|account|user", s["type"]) else "domain" if re.search(r"(?i)組織|單位|org", s["type"]) else "host"
+                keep[s["span"]] = kind
     tty.close()
+    if a.terms_out:
+        with private(a.terms_out) as f:
+            for v, kind in sorted(keep.items()):
+                f.write(f"{kind}\t{v}\n")
     out = {"flagged_lines": len(rows), "reviewed": c["seen"], "real": c["real"], "false_alarm": c["false_alarm"], "real_by_type": dict(types)}
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
@@ -307,7 +314,7 @@ def main():
     u.add_argument("--sample", required=True); u.add_argument("--out", required=True); u.add_argument("--stats"); u.add_argument("--limit", type=int, default=0)
     add_client(u)
     r = sub.add_parser("review")
-    r.add_argument("--flagged", required=True); r.add_argument("--out", required=True)
+    r.add_argument("--flagged", required=True); r.add_argument("--out", required=True); r.add_argument("--terms-out")
     a = ap.parse_args()
     {"sample": cmd_sample, "canary": cmd_canary, "audit": cmd_audit, "review": cmd_review}[a.cmd](a)
 
