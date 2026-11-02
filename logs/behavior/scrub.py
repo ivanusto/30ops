@@ -358,7 +358,7 @@ def scrub_json(sc, obj, tpl, pre=""):
 
 def cmd_wazuh(a):
     sc = Scrubber(load_key(a.key_file), a.level, load_terms(a.terms))
-    tpl = Templates(a.templates)
+    tpl = Templates(a.templates, a.template_limit)
     rx = re.compile({"alerts": r"(^|/)logs/alerts/(alerts\.json|\d{4}/\w{3}/ossec-alerts-\d+\.json(\.gz)?)$",
                      "archives": r"(^|/)logs/archives/(archives\.json|\d{4}/\w{3}/ossec-archive-\d+\.json(\.gz)?)$"}[a.which])
     t0 = time.perf_counter(); n = bad = 0
@@ -427,6 +427,7 @@ def main():
             p.add_argument("--policy", choices=sorted(POLICIES), required=True)
         else:
             p.add_argument("--which", choices=("alerts", "archives"), default="alerts")
+            p.add_argument("--template-limit", type=int, default=2000000, help="distinct shapes kept in memory; the rest are counted, not sampled")
     v = sub.add_parser("verify")
     v.add_argument("--terms", required=True); v.add_argument("files", nargs="+")
     a = ap.parse_args()
