@@ -39,6 +39,7 @@ while [ $# -gt 0 ]; do
     --bootstrap) bootstrap=$2; shift 2;;
     --prescreen-min|--t1|--t2|--limit|--slm-backend|--llm-backend|--base-url|--api-key|--api-key-file|--engine|--thermal-hot|--thermal-cool) extra_detect="$extra_detect $1 $2"; shift 2;;
     --think) extra_detect="$extra_detect --think"; shift;;
+    --think-llm) extra_detect="$extra_detect --think-llm"; shift;;
     *) echo "run.sh: unknown argument $1" >&2; exit 2;;
   esac
 done

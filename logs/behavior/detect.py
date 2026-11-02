@@ -153,6 +153,7 @@ class Ollama:
 
     def setup(self, a):
         self.p1, self.p2 = PROMPTS[a.entity]
+        self.think_llm = getattr(a, "think_llm", False)
         self.hot, self.cool, self.paused = a.thermal_hot, a.thermal_cool, 0.0
 
     def chat(self, model, system, user, num_predict):
@@ -181,7 +182,11 @@ class Ollama:
         user = rec["text"] + f"\n\n初篩器意見：{'可疑' if s1.get('flag') else '正常'}，情境 {s1.get('category')}，信心 {s1.get('confidence', 0):.2f}。"
         try:
             self.paused += thermal_gate(self.hot, self.cool)
-            j, ms, usage = self.chat(self.llm, self.p2, user, 400)
+            before, self.think = self.think, self.think or self.think_llm
+            try:
+                j, ms, usage = self.chat(self.llm, self.p2, user, 400)
+            finally:
+                self.think = before
             if "verdict" not in j:
                 return {"model": self.llm, "verdict": "ERROR", "category": "NONE", "risk": 0, "reason": "", "ms": round(ms), "usage": usage, "parse_error": True}
             v = str(j.get("verdict", "")).upper()
@@ -206,7 +211,7 @@ class OpenAI(Ollama):
 
     def chat(self, model, system, user, num_predict):
         body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                "temperature": 0, "seed": self.seed, "max_tokens": num_predict if not self.think else num_predict + 2000,
+                "temperature": 0, "seed": self.seed, "max_tokens": num_predict if not self.think else num_predict + 4000,
                 "response_format": {"type": "json_object"}, "chat_template_kwargs": {"thinking": self.think, "enable_thinking": self.think}}
         hdr = {"Content-Type": "application/json"}
         if self.key:
@@ -330,7 +335,7 @@ def run(a):
         man = {"started": started, "finished": finished, "backend": a.backend, "slm_backend": a.slm_backend, "llm_backend": a.llm_backend,
                "slm": a.slm if a.slm_backend != "rules" else "rules", "llm": a.llm if a.llm_backend != "rules" else "rules",
                "think": a.think, "prompt_version": PROMPT_VERSION,
-               "entity": a.entity, "seed": a.seed, "engine": a.engine,
+               "entity": a.entity, "seed": a.seed, "engine": a.engine, "think_llm": a.think_llm,
                "prompt1_sha256": sha256(PROMPTS[a.entity][0]), "prompt2_sha256": sha256(PROMPTS[a.entity][1]), "input": os.path.basename(a.inp),
                "input_sha256": file_sha256(a.inp), "user_days": len(recs), "stage1_calls": n1, "stage2_calls": n2,
                "flagged": flagged, "threats": threats, "t1": a.t1, "t2": a.t2, "prescreen_min": a.prescreen_min,
@@ -373,6 +378,7 @@ def main():
     r.add_argument("--thermal-cool", type=int, default=74)
     r.add_argument("--slm", default="gemma4:e4b-mlx"); r.add_argument("--llm", default="gemma4:26b-nvfp4")
     r.add_argument("--think", action="store_true", help="let the models think (slower, not better on this task in the lab)")
+    r.add_argument("--think-llm", action="store_true", help="let only the second stage think; the first stage reads every summary and stays fast")
     r.add_argument("--keep-alive", default="10m")
     r.add_argument("--t1", type=float, default=6.0); r.add_argument("--t2", type=float, default=9.0)
     r.add_argument("--prescreen-min", type=float, default=0.0)
