@@ -8,7 +8,18 @@ behavior.prom for the collector.
 
     evaluate.py --detections detections.jsonl --schedule schedule.p.tsv [--summaries summaries.jsonl] \
         [--timing timing.jsonl] [--manifest run-manifest.json] --out report.md [--json metrics.json] [--textfile behavior.prom]
-        [--bootstrap 1000] [--seed 1]
+        [--bootstrap 1000] [--seed 1] [--cluster]
+    evaluate.py --detections detections.jsonl --triage --events events.p.jsonl [--weak-kind malware.detect] --out report.md [--json metrics.json]
+
+--triage is for a site with no injection schedule. There is no ground truth
+there, so no precision, recall or F1 is printed: only how far the pipeline
+narrowed the alerts down (rows in, entity-days out, how many to read), and, for
+days with an event of --weak-kind that the summaries were kept blind to,
+how many were flagged anyway. A weak label is another product's opinion, not
+the truth, and the count is reported as a description, not as recall.
+
+--cluster resamples whole entities instead of rows: days of one host are not
+independent, and with few hosts the row bootstrap claims too much.
 
 A user-day is positive when the schedule has an injection for that user
 starting on that local date; everything else in the test period is a
@@ -71,12 +82,20 @@ def counts(rows):
     return {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "precision": p, "recall": r, "f1": f, "fpr": fp / (fp + tn) if fp + tn else 0.0}
 
 
-def bootstrap(rows, B, seed):
+def bootstrap(rows, B, seed, cluster=False):
     rnd = random.Random(seed)
     stats = collections.defaultdict(list)
     n = len(rows)
+    groups = collections.defaultdict(list)
+    if cluster:
+        for r in rows:
+            groups[r["user"]].append(r)
+    names = sorted(groups)
     for _ in range(B):
-        sample = [rows[rnd.randrange(n)] for _ in range(n)]
+        if cluster:
+            sample = [r for _k in names for r in groups[names[rnd.randrange(len(names))]]]
+        else:
+            sample = [rows[rnd.randrange(n)] for _ in range(n)]
         c = counts(sample)
         for k in ("precision", "recall", "f1", "fpr"):
             stats[k].append(c[k])
@@ -104,14 +123,74 @@ def md_table(headers, rows):
     return "\n".join(out) if rows else "_無_"
 
 
+def triage(a):
+    det = read_jsonl(a.detections)
+    if not det:
+        sys.exit("evaluate: no detections")
+    tz = rfc3339.parse("2000-01-01T00:00:00" + a.tz).tzinfo
+    in_window = {(d["user"], d["date"]) for d in det}
+    dates = {d["date"] for d in det}
+    rows_in, rows_window = 0, 0
+    weak = collections.defaultdict(set)
+    if a.events:
+        with open(a.events, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                rows_in += 1
+                t = rfc3339.parse(e.get("ts", ""))
+                local = t.astimezone(tz).date().isoformat() if t else ""
+                if local in dates:
+                    rows_window += 1
+                if e.get("kind") == a.weak_kind and local in dates:
+                    weak[(e.get("asset") or e.get("src_host"), local)].add(e.get("incident") or "")
+    flagged = [d for d in det if d["stage1"].get("flag")]
+    threats = [d for d in det if d["final"]["verdict"] == "THREAT"]
+    errors = sum(1 for d in det if d["stage1"].get("error") or (d["stage2"] or {}).get("error") or d["stage1"].get("parse_error") or (d["stage2"] or {}).get("parse_error"))
+    by_key = {(d["user"], d["date"]): d for d in det}
+    covered = [k for k in weak if k in in_window]
+    weak_flag = sum(1 for k in covered if by_key[k]["stage1"].get("flag"))
+    weak_threat = sum(1 for k in covered if by_key[k]["final"]["verdict"] == "THREAT")
+    base = len(threats) / len(det)
+    m = {"entities": len({d["user"] for d in det}), "entity_days": len(det), "rows_all": rows_in, "rows_in_window": rows_window, "stage1_flagged": len(flagged),
+         "threats": len(threats), "errors": errors, "days_to_read_per_100k_rows": round(len(threats) / rows_window * 1e5, 2) if rows_window else None,
+         "compression_rows_per_threat_day": round(rows_window / len(threats), 1) if threats and rows_window else None,
+         "by_category": dict(collections.Counter(d["final"]["category"] for d in threats)),
+         "weak": {"kind": a.weak_kind, "weak_days_in_window": len(weak), "weak_days_with_summary": len(covered), "flagged": weak_flag, "threat": weak_threat,
+                  "base_rate_threat": round(base, 4), "note": "描述性比對，弱標籤不是標準答案，不得當作召回率"}}
+    L = [f"# 分流評估（無標籤場域）  產生於 {rfc3339.now():%Y-%m-%d %H:%M} UTC", "",
+         "本場域沒有注入排程表，所以**不報 Precision、Recall、F1**。", "",
+         md_table(["指標", "值"], [("實體數", m["entities"]), ("實體日", m["entity_days"]), ("事件列（全部／評估窗內）", f"{rows_in} / {rows_window}"),
+                                 ("初篩標記", f"{len(flagged)}（{pct(len(flagged) / len(det))}）"), ("判為 THREAT", f"{len(threats)}（{pct(base)}）"),
+                                 ("每 10 萬列事件需閱讀的實體日", m["days_to_read_per_100k_rows"]), ("模型呼叫或解析錯誤", errors)]), "",
+         f"## 弱標籤回溯（{a.weak_kind}，摘要層看不到此類事件）", "",
+         md_table(["弱標籤實體日（窗內）", "有摘要可比對", "初篩標記", "判為 THREAT", "全體 THREAT 基準率"],
+                  [(len(weak), len(covered), weak_flag, weak_threat, pct(base))]), "",
+         "沒有摘要可比對的弱標籤日，代表該機器在 SIEM 沒有其他事件，流程無從判斷。樣本很小，只做描述。", ""]
+    with open(a.out, "w", encoding="utf-8") as f:
+        f.write("\n".join(L))
+    if a.json:
+        with open(a.json, "w", encoding="utf-8") as f:
+            json.dump(m, f, ensure_ascii=False, indent=1)
+    print(f"evaluate: triage {len(det)} entity-days, {len(flagged)} flagged, {len(threats)} THREAT, weak {weak_threat}/{len(covered)} -> {a.out}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--detections", required=True); ap.add_argument("--schedule", required=True)
+    ap.add_argument("--detections", required=True); ap.add_argument("--schedule")
+    ap.add_argument("--triage", action="store_true"); ap.add_argument("--events"); ap.add_argument("--weak-kind", default="malware.detect")
+    ap.add_argument("--tz", default="+08:00"); ap.add_argument("--cluster", action="store_true")
     ap.add_argument("--summaries"); ap.add_argument("--timing"); ap.add_argument("--manifest")
     ap.add_argument("--out", required=True); ap.add_argument("--json"); ap.add_argument("--textfile")
     ap.add_argument("--bootstrap", type=int, default=1000); ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--top", type=int, default=15)
     a = ap.parse_args()
+    if a.triage:
+        return triage(a)
+    if not a.schedule:
+        sys.exit("evaluate: --schedule is required unless --triage: without ground truth there is no F1 to print")
     now = rfc3339.now()
     det = read_jsonl(a.detections)
     lab = labels(a.schedule)
@@ -128,7 +207,7 @@ def main():
         sys.exit("evaluate: no detections")
     missing = [k for k in lab if k not in {(r["user"], r["date"]) for r in rows}]
     overall = counts(rows)
-    ci = bootstrap(rows, a.bootstrap, a.seed) if a.bootstrap else {}
+    ci = bootstrap(rows, a.bootstrap, a.seed, a.cluster) if a.bootstrap else {}
     pos = [r for r in rows if r["pos"]]
     per = {}
     for s in SCENARIOS:

@@ -5,14 +5,18 @@ that produce it from what a site already has.
     events.py probe --from-jsonl events.jsonl
     events.py load  --zeek conn.log --zeek files.log --fortigate fgt.log --winsec sec.jsonl --out events.jsonl
     events.py load  --vl http://127.0.0.1:9428 --window 7d --fw-host fgt-edge --out events.jsonl
+    events.py load  --wazuh-tar wazuh_raw_logs.tar.gz --bitdefender bd.csv --spill-dir /srv/tmp/spill --out events.jsonl
+    events.py load  --wazuh-csv alerts.csv --out events.jsonl
 
 One line per event, JSON, UTF-8. Keys that every kind carries:
 
     ts        RFC 3339, UTC
     kind      net.conn | net.file | auth.logon | file.access | print.job | usb.attach | fw.utm
+              | sec.alert | priv.exec | file.integrity | pkg.change | malware.detect
     user      account the action is attributed to ("" when the source has none)
     src_host  workstation or server the action came from
-    source    zeek | fortigate | ad | speslog | print | endpoint | synth
+    source    zeek | fortigate | ad | speslog | print | endpoint | synth | wazuh | bitdefender
+    asset     the monitored machine that reported the event (host-day analysis); optional
 
 Per kind (absent keys mean "the source did not say"):
 
@@ -23,18 +27,27 @@ Per kind (absent keys mean "the source did not say"):
     print.job   dst (print server), pages, filename
     usb.attach  device
     fw.utm      dst, dst_name, category, app, action (allow|block)
+    sec.alert   rule_id, rule_level, rule_group, mitre (SIEM alert with no more specific shape; no free text)
+    priv.exec   dst, target (account run as), category ("evasion" when the command names such a tool)
+    file.integrity  dst, path, action (added|modified|deleted)
+    pkg.change  dst, action, category ("evasion" when the package is such a tool)
+    malware.detect  dst, rule_level, category (module), incident (opaque id)
+
+The SIEM loaders keep no rule description, log line, command or URL: those are
+free text, and free text is scrub.py's business, not this schema's.
 
 Hostnames and addresses are the site's real ones at this stage; pseudonymize.py
 is the next step and nothing after it sees these files.
 
 Standard library only.
 """
-import argparse, collections, json, os, re, sys, urllib.parse, urllib.request
+import argparse, collections, csv, gzip, json, os, re, sys, tarfile, urllib.parse, urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
 from ops30 import rfc3339  # noqa: E402
 
-KINDS = ("net.conn", "net.file", "auth.logon", "file.access", "print.job", "usb.attach", "fw.utm")
+KINDS = ("net.conn", "net.file", "auth.logon", "file.access", "print.job", "usb.attach", "fw.utm",
+         "sec.alert", "priv.exec", "file.integrity", "pkg.change", "malware.detect")
 REQUIRED = ("ts", "kind", "user", "src_host", "source")
 
 # ------------------------------------------------------------------ helpers
@@ -248,6 +261,122 @@ def from_winsec(path):
                    "device": pick(d, "DeviceDescription", "ClassName", default="usb"), "source": "endpoint"}
 
 
+# ------------------------------------------------------------------ wazuh
+# Alerts from the CSV export (flat columns) or from the manager's own
+# logs/alerts JSON (streamed out of a tar without touching the disk). Both go
+# through flat -> wazuh_event, so the two can be counted against each other.
+
+EVASION_TOOL = re.compile(r"(?i)\b(openvpn|wireguard|wg-quick|tor|torsocks|proxychains|cloudflared|ngrok|frpc?|chisel|socat|tailscale|zerotier|dnscrypt|stubby)\b")
+WAZUH_ALERT_MEMBER = re.compile(r"(^|/)logs/alerts/(alerts\.json|\d{4}/\w{3}/ossec-alerts-\d+\.json(\.gz)?)$")
+
+
+def low(x):
+    return str(x or "").strip().lower()
+
+
+def wazuh_ts(t):
+    d = rfc3339.parse(str(t).replace("+0000", "+00:00").replace("+0800", "+08:00"))
+    return rfc3339.format(d) if d else None
+
+
+def wazuh_event(r):
+    """flat dict -> one event, or None when the time cannot be read"""
+    ts = wazuh_ts(r.get("timestamp"))
+    if ts is None:
+        return None
+    groups = {g.strip() for g in re.split(r"[,|]", r.get("rule_groups") or "") if g.strip()}
+    asset, dec, ip = low(r.get("agent_name")), low(r.get("decoder")), (r.get("srcip") or "").strip()
+    base = {"ts": ts, "user": "", "src_host": asset, "asset": asset, "source": "wazuh", "rule_id": str(r.get("rule_id") or ""),
+            "rule_level": num(r.get("rule_level"))}
+    if ip:
+        base["src_ip"] = ip
+    if "bitdefender" in groups or "malware" in groups:
+        real = low(r.get("computer_name")) or asset
+        return {**base, "kind": "malware.detect", "asset": real, "src_host": real, "dst": real, "category": "wazuh", "incident": ""}
+    if groups & {"authentication_success", "authentication_failed", "authentication_failures", "invalid_login"}:
+        ok = "authentication_success" in groups
+        return {**base, "kind": "auth.logon", "user": low(r.get("dstuser") or r.get("srcuser")), "src_host": ip or asset, "dst": asset,
+                "logon_type": "ssh" if dec.startswith("ssh") else "local", "result": "success" if ok else "failure", "method": dec}
+    if "sudo" in groups:
+        return {**base, "kind": "priv.exec", "user": low(r.get("srcuser")), "dst": asset, "target": low(r.get("dstuser")),
+                "category": "evasion" if EVASION_TOOL.search(r.get("command") or "") else ""}
+    if groups & {"syscheck", "syscheck_file"}:
+        return {**base, "kind": "file.integrity", "dst": asset, "path": r.get("syscheck_path") or "", "action": low(r.get("syscheck_event")) or "modified"}
+    if groups & {"dpkg", "yum", "rpm"}:
+        return {**base, "kind": "pkg.change", "dst": asset, "action": low(r.get("dpkg_status")) or "changed",
+                "category": "evasion" if EVASION_TOOL.search(r.get("package") or "") else ""}
+    if "usb" in groups:
+        return {**base, "kind": "usb.attach", "device": "usb"}
+    group = sorted(groups)[0] if groups else ""
+    for g in ("recon", "web_scan", "attack", "access_denied", "spam", "low_diskspace", "rootcheck", "vulnerability-detector", "sca", "config_changed"):
+        if g in groups:
+            group = g
+            break
+    return {**base, "kind": "sec.alert", "rule_group": group, "mitre": str(r.get("mitre_id") or "")}
+
+
+def flatten_alert(a):
+    """a manager alert object -> the flat columns the CSV export has"""
+    rule, agent, data = a.get("rule") or {}, a.get("agent") or {}, a.get("data") if isinstance(a.get("data"), dict) else {}
+    sc = a.get("syscheck") if isinstance(a.get("syscheck"), dict) else {}
+    mitre = (rule.get("mitre") or {}).get("id") or []
+    return {"timestamp": a.get("timestamp"), "agent_name": agent.get("name"), "agent_ip": agent.get("ip"), "rule_id": rule.get("id"),
+            "rule_level": rule.get("level"), "rule_groups": ",".join(rule.get("groups") or []), "decoder": (a.get("decoder") or {}).get("name"),
+            "srcip": data.get("srcip"), "srcuser": data.get("srcuser"), "dstuser": data.get("dstuser"), "mitre_id": ",".join(mitre) if isinstance(mitre, list) else mitre,
+            "command": data.get("command"), "package": data.get("package"), "dpkg_status": data.get("dpkg_status"),
+            "computer_name": data.get("computer_name"), "syscheck_path": sc.get("path"), "syscheck_event": sc.get("event")}
+
+
+def csv_rows(path):
+    csv.field_size_limit(1 << 30)
+    with open(path, newline="", encoding="utf-8-sig", errors="replace") as f:
+        yield from csv.DictReader(f)
+
+
+def from_wazuh_csv(path):
+    for r in csv_rows(path):
+        e = wazuh_event(r)
+        if e:
+            yield e
+
+
+def wazuh_tar_alerts(path):
+    """every alert object in the tar's logs/alerts JSON, nothing else is read"""
+    with tarfile.open(path, "r|gz") as t:
+        for m in t:
+            if not (m.isfile() and WAZUH_ALERT_MEMBER.search(m.name)):
+                continue
+            raw = t.extractfile(m)
+            fh = gzip.open(raw, "rt", encoding="utf-8", errors="replace") if m.name.endswith(".gz") else (line.decode("utf-8", "replace") for line in raw)
+            for line in fh:
+                try:
+                    yield json.loads(line)
+                except ValueError:
+                    continue
+
+
+def from_wazuh_tar(path):
+    for a in wazuh_tar_alerts(path):
+        e = wazuh_event(flatten_alert(a))
+        if e:
+            yield e
+
+
+# ------------------------------------------------------------------ bitdefender
+
+def from_bitdefender(path):
+    for r in csv_rows(path):
+        ts = wazuh_ts(r.get("created_Or_timestamp") or r.get("last_updated"))
+        asset = low(r.get("computer_name") or r.get("computer_fqdn") or r.get("computer_ip"))
+        if ts is None or not asset:
+            continue
+        e = {"ts": ts, "kind": "malware.detect", "user": low(r.get("username")), "src_host": asset, "asset": asset, "dst": asset, "source": "bitdefender",
+             "rule_level": num(r.get("severity_score")), "category": low(r.get("module")), "incident": r.get("incident_id") or ""}
+        if r.get("computer_ip"):
+            e["src_ip"] = r["computer_ip"].strip()
+        yield e
+
+
 # ------------------------------------------------------------------ VictoriaLogs
 
 def vl_query(vl, query, limit):
@@ -280,6 +409,30 @@ def from_vl(vl, window, fw_host, limit):
 
 # ------------------------------------------------------------------ cli
 
+def spill_sort(events, spill_dir):
+    """Time order without holding the events in memory: one file per UTC day,
+    each sorted on its own, days in order. The spill holds real names and is
+    removed afterwards."""
+    os.makedirs(spill_dir, mode=0o700, exist_ok=True)
+    handles = {}
+    try:
+        for e in events:
+            day = e["ts"][:10]
+            if day not in handles:
+                handles[day] = open(os.path.join(spill_dir, day + ".jsonl"), "w", encoding="utf-8")
+            handles[day].write(json.dumps(e, ensure_ascii=False, separators=(",", ":")) + "\n")
+    finally:
+        for h in handles.values():
+            h.close()
+    for day in sorted(handles):
+        p = os.path.join(spill_dir, day + ".jsonl")
+        with open(p, encoding="utf-8") as f:
+            rows = [json.loads(line) for line in f]
+        rows.sort(key=lambda e: e["ts"])
+        yield from rows
+        os.unlink(p)
+
+
 def probe(events):
     by = collections.Counter(); users = set(); lo = hi = None
     for e in events:
@@ -302,6 +455,10 @@ def main():
         p.add_argument("--zeek", action="append", default=[])
         p.add_argument("--fortigate", action="append", default=[])
         p.add_argument("--winsec", action="append", default=[])
+        p.add_argument("--wazuh-csv", action="append", default=[])
+        p.add_argument("--wazuh-tar", action="append", default=[])
+        p.add_argument("--bitdefender", action="append", default=[])
+        p.add_argument("--spill-dir", help="sort through per-day files here instead of in memory; holds real names until done")
         p.add_argument("--vl"); p.add_argument("--window", default="7d"); p.add_argument("--fw-host", default="")
         p.add_argument("--limit", type=int, default=500000)
         p.add_argument("--out", default="-")
@@ -316,10 +473,16 @@ def main():
             yield from from_fortigate(p)
         for p in a.winsec:
             yield from from_winsec(p)
+        for p in a.wazuh_csv:
+            yield from from_wazuh_csv(p)
+        for p in a.wazuh_tar:
+            yield from from_wazuh_tar(p)
+        for p in a.bitdefender:
+            yield from from_bitdefender(p)
         if a.vl:
             yield from from_vl(a.vl, a.window, a.fw_host, a.limit)
 
-    events = sorted(check(gen()), key=lambda e: e["ts"])
+    events = spill_sort(check(gen()), a.spill_dir) if a.spill_dir else sorted(check(gen()), key=lambda e: e["ts"])
     if a.cmd == "probe":
         probe(events)
     else:

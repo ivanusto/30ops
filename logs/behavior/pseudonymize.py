@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..
 from ops30 import rfc3339  # noqa: E402
 
 LEVELS = ("minimal", "standard", "strict")
-COMMON = {"ts", "kind", "user", "src_host", "src_ip", "source", "role", "host_class"}
+COMMON = {"ts", "kind", "user", "src_host", "src_ip", "src_scope", "asset", "source", "role", "host_class"}
 PER_KIND = {
     "net.conn": {"dst", "dst_name", "dst_port", "proto", "service", "bytes_out", "bytes_in", "duration_s", "category", "action"},
     "net.file": {"dst", "dst_name", "filename", "bytes", "direction"},
@@ -46,6 +46,11 @@ PER_KIND = {
     "print.job": {"dst", "pages", "filename"},
     "usb.attach": {"device"},
     "fw.utm": {"dst", "dst_name", "category", "app", "action"},
+    "sec.alert": {"rule_id", "rule_level", "rule_group", "mitre"},
+    "priv.exec": {"dst", "target", "category", "rule_id", "rule_level"},
+    "file.integrity": {"dst", "path", "action", "rule_id", "rule_level"},
+    "pkg.change": {"dst", "action", "category", "rule_id", "rule_level"},
+    "malware.detect": {"dst", "rule_level", "category", "incident"},
 }
 HOST_KEYS = ("user", "src_host", "dst")
 NAME_KEYS = ("dst_name",)
@@ -58,6 +63,7 @@ class Pseudonymizer:
             raise ValueError(level)
         self.key, self.level, self.vault = key, level, vault
         self.seen = {}
+        self.ipc = {}
         self.dropped_keys = 0
 
     def mac(self, kind, value, n=10):
@@ -85,12 +91,16 @@ class Pseudonymizer:
             return self.name("host", value, "h")
         if a.version != 4:
             return self.name("ip6", value, "i6")
+        cached = self.ipc.get(value)
+        if cached:
+            return cached
         octs, out, prefix = [int(x) for x in value.split(".")], [], ""
         for i, o in enumerate(octs):
             k = hmac.new(self.key, f"ip:{i}:{prefix}".encode(), hashlib.sha256).digest()[0]
             out.append(o ^ k)
             prefix += f"{o}."
         res = ".".join(str(x) for x in out)
+        self.ipc[value] = res
         self.remember("ip", value, res)
         return res
 
@@ -125,6 +135,9 @@ class Pseudonymizer:
         parts = [p for p in str(value).replace("\\", "/").split("/") if p]
         if self.level == "minimal":
             return "/".join(parts)
+        for i in range(len(parts) - 1):      # a home directory is an account name
+            if parts[i].lower() in ("home", "users"):
+                parts[i + 1] = "<user>"
         if self.level == "strict" or len(parts) < 2:
             return share or (parts[0] if parts else "")
         ext = os.path.splitext(parts[-1])[1].lower() if len(parts) > 1 else ""
@@ -155,6 +168,21 @@ class Pseudonymizer:
         mag = 10 ** (int(math.log10(n)) - 1) if n >= 10 else 1
         return int(round(n / mag) * mag)
 
+    @staticmethod
+    def scope(value):
+        """internal or external, read before the address is rewritten: the
+        rewrite keeps prefixes but not what they mean."""
+        try:
+            a = ipaddress.ip_address(value)
+        except ValueError:
+            return ""
+        b = a.packed
+        if a.version == 4:      # by number: is_private also says yes to the documentation and benchmark ranges
+            inner = b[0] in (10, 127) or (b[0] == 172 and 16 <= b[1] <= 31) or (b[0] == 192 and b[1] == 168) or (b[0] == 100 and 64 <= b[1] <= 127) or (b[0] == 169 and b[1] == 254)
+        else:
+            inner = a.is_loopback or a.is_link_local or (b[0] & 0xfe) == 0xfc
+        return "internal" if inner else "external"
+
     def event(self, e):
         allowed = COMMON | PER_KIND.get(e.get("kind", ""), set())
         out = {}
@@ -164,9 +192,15 @@ class Pseudonymizer:
                 continue
             out[k] = v
         out["ts"] = self.when(out.get("ts", ""))
+        if out.get("src_ip") and not out.get("src_scope"):
+            out["src_scope"] = self.scope(out["src_ip"])
         if out.get("user"):
             out["user"] = self.name("user", out["user"], "u")
-        for k in ("src_host", "dst"):
+        if out.get("target"):
+            out["target"] = self.name("user", out["target"], "u")
+        if out.get("incident"):
+            out["incident"] = self.name("incident", out["incident"], "i")
+        for k in ("src_host", "dst", "asset"):
             if out.get(k):
                 out[k] = self.host_or_ip(out[k])
         if out.get("src_ip"):

@@ -5,6 +5,7 @@ models read; nothing they say can be more than what is written here.
 
     summarize.py --in events.p.jsonl --out summaries.jsonl --baseline-days 21 [--tz +08:00] [--timing timing.jsonl]
     summarize.py ... --baseline-until 2026-09-28        # local date, first day of the test period
+    summarize.py ... --entity host [--exclude-kinds malware.detect]   # one summary per monitored host and day
 
 Baseline: the days before the test period. For every user, per workday
 means and standard deviations of each count, and the sets of shares,
@@ -29,6 +30,12 @@ its second line the rules that fired, written out (`signals`).
 Events without a user are attributed to the account that logs on most
 from that source host (the DHCP and logon join a site would do).
 
+--entity host is for a site whose logs say which machine and rarely which
+person (a SIEM's server alerts): the unit is the event's `asset`, the features
+are HOST_COUNTS, every day of the baseline counts (servers have no weekend),
+and alerts from public addresses are counted apart and score nothing, because
+an internet-facing service being scanned says nothing about an insider.
+
 Standard library only.
 """
 import argparse, collections, datetime as dt, json, math, os, statistics, sys, time
@@ -46,6 +53,28 @@ EVASION = {"doh", "proxy_avoidance", "proxy", "vpn", "anonymizer", "tor"}
 ARCHIVE = (".zip", ".7z", ".rar", ".tar", ".gz", ".tgz")
 BYTES = {"f_bytes", "f_archive_bytes", "n_ext_bytes", "n_ext_bytes_off", "n_personal_bytes"}
 WEEKDAYS = "一二三四五六日"
+HOST_COUNTS = ["h_alerts", "h_ext", "h_int", "h_high", "h_recon_int", "h_int_src_n", "h_fim", "h_fim_off", "h_pkg", "h_pkg_evasion",
+               "h_priv", "h_priv_off", "h_priv_evasion", "h_malware", "a_success", "a_fail", "a_fail_then_success", "a_ext_success", "a_off", "u_usb"]
+HOST_SETS = {"accounts": "user", "int_src": "src_host", "rule_ids": "rule_id"}
+
+
+class JsonlFile:
+    """Read twice without being held in memory; `lines` is the last full pass."""
+    def __init__(self, path):
+        self.path, self.lines = path, 0
+
+    def __iter__(self):
+        n = 0
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        e = json.loads(line)
+                    except ValueError:
+                        continue
+                    n += 1
+                    yield e
+        self.lines = n
 
 
 def parse_tz(s):
@@ -63,9 +92,9 @@ def mb(n):
 
 
 class Day:
-    def __init__(self):
+    def __init__(self, sets=SETS):
         self.f = collections.Counter()
-        self.sets = {k: set() for k in SETS}
+        self.sets = {k: set() for k in sets}
         self.read_times, self.logons, self.port_by_dst, self.events = [], [], collections.defaultdict(set), 0
 
     def finish(self):
@@ -195,17 +224,17 @@ def bucket(events, tz):
 
 
 class Baseline:
-    def __init__(self, rows):
+    def __init__(self, rows, counts=COUNTS, sets=SETS):
         """rows: list of (Day) from the baseline period"""
         self.n = len(rows)
         self.mean, self.std = {}, {}
-        for k in COUNTS:
+        for k in counts:
             xs = [r.f[k] for r in rows]
             self.mean[k] = statistics.fmean(xs) if xs else 0.0
             self.std[k] = statistics.pstdev(xs) if len(xs) > 1 else 0.0
-        self.sets = {k: set() for k in SETS}
+        self.sets = {k: set() for k in sets}
         for r in rows:
-            for k in SETS:
+            for k in sets:
                 self.sets[k] |= r.sets[k]
 
     def z(self, k, x):
@@ -214,18 +243,18 @@ class Baseline:
         return max(-9.9, min(9.9, (x - m) / max(s, floor)))
 
 
-def build_baselines(days, roles, dates_base, min_days):
+def build_baselines(days, roles, dates_base, min_days, counts=COUNTS, sets=SETS, workdays_only=True):
     per_user, per_role, everyone = collections.defaultdict(list), collections.defaultdict(list), []
     for (u, date), D in days.items():
-        if date in dates_base and date.weekday() < 5:
+        if date in dates_base and (date.weekday() < 5 or not workdays_only):
             per_user[u].append(D); per_role[roles.get(u, "")].append(D); everyone.append(D)
-    site = Baseline(everyone)
-    role_b = {r: Baseline(v) for r, v in per_role.items()}
+    site = Baseline(everyone, counts, sets)
+    role_b = {r: Baseline(v, counts, sets) for r, v in per_role.items()}
     out = {}
     for u in {k[0] for k in days}:
         rows = per_user.get(u, [])
         if len(rows) >= min_days:
-            out[u] = ("self", Baseline(rows))
+            out[u] = ("self", Baseline(rows, counts, sets))
         elif roles.get(u) in role_b and role_b[roles[u]].n >= min_days:
             out[u] = ("role", role_b[roles[u]])
         else:
@@ -251,17 +280,110 @@ LABEL = {"n_personal_bytes": "個人儲存或網頁郵件傳輸 {mb}", "n_ext_by
          "a_fail": "登入失敗 {v} 次（{z:+.1f}σ）"}
 
 
-def score(feat, z):
+HOST_RULES = [
+    ("new_int_src", 1, 3, "S3"), ("h_recon_int", 1, 3, "S3"), ("h_int_src_n", 3, 2, "S3"), ("h_priv_off", 1, 1, "S3"),
+    ("a_fail_then_success", 1, 4, "S4"), ("new_accounts", 1, 3, "S4"), ("a_ext_success", 1, 3, "S4"), ("a_off", 1, 1, "S4"),
+    ("h_priv_evasion", 1, 4, "S5"), ("h_pkg_evasion", 1, 4, "S5"), ("u_usb", 1, 2, "S5"), ("h_fim_off", 5, 1, "S5"),
+]
+HOST_Z_RULES = [("h_int", "S3"), ("h_priv", "S3"), ("a_fail", "S4"), ("h_fim", "S5"), ("h_pkg", "S5")]
+LABEL.update({"new_int_src": "新的內部來源 {v} 個", "h_recon_int": "內部來源的偵察告警 {v} 筆", "h_int_src_n": "單日內部來源 {v} 個", "h_priv_off": "非工作時段權限操作 {v} 次",
+              "new_accounts": "基線未見的帳號登入 {v} 個", "a_ext_success": "公網來源登入成功 {v} 次", "h_priv_evasion": "權限操作涉及 VPN、代理或通道工具 {v} 次",
+              "h_pkg_evasion": "安裝 VPN、代理或通道類套件 {v} 個", "h_fim_off": "非工作時段受監控檔案變更 {v} 筆", "h_int": "內部來源告警 {v} 筆（{z:+.1f}σ）",
+              "h_priv": "權限操作 {v} 次（{z:+.1f}σ）", "h_fim": "受監控檔案變更 {v} 筆（{z:+.1f}σ）", "h_pkg": "套件變更 {v} 筆（{z:+.1f}σ）"})
+
+
+def bucket_host(events, tz, exclude=()):
+    """-> {(asset, date): Day}, {}, the ordered list of dates"""
+    days = {}
+    for e in events:
+        kind = e.get("kind")
+        if kind in exclude:
+            continue
+        d = rfc3339.parse(e.get("ts", ""))
+        asset = e.get("asset") or e.get("src_host")
+        if d is None or not asset:
+            continue
+        local = d.astimezone(tz)
+        key = (asset, local.date())
+        D = days.get(key)
+        if D is None:
+            D = days[key] = Day(HOST_SETS)
+        D.events += 1
+        f, off = D.f, off_hours(local)
+        scope = e.get("src_scope", "")
+        f["h_alerts"] += 1
+        if int(e.get("rule_level") or 0) >= 10:
+            f["h_high"] += 1
+        if e.get("rule_id"):
+            D.sets["rule_ids"].add(str(e["rule_id"]))
+        if scope == "external":
+            f["h_ext"] += 1
+        elif scope == "internal":
+            f["h_int"] += 1
+            src = e.get("src_ip") or e.get("src_host")
+            if src:
+                D.sets["int_src"].add(src)
+        if kind == "sec.alert" and scope == "internal" and e.get("rule_group") in ("recon", "web_scan"):
+            f["h_recon_int"] += 1
+        elif kind == "auth.logon":
+            ok = e.get("result") == "success"
+            f["a_success" if ok else "a_fail"] += 1
+            D.logons.append((d.timestamp(), ok, e.get("src_ip") or e.get("src_host") or ""))
+            if ok:
+                if e.get("user"):
+                    D.sets["accounts"].add(e["user"])
+                if scope == "external":
+                    f["a_ext_success"] += 1
+                if off:
+                    f["a_off"] += 1
+        elif kind == "priv.exec":
+            f["h_priv"] += 1
+            if off:
+                f["h_priv_off"] += 1
+            if e.get("category") == "evasion":
+                f["h_priv_evasion"] += 1
+        elif kind == "file.integrity":
+            f["h_fim"] += 1
+            if off:
+                f["h_fim_off"] += 1
+        elif kind == "pkg.change":
+            f["h_pkg"] += 1
+            if e.get("category") == "evasion":
+                f["h_pkg_evasion"] += 1
+        elif kind == "malware.detect":
+            f["h_malware"] += 1
+        elif kind == "usb.attach":
+            f["u_usb"] += 1
+    for D in days.values():
+        D.f["h_int_src_n"] = len(D.sets["int_src"])
+        by_src = collections.defaultdict(list)        # one source's failures, not the internet's
+        for t, ok, src in D.logons:
+            by_src[src].append((t, ok))
+        for rows in by_src.values():
+            rows.sort(); fails = 0
+            for t, ok in rows:
+                if ok:
+                    if fails >= 3:
+                        D.f["a_fail_then_success"] = 1
+                    fails = 0
+                else:
+                    fails += 1
+    return days, {}, sorted({k[1] for k in days})
+
+
+def score(feat, z, rules=None, z_rules=None):
     """-> (points, guessed scenario, signals). The signals are the rules that
     fired, written out, so the models read them in the first line of the
     summary instead of finding them among twenty numbers."""
+    rules = RULES if rules is None else rules
+    z_rules = Z_RULES if z_rules is None else z_rules
     pts, by, sig = 0.0, collections.Counter(), []
-    for k, thr, p, sc in RULES:
+    for k, thr, p, sc in rules:
         v = feat.get(k, 0)
         if v >= thr:
             pts += p; by[sc] += p
             sig.append((sc, LABEL[k].format(v=v, mb=mb(v), z=z.get(k, 0))))
-    for k, sc in Z_RULES:
+    for k, sc in z_rules:
         if z.get(k, 0) > 3:
             p = min(5.0, z[k] - 2); pts += p; by[sc] += p
             sig.append((sc, LABEL[k].format(v=feat.get(k, 0), mb=mb(feat.get(k, 0)), z=z[k])))
@@ -289,8 +411,25 @@ def text(u, date, role, src, b, f, z, new, signals):
     return "\n".join(L)
 
 
+def host_text(u, date, src, b, f, z, new, signals):
+    def zs(k):
+        return f"{z[k]:+.1f}σ"
+    return "\n".join([
+        f"主機 {u}（基線來源 {dict(self='本機', role='同類', site='全站')[src]}，{b.n} 天）{date}（週{WEEKDAYS[date.weekday()]}）。",
+        "觸發訊號：" + ("；".join(signals) if signals else "無") + "。",
+        f"告警：共 {f['h_alerts']} 筆，公網來源 {f['h_ext']}（基線 {b.mean['h_ext']:.0f}，外部噪音不計分），內部來源 {f['h_int']}（基線 {b.mean['h_int']:.0f}，{zs('h_int')}），高嚴重度 {f['h_high']}（{zs('h_high')}）。",
+        f"內部來源 {f['h_int_src_n']} 個（新 {len(new['int_src'])} 個），內部來源的偵察告警 {f['h_recon_int']} 筆。",
+        f"登入：成功 {f['a_success']} 失敗 {f['a_fail']}（{zs('a_fail')}）" + ("，同來源多次失敗後成功" if f['a_fail_then_success'] else "")
+        + f"，公網來源成功 {f['a_ext_success']}，非工作時段成功 {f['a_off']}；基線未見的帳號 {len(new['accounts'])} 個。",
+        f"權限操作 {f['h_priv']}（基線 {b.mean['h_priv']:.1f}，{zs('h_priv')}），非工作時段 {f['h_priv_off']}，涉及 VPN、代理或通道工具 {f['h_priv_evasion']}。",
+        f"受監控檔案變更 {f['h_fim']}（{zs('h_fim')}），非工作時段 {f['h_fim_off']}；套件變更 {f['h_pkg']}（{zs('h_pkg')}），其中 VPN、代理或通道類 {f['h_pkg_evasion']}；USB 儲存裝置 {f['u_usb']} 次。",
+        f"基線未見的告警規則 {len(new['rule_ids'])} 種。"])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--entity", choices=("user", "host"), default="user")
+    ap.add_argument("--exclude-kinds", default="", help="comma separated event kinds the summaries must not see (a blind backtest)")
     ap.add_argument("--in", dest="inp", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--tz", default="+08:00")
@@ -304,15 +443,14 @@ def main():
         sys.exit("summarize: --baseline-days or --baseline-until is required")
     tz = parse_tz(a.tz)
     t0 = time.perf_counter()
-    events = []
-    with open(a.inp, encoding="utf-8") as f:
-        for line in f:
-            if line.strip():
-                try:
-                    events.append(json.loads(line))
-                except ValueError:
-                    pass
-    days, roles, dates = bucket(events, tz)
+    events = JsonlFile(a.inp)
+    exclude = {x for x in a.exclude_kinds.split(",") if x}
+    host = a.entity == "host"
+    counts, sets = (HOST_COUNTS, HOST_SETS) if host else (COUNTS, SETS)
+    if host:
+        days, roles, dates = bucket_host(events, tz, exclude)
+    else:
+        days, roles, dates = bucket((e for e in events if e.get("kind") not in exclude) if exclude else events, tz)
     if not dates:
         sys.exit("summarize: no events")
     if a.baseline_until:
@@ -320,21 +458,21 @@ def main():
     else:
         cut = dates[0] + dt.timedelta(days=a.baseline_days)
     dates_base = {d for d in dates if d < cut}
-    bl = build_baselines(days, roles, dates_base, a.min_baseline_days)
+    bl = build_baselines(days, roles, dates_base, a.min_baseline_days, counts, sets, workdays_only=not host)
     n = 0
     with open(a.out, "w", encoding="utf-8") as fo:
         for (u, date), D in sorted(days.items(), key=lambda kv: (kv[0][1], kv[0][0])):
             if date < cut and not a.all_days:
                 continue
             src, b = bl[u]
-            f = {k: D.f[k] for k in COUNTS}
-            z = {k: round(b.z(k, f[k]), 2) for k in COUNTS}
-            new = {k: sorted(D.sets[k] - b.sets[k]) for k in SETS}
+            f = {k: D.f[k] for k in counts}
+            z = {k: round(b.z(k, f[k]), 2) for k in counts}
+            new = {k: sorted(D.sets[k] - b.sets[k]) for k in sets}
             feat = dict(f, **{f"new_{k}": len(v) for k, v in new.items()})
-            pre, guess, signals = score(feat, z)
+            pre, guess, signals = score(feat, z, HOST_RULES, HOST_Z_RULES) if host else score(feat, z)
             rec = {"user": u, "date": date.isoformat(), "weekday": date.weekday(), "role": roles.get(u, ""), "baseline": src, "baseline_days": b.n,
-                   "events": D.events, "features": feat, "z": z, "new": new, "prescreen": pre, "guess": guess, "signals": signals,
-                   "text": text(u, date, roles.get(u, ""), src, b, f, z, new, signals)}
+                   "entity": a.entity, "events": D.events, "features": feat, "z": z, "new": new, "prescreen": pre, "guess": guess, "signals": signals,
+                   "text": host_text(u, date, src, b, f, z, new, signals) if host else text(u, date, roles.get(u, ""), src, b, f, z, new, signals)}
             fo.write(json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n")
             n += 1
     ms = (time.perf_counter() - t0) * 1000
@@ -343,8 +481,8 @@ def main():
             json.dump({u: {"source": s, "days": b.n, "mean": b.mean, "std": b.std, "sets": {k: len(v) for k, v in b.sets.items()}} for u, (s, b) in sorted(bl.items())}, f, ensure_ascii=False, indent=1)
     if a.timing:
         with open(a.timing, "a", encoding="utf-8") as f:
-            f.write(json.dumps({"stage": "summarize", "events": len(events), "user_days": n, "ms": round(ms, 1), "ts": rfc3339.format(rfc3339.now())}) + "\n")
-    print(f"summarize: {len(events)} events, {len(days)} user-days ({len(dates_base)} baseline dates before {cut}), wrote {n}, {ms:.0f} ms")
+            f.write(json.dumps({"stage": "summarize", "events": events.lines, "user_days": n, "ms": round(ms, 1), "ts": rfc3339.format(rfc3339.now())}) + "\n")
+    print(f"summarize: {events.lines} events, {len(days)} {a.entity}-days ({len(dates_base)} baseline dates before {cut}), wrote {n}, {ms:.0f} ms")
 
 
 if __name__ == "__main__":

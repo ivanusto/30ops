@@ -80,4 +80,65 @@ python3 "$B/events.py" load --zeek "$tmp/conn.log" --fortigate "$tmp/fgt.log" --
 grep -q '"kind":"net.conn".*"source":"zeek"' "$tmp/loaded.jsonl" || fail "zeek conn not loaded"
 grep '"ts":"2026-09-30T15:33:10Z"' "$tmp/loaded.jsonl" | grep '"kind":"net.conn"' | grep -q '"user":"sa-008"' || fail "fortigate traffic time or user wrong"
 grep -q '"kind":"fw.utm".*"action":"block"' "$tmp/loaded.jsonl" || fail "fortigate utm not loaded"
+
+# a SIEM site: alerts and an endpoint product, no schedule; host-days, triage, overlay
+python3 - "$tmp" <<'PYEOF2'
+import csv, datetime as dt, gzip, io, json, os, random, sys, tarfile
+tmp = sys.argv[1]
+rnd = random.Random(3)
+cols = ["timestamp", "agent_id", "agent_name", "agent_ip", "rule_id", "rule_level", "rule_description", "rule_groups", "decoder", "srcip", "srcuser", "dstuser", "mitre_id", "mitre_tactic", "location", "full_log"]
+alerts = []
+day = dt.date(2026, 5, 1)
+for d in range(120):
+    for agent in ("web01.corp.example.net", "mail01.corp.example.net", "db01.corp.example.net"):
+        ts = lambda h: f"{day + dt.timedelta(days=d)}T{h:02d}:{rnd.randrange(60):02d}:00.000+0000"
+        for _ in range(rnd.randrange(5, 12)):
+            ip = f"203.0.113.{rnd.randrange(1, 250)}"
+            alerts.append(dict(timestamp=ts(rnd.randrange(24)), agent_name=agent, rule_id="31101", rule_level="5", rule_description="scan seen on " + agent, rule_groups="web,recon,web_scan", decoder="web-accesslog", srcip=ip,
+                               full_log=f'{ip} - - "GET /a?token=abc123 HTTP/1.1" 404 admin@corp.example.net', location="/var/log/apache2/access.log"))
+        alerts.append(dict(timestamp=ts(2), agent_name=agent, rule_id="5715", rule_level="3", rule_description="login", rule_groups="syslog,sshd,authentication_success", decoder="sshd", srcip="198.51.100.7", dstuser="carol",
+                           full_log=f"sshd: Accepted publickey for carol from 198.51.100.7 on {agent}", location="journald"))
+with open(f"{tmp}/wazuh.csv", "w", newline="", encoding="utf-8-sig") as f:
+    w = csv.DictWriter(f, cols, restval=""); w.writeheader(); [w.writerow(a) for a in alerts]
+with open(f"{tmp}/bd.csv", "w", newline="", encoding="utf-8-sig") as f:
+    w = csv.DictWriter(f, ["created_Or_timestamp", "module", "computer_name", "computer_fqdn", "computer_ip", "username", "incident_id", "severity_score", "process_path", "detection_name", "last_updated"], restval="")
+    w.writeheader(); w.writerow({"created_Or_timestamp": "2026-08-20T01:00:00.000Z", "module": "edr", "computer_name": "DB01", "computer_ip": "198.51.100.20", "username": "CORP\\\\dave", "incident_id": "inc-1", "severity_score": "80", "process_path": "C:\\\\Users\\\\dave\\\\x.exe"})
+def alert_obj(a):
+    return {"timestamp": a["timestamp"], "agent": {"name": a["agent_name"], "ip": "198.51.100.3"}, "rule": {"id": a["rule_id"], "level": int(a["rule_level"]), "groups": a["rule_groups"].split(","), "description": a["rule_description"]},
+            "decoder": {"name": a["decoder"]}, "data": {k: a[k] for k in ("srcip", "dstuser") if a.get(k)}, "full_log": a["full_log"], "location": a["location"]}
+buf = gzip.compress("".join(json.dumps(alert_obj(a)) + "\n" for a in alerts).encode())
+with tarfile.open(f"{tmp}/raw.tar.gz", "w:gz") as t:
+    for name, data in (("var/ossec/logs/alerts/2026/May/ossec-alerts-01.json.gz", buf), ("var/ossec/logs/api/2026/May/api.log-01.gz", b"not read"), ("onprem/vsphere.env", b"SHOULD_NOT_BE_READ=1")):
+        ti = tarfile.TarInfo(name); ti.size = len(data); t.addfile(ti, io.BytesIO(data))
+print(len(alerts))
+PYEOF2
+openssl rand -hex 32 >"$tmp/k"; chmod 0400 "$tmp/k"
+python3 "$B/scrub.py" dict --csv "$tmp/wazuh.csv:agent_name,dstuser=user,srcuser=user" --csv "$tmp/bd.csv:computer_name" --wazuh-tar "$tmp/raw.tar.gz" --out "$tmp/terms.jsonl" >/dev/null
+python3 "$B/scrub.py" csv --key-file "$tmp/k" --terms "$tmp/terms.jsonl" --in "$tmp/wazuh.csv" --out "$tmp/wazuh.deid.csv.gz" --policy wazuh --templates "$tmp/t.tsv" >/dev/null
+python3 "$B/scrub.py" csv --key-file "$tmp/k" --terms "$tmp/terms.jsonl" --in "$tmp/bd.csv" --out "$tmp/bd.deid.csv.gz" --policy bitdefender >/dev/null
+python3 "$B/scrub.py" wazuh --key-file "$tmp/k" --terms "$tmp/terms.jsonl" --in "$tmp/raw.tar.gz" --out "$tmp/alerts.deid.jsonl.gz" --which alerts >/dev/null
+python3 "$B/scrub.py" verify --terms "$tmp/terms.jsonl" "$tmp/wazuh.deid.csv.gz" "$tmp/bd.deid.csv.gz" "$tmp/alerts.deid.jsonl.gz" >/dev/null || fail "dictionary terms left after scrub"
+if gzip -dc "$tmp/wazuh.deid.csv.gz" "$tmp/alerts.deid.jsonl.gz" | grep -Eq 'abc123|admin@|corp\.example'; then fail "query string, mail or domain left after scrub"; fi
+if gzip -dc "$tmp/bd.deid.csv.gz" | grep -q dave; then fail "account left in the endpoint export"; fi
+python3 "$B/events.py" load --wazuh-tar "$tmp/raw.tar.gz" --bitdefender "$tmp/bd.csv" --spill-dir "$tmp/spill" --out "$tmp/siem.jsonl" >/dev/null
+python3 "$B/events.py" load --wazuh-csv "$tmp/wazuh.csv" --out "$tmp/siem-csv.jsonl" >/dev/null
+[ "$(($(wc -l <"$tmp/siem.jsonl") - 1))" = "$(wc -l <"$tmp/siem-csv.jsonl" | tr -d ' ')" ] || fail "csv and raw json disagree on the alert count"
+python3 "$B/pseudonymize.py" --key-file "$tmp/k" --level standard --in "$tmp/siem.jsonl" --out "$tmp/siem.p.jsonl" --timing "$tmp/siem.timing" >/dev/null
+if grep -Eq 'carol|web01|dave|example' "$tmp/siem.p.jsonl"; then fail "a real name in the pseudonymized siem events"; fi
+python3 "$B/summarize.py" --entity host --exclude-kinds malware.detect --in "$tmp/siem.p.jsonl" --out "$tmp/siem.s.jsonl" --baseline-until 2026-07-15 >/dev/null
+python3 "$B/detect.py" run --entity host --in "$tmp/siem.s.jsonl" --out "$tmp/siem.d.jsonl" --backend rules --manifest "$tmp/siem.m.json" >/dev/null
+python3 "$B/evaluate.py" --triage --detections "$tmp/siem.d.jsonl" --events "$tmp/siem.p.jsonl" --out "$tmp/siem.r.md" --json "$tmp/siem.m2.json" >/dev/null
+if grep -q '^| F1' "$tmp/siem.r.md"; then fail "a triage report must not print F1"; fi
+if python3 "$B/evaluate.py" --detections "$tmp/siem.d.jsonl" --out "$tmp/x.md" 2>/dev/null; then fail "evaluate must refuse to score without a schedule"; fi
+python3 "$B/overlay.py" --in "$tmp/siem.p.jsonl" --out "$tmp/siem.o.jsonl" --schedule "$tmp/siem.sch.tsv" --from 2026-07-15 --to 2026-08-28 --per-scenario 4 >/dev/null
+python3 "$B/summarize.py" --entity host --exclude-kinds malware.detect --in "$tmp/siem.o.jsonl" --out "$tmp/siem.os.jsonl" --baseline-until 2026-07-15 >/dev/null
+python3 "$B/detect.py" run --entity host --in "$tmp/siem.os.jsonl" --out "$tmp/siem.od.jsonl" --backend rules --t1 3 --t2 3 >/dev/null
+python3 "$B/evaluate.py" --detections "$tmp/siem.od.jsonl" --schedule "$tmp/siem.sch.tsv" --out "$tmp/siem.or.md" --json "$tmp/siem.om.json" --cluster --bootstrap 100 >/dev/null
+python3 -c "
+import json, sys
+m = json.load(open(sys.argv[1]))
+assert m['positives'] == 12, m['positives']
+assert m['overall']['recall'] >= 0.8, m['overall']
+print('siem overlay rules: R %.2f P %.2f' % (m['overall']['recall'], m['overall']['precision']))
+" "$tmp/siem.om.json" || fail "overlay injections do not reach the summaries"
 echo "smoke-behavior OK"

@@ -23,6 +23,9 @@ site's logs  ->  events.jsonl  ->  events.p.jsonl  ->  summaries.jsonl  ->  dete
 | `evaluate.py` | 對注入排程表算 Precision、Recall、F1、每使用者日偽陽性率，bootstrap 95% 信賴區間，六類情境各自的召回與類別正確率，兩段各放行多少，三層的延遲，漏報與誤報各附模型給的理由。Markdown、json、`behavior.prom` |
 | `synth.py` | 合成場域：40 人、七種職務、35 天（前 21 天基線），每人有自己的工時、共享區、對外網域與日流量；IT 每天碰伺服器，服務帳號每晚備份。測試期有四個「合法但看起來可疑」的難例，與六類情境的注入各 5 次，排程表就是標準答案。位址用文件保留段，可以進公開 repo |
 | `run.sh` | 上面五步接起來跑進一個目錄 |
+| `scrub.py` | 保留日誌原文的那一份副本用的清理。`dict` 從場域自己的結構欄位建字典，自由文字裡出現就換成與事件相同的假名；再套 URL 查詢字串、位址、MAC、Email、`DOMAIN\\user`、家目錄、憑證樣式、身分證與手機規則。沒列入政策的欄位在 `standard` 當自由文字清理，在 `strict` 直接丟掉。`verify` 只印每檔命中數 |
+| `pii_audit.py` | 第二道。把去重後的日誌樣板分批送地端模型，列出還能識別個人或組織的片段；模型不清理資料，找到的東西變成規則或字典項目再跑一次 `scrub.py`。`canary` 植入虛構識別資料，分類別量規則、模型與兩者合計的召回；`review` 只在人的終端機顯示內容 |
+| `overlay.py` | 半合成標籤：把 S3、S4、S5 事件疊進真實場域的假名化事件流。只能回答「訊號在這個場域的真實噪音裡還看不看得到」，不能回答「真實內部人會不會長這樣」 |
 | `../tests/smoke-behavior.sh`、`../tests/test_behavior.py` | 冒煙與單元測試，不需要模型也不需要 VictoriaLogs |
 
 ## 假名化等級
@@ -80,16 +83,38 @@ for L in minimal standard strict; do sh run.sh --out /srv/behavior/level-$L --ev
 
 排程表是 tsv，欄位 `start end user host scenario note`，時間帶時區（`2026-09-30T23:33+08:00`），一次注入一行；`user` 與 `host` 用場域的真名，假名化時與事件同一把金鑰換掉，`note` 清空。
 
+## 只有 SIEM 告警的場域
+
+有些場域的日誌只說哪台機器，很少說哪個人（伺服器 Wazuh 告警、端點防護產品）。這種場域用主機日：
+
+```sh
+python3 scrub.py dict --csv alerts.csv:agent_name,dstuser=user,srcuser=user --wazuh-tar raw.tar.gz --out /secure/terms.jsonl
+python3 scrub.py csv --key-file K --terms /secure/terms.jsonl --in alerts.csv --out alerts.deid.csv.gz --policy wazuh --templates /secure/t.jsonl
+python3 events.py load --wazuh-tar raw.tar.gz --bitdefender bd.csv --spill-dir /secure/spill --out /secure/events.jsonl
+python3 pseudonymize.py --key-file K --level standard --in /secure/events.jsonl --out events.p.jsonl --timing timing.jsonl
+python3 summarize.py --entity host --exclude-kinds malware.detect --in events.p.jsonl --out s.jsonl --baseline-until 2026-08-01
+python3 detect.py run --entity host --backend openai --base-url URL --slm M --llm M --api-key-file F --thermal-hot 86 --in s.jsonl --out d.jsonl --manifest m.json
+python3 evaluate.py --triage --detections d.jsonl --events events.p.jsonl --out triage.md --json triage.json
+```
+
+`--triage` 不輸出 Precision、Recall、F1，因為這裡沒有標準答案；`--schedule` 缺少時 `evaluate.py` 也會拒絕評分。`--exclude-kinds malware.detect` 讓摘要層看不到端點產品的判定，才能拿它當弱標籤做回溯，弱標籤是另一個產品的意見，只做描述。主機日不獨立，半合成評估要加 `--cluster` 以整台主機重抽。
+
+公網位址的告警單獨計數、不計分：對外服務被掃描，與內部人無關。`src_scope`（internal、external）在位址改寫前算好，改寫只保留前綴，不保留前綴的意義。
+
 ## 資料治理
 
 - 金鑰由不是研究者的人產生與保管；研究者拿到的是 `events.p.jsonl` 之後的檔案。`--vault` 的對照表放在金鑰保管人那裡。
 - `raw/` 與任何真實事件檔不進版控；`.pii-patterns` 列場域的字串，`scripts/hygiene.py` 會擋。
 - 模型在本機或場域內的推論節點上跑，不出網路；manifest 記的是 Ollama 的位址，不是資料。
+- 雲端模型與雲端助理不讀場域資料。這些工具只把統計寫到終端機，真實內容只留在權限 0600 的檔案裡。
+- 日誌內容由送出請求的人決定，可能夾帶提示注入。模型呼叫不給工具、只收 JSON，提示寫明內容是不可信的資料；不要把原始日誌交給有工具權限的代理人。
+- 假名化資料仍是個人資料，金鑰與對照表可以還原。報告用「量測到的殘留上界」，不要寫成「已完全匿名」。
 - 合成場域的位址是 192.0.2.0/24、198.51.100.0/24、203.0.113.0/24，名稱是 example.net。
 
 ## 還沒有的
 
 - VictoriaLogs 來源表只有 FortiGate 行與 sshd；Windows 事件與 NAS 的檔案存取要看場域的收容系統吐什麼格式，`events.py` 的 `from_winsec` 以常見欄位名猜。
+- 使用者日以外的 S1、S2、S6 要有檔案存取與對外流量來源，主機日做不到。
 - CERT 公開資料集（logon、device、http、email、file）的轉接器，讓同一條管線在另一個分佈上重跑。
 - 告警規則（例如 `behavior_eval_last_run_timestamp` 過期、F1 低於門檻）、儀表板列、cron 行。
 - 判讀結果回寫 agent gate 的同一條鏈或 WORM 封存的 `behavior-<day>` 來源。

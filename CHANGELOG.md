@@ -2,6 +2,7 @@
 
 ## 未發行
 
+- `logs/behavior/`：只有 SIEM 告警的場域。`events.py` 新增 Wazuh（CSV 與 alerts JSON，從 tar 串流、不落地）與 Bitdefender 載入器、`sec.alert` 等五種事件、`--spill-dir` 分日排序；`pseudonymize.py` 在改寫前保留 `src_scope`，家目錄不再經路徑洩漏帳號；`scrub.py` 清理保留原文的副本；`pii_audit.py` 以地端模型做第二道稽核與金絲雀召回；`summarize.py --entity host` 主機日，公網噪音不計分；`overlay.py` 半合成注入；`detect.py` 送固定 `seed`、讀不懂的回答不再算成「未標記」、溫控閘門、`--api-key-file`；`evaluate.py --triage` 無標籤時不輸出 F1，`--cluster` 按主機重抽。
 - `logs/behavior/`：行為偵測。`events.py`（Zeek、FortiGate、Windows 安全事件、VictoriaLogs 讀成一種事件結構）、`pseudonymize.py`（HMAC 假名、前綴保留的位址、三個等級、金鑰在 repo 外、`--vault` 給保管人）、`summarize.py`（每使用者日 25 個計數、對本人或同職務或全站基線的 z、新實體、規則分數、中文摘要）、`detect.py`（小模型初篩全部、大模型只讀被標記的，Ollama 或規則後端，hash 鏈與 `verify`，run manifest 記模型、提示與輸入的 sha256）、`evaluate.py`（對注入排程表的 Precision、Recall、F1、每使用者日偽陽性率與 bootstrap 95% 區間、六類情境、兩段放行、三層延遲，Markdown、json、`behavior.prom`）、`synth.py`（40 人 35 天的合成場域，四個難例，六類情境各 5 次注入）、`run.sh`。`tests/smoke-behavior.sh` 與 `tests/test_behavior.py` 不用模型與 VictoriaLogs。見 `logs/behavior/README.md`。
 
 ## v0.7.0（2026-10-15）

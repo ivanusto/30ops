@@ -36,13 +36,13 @@ versions" of the reproducibility plan.
 
 Standard library only.
 """
-import argparse, hashlib, json, os, platform, re, sys, time, urllib.request
+import argparse, glob, hashlib, json, os, platform, re, sys, time, urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
 import ops30  # noqa: E402
 from ops30 import rfc3339  # noqa: E402
 
-PROMPT_VERSION = "2026-10-17.2"
+PROMPT_VERSION = "2026-11-02.1"
 SCENARIOS = ("S1", "S2", "S3", "S4", "S5", "S6")
 
 STAGE1 = """你是企業內部威脅初篩器。輸入是一位使用者一天行為的彙整摘要，第二行「觸發訊號」列出已超過門檻的項目與它們指向的情境，其後每個數字旁附有該使用者自己的基線與偏離量（σ）。你的工作是判斷這一天是否值得交給資深分析師複核，寧可多送，不可漏掉：只要有任何觸發訊號，除非其餘內容明確顯示是例行工作，就應標記。
@@ -68,8 +68,49 @@ S6 離職徵兆：五日累積的讀取、壓縮檔與列印相對基線明顯�
 只輸出 JSON：{"verdict":"THREAT"或"NORMAL","category":"S1"到"S6"或"NONE","risk":0到100的整數,"reason":"40字以內的中文依據"}"""
 
 
+STAGE1_HOST = """你是資安監控的初篩器。輸入是一台主機一天的告警彙整（主機與帳號已假名化），第二行「觸發訊號」列出已超過門檻的項目，其後每個數字旁附有這台主機自己的基線與偏離量（σ）。你的工作是判斷這一天是否值得交給資深分析師複核，寧可多送，不可漏掉：只要有內部行為的觸發訊號，除非其餘內容明確顯示是例行工作，就應標記。
+對外服務本來就持續收到來自公網的掃描與垃圾信，這些外部噪音本身不算內部威脅。
+三類情境（本資料的來源只能觀察這三類）：
+S3 橫向移動：來自新的內部來源的登入或偵察告警、單日多個內部來源、內部來源的權限操作
+S4 憑證異常：多次失敗後成功、新的帳號或來源、非工作時段登入
+S5 規避控管：安裝或執行 VPN、代理、通道類工具，USB 儲存裝置，非工作時段修改受監控檔案
+判斷原則：服務帳號與排程作業每天相同的行為通常正常；偏離量小於 2σ 且沒有任何新實體，通常是正常。
+只輸出 JSON：{"flag":true或false,"category":"S3"、"S4"、"S5"或"NONE","confidence":0到1之間的數字}"""
+
+STAGE2_HOST = """你是企業資安團隊的資深分析師，負責內部威脅研判。輸入是一台主機一天的告警彙整（主機與帳號已假名化），第二行「觸發訊號」列出已超過門檻的項目，其後每個數字旁附有這台主機自己的基線與偏離量（σ），最後是初篩器的意見。訊號是線索不是結論，請以整段摘要判斷。公網來源的掃描、暴力嘗試與垃圾信若沒有成功登入，不算內部威脅。
+三類情境：
+S3 橫向移動：來自新的內部來源的登入或偵察告警、單日多個內部來源、內部來源的權限操作；維運帳號在工作時段的例行作業若沒有新來源，不算
+S4 憑證異常：多次失敗後成功、新的帳號或來源、非工作時段登入
+S5 規避控管：安裝或執行 VPN、代理、通道類工具，USB 儲存裝置，非工作時段修改受監控檔案；例行更新不算
+風險分數 0 到 100：0 到 39 正常、40 到 69 需要人工確認、70 以上高度可疑。verdict 為 THREAT 時 risk 至少 40。
+只輸出 JSON：{"verdict":"THREAT"或"NORMAL","category":"S3"、"S4"、"S5"或"NONE","risk":0到100的整數,"reason":"40字以內的中文依據"}"""
+
+PROMPTS = {"user": (STAGE1, STAGE2), "host": (STAGE1_HOST, STAGE2_HOST)}
+
+
 def sha256(s):
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def thermal_gate(hot, cool, zones="/sys/class/thermal/thermal_zone*/temp"):
+    """Stop sending while the box is hot; a host without the sensor just goes on."""
+    if not hot:
+        return 0.0
+    def zone():
+        vals = []
+        for p in glob.glob(zones):
+            try:
+                with open(p) as f:
+                    vals.append(int(f.read()) // 1000)
+            except (OSError, ValueError):
+                pass
+        return max(vals) if vals else 0
+    if zone() < hot:
+        return 0.0
+    t0 = time.monotonic()
+    while zone() > cool:
+        time.sleep(5)
+    return time.monotonic() - t0
 
 
 def canonical(obj):
@@ -108,6 +149,11 @@ class Ollama:
     def __init__(self, a):
         self.url, self.slm, self.llm, self.think = a.ollama.rstrip("/"), a.slm, a.llm, a.think
         self.keep = a.keep_alive
+        self.setup(a)
+
+    def setup(self, a):
+        self.p1, self.p2 = PROMPTS[a.entity]
+        self.hot, self.cool, self.paused = a.thermal_hot, a.thermal_cool, 0.0
 
     def chat(self, model, system, user, num_predict):
         body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -122,7 +168,10 @@ class Ollama:
 
     def stage1(self, rec):
         try:
-            j, ms, usage = self.chat(self.slm, STAGE1, rec["text"], 200)
+            self.paused += thermal_gate(self.hot, self.cool)
+            j, ms, usage = self.chat(self.slm, self.p1, rec["text"], 200)
+            if "flag" not in j:      # an answer that cannot be read must not read as "not flagged"
+                return {"model": self.slm, "flag": True, "category": "NONE", "confidence": 0, "ms": round(ms), "usage": usage, "parse_error": True}
             return {"model": self.slm, "flag": bool(j.get("flag")), "category": norm_cat(j.get("category")),
                     "confidence": float(j.get("confidence") or 0), "ms": round(ms), "usage": usage}
         except Exception as e:  # noqa: BLE001  a failed call is a record too
@@ -131,7 +180,10 @@ class Ollama:
     def stage2(self, rec, s1):
         user = rec["text"] + f"\n\n初篩器意見：{'可疑' if s1.get('flag') else '正常'}，情境 {s1.get('category')}，信心 {s1.get('confidence', 0):.2f}。"
         try:
-            j, ms, usage = self.chat(self.llm, STAGE2, user, 400)
+            self.paused += thermal_gate(self.hot, self.cool)
+            j, ms, usage = self.chat(self.llm, self.p2, user, 400)
+            if "verdict" not in j:
+                return {"model": self.llm, "verdict": "ERROR", "category": "NONE", "risk": 0, "reason": "", "ms": round(ms), "usage": usage, "parse_error": True}
             v = str(j.get("verdict", "")).upper()
             risk = int(float(j.get("risk") or 0))
             return {"model": self.llm, "verdict": "THREAT" if v == "THREAT" else "NORMAL", "category": norm_cat(j.get("category")),
@@ -146,10 +198,15 @@ class OpenAI(Ollama):
     def __init__(self, a):
         self.url, self.slm, self.llm, self.think = a.base_url.rstrip("/"), a.slm, a.llm, a.think
         self.key = a.api_key or os.environ.get("OPENAI_API_KEY", "")
+        if a.api_key_file:
+            with open(a.api_key_file, encoding="utf-8") as f:
+                self.key = f.read().strip()
+        self.seed = a.seed
+        self.setup(a)
 
     def chat(self, model, system, user, num_predict):
         body = {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-                "temperature": 0, "max_tokens": num_predict if not self.think else num_predict + 2000,
+                "temperature": 0, "seed": self.seed, "max_tokens": num_predict if not self.think else num_predict + 2000,
                 "response_format": {"type": "json_object"}, "chat_template_kwargs": {"thinking": self.think, "enable_thinking": self.think}}
         hdr = {"Content-Type": "application/json"}
         if self.key:
@@ -273,9 +330,12 @@ def run(a):
         man = {"started": started, "finished": finished, "backend": a.backend, "slm_backend": a.slm_backend, "llm_backend": a.llm_backend,
                "slm": a.slm if a.slm_backend != "rules" else "rules", "llm": a.llm if a.llm_backend != "rules" else "rules",
                "think": a.think, "prompt_version": PROMPT_VERSION,
-               "prompt1_sha256": sha256(STAGE1), "prompt2_sha256": sha256(STAGE2), "input": os.path.basename(a.inp),
+               "entity": a.entity, "seed": a.seed, "engine": a.engine,
+               "prompt1_sha256": sha256(PROMPTS[a.entity][0]), "prompt2_sha256": sha256(PROMPTS[a.entity][1]), "input": os.path.basename(a.inp),
                "input_sha256": file_sha256(a.inp), "user_days": len(recs), "stage1_calls": n1, "stage2_calls": n2,
                "flagged": flagged, "threats": threats, "t1": a.t1, "t2": a.t2, "prescreen_min": a.prescreen_min,
+               "parse_errors": sum(1 for x in s1s if x.get("parse_error")) + sum(1 for x in s2s if x and x.get("parse_error")),
+               "call_errors": sum(1 for x in s1s if x.get("error")) + sum(1 for x in s2s if x and x.get("error")),
                "ops30_version": ops30.version(), "python": platform.python_version(),
                "ollama": a.ollama if "ollama" in (a.slm_backend, a.llm_backend) else None,
                "base_url": a.base_url if "openai" in (a.slm_backend, a.llm_backend) else None}
@@ -305,7 +365,12 @@ def main():
     r.add_argument("--slm-backend", choices=("ollama", "openai", "rules")); r.add_argument("--llm-backend", choices=("ollama", "openai", "rules"))
     r.add_argument("--ollama", default=os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434"))
     r.add_argument("--base-url", default=os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:8000"), help="OpenAI-compatible server for --backend openai")
-    r.add_argument("--api-key")
+    r.add_argument("--api-key"); r.add_argument("--api-key-file", help="read the key from a file, so it is not in the process list")
+    r.add_argument("--entity", choices=("user", "host"), default="user", help="what one summary is about; picks the prompts")
+    r.add_argument("--seed", type=int, default=7, help="sent on every call and recorded; some servers otherwise use a hidden default")
+    r.add_argument("--engine", default="", help="engine image or version, recorded in the manifest")
+    r.add_argument("--thermal-hot", type=int, default=0, help="stop sending at this zone temperature (C); 0 is off")
+    r.add_argument("--thermal-cool", type=int, default=74)
     r.add_argument("--slm", default="gemma4:e4b-mlx"); r.add_argument("--llm", default="gemma4:26b-nvfp4")
     r.add_argument("--think", action="store_true", help="let the models think (slower, not better on this task in the lab)")
     r.add_argument("--keep-alive", default="10m")
