@@ -43,7 +43,7 @@ services:
   pve-exporter:
     <<: *restart
     profiles: [pve]
-    image: prompve/prometheus-pve-exporter:3.5.5@sha256:79a5598906697b1a5a006d09f0200528a77c6ff1568faf018539ac65824454df
+    image: prompve/prometheus-pve-exporter:3.11.0@sha256:290756c34fd13e1d9972b8e64344d49a15ab99dd0053b29d9716f1ca4ae4c069
     volumes:
       - ${OPS30_ETC:?}/prometheus/pve.yml:/etc/prometheus/pve.yml:ro
     # loopback only: Prometheus reaches it over the compose network, and the
