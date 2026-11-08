@@ -3,3 +3,6 @@ __pycache__/
 .venv/
 .pii-patterns
 /build/
+
+# Claude Code per-user permissions (may contain secrets)
+.claude/settings.local.json
