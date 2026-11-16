@@ -32,12 +32,18 @@ import argparse, collections, csv, gzip, hashlib, json, os, re, sys, tarfile, ti
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(HERE, "..", "..", "lib", "python"))
-from pseudonymize import LEVELS, Pseudonymizer, TWO_LEVEL_TLD  # noqa: E402
+from pseudonymize import KIND_PREFIX, LEVELS, Pseudonymizer, TWO_LEVEL_TLD  # noqa: E402
 
 # words too common to treat as names, wherever a site's columns happen to use them
 GENERIC = {"root", "admin", "administrator", "system", "user", "users", "test", "guest", "www", "www-data", "mail", "web", "server", "host", "localhost", "ubuntu",
            "debian", "centos", "windows", "linux", "nobody", "daemon", "backup", "ftp", "nginx", "apache", "mysql", "postgres", "unknown", "none", "null", "manager",
-           "wazuh", "ossec", "sshd", "cron", "local", "default", "com", "net", "org", "tw", "lan", "internal", "corp", "gov", "edu", "support", "service", "sys", "bin", "pi", "git"}
+           "wazuh", "ossec", "sshd", "cron", "local", "default", "com", "net", "org", "tw", "lan", "internal", "corp", "gov", "edu", "support", "service", "sys", "bin", "pi", "git",
+           # tools and daemons a reviewer or the model can take for a name
+           "sudo", "systemd", "pam_unix", "kernel", "bash", "sh", "haproxy", "apache2", "docker", "pm2", "wazuh-agent", "grafana", "bitdefender", "cis", "ucf"}
+# a reviewed domain is a domain: dotted, with a TLD of letters
+RE_DOMAIN = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,10}")
+# the host field of a syslog header, after a BSD or an ISO timestamp
+RE_SYSLOG_HOST = re.compile(r"^(<\d+>)?([A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)(\s+)([^\s:\[]+)")
 PUBLIC_SUFFIX = {"com", "net", "org", "info", "biz", "io", "gov", "edu", "tw", "local", "lan", "internal", "corp", "cn", "jp", "hk", "uk", "au", "de", "ru", "xyz", "top", "cc", "me", "co", "ai", "app", "dev"}
 
 RE_URLQ = re.compile(r"([\w/.%~:-]*/[\w/.%~:-]*)\?[^\s\"'<>]*")
@@ -80,7 +86,7 @@ class Scrubber:
         self.keys = {}
         for t in terms:
             real = t["real"].lower()
-            self.map[real] = self.p.name(t["kind"], real, {"user": "u", "host": "h", "domain": "d"}.get(t["kind"], "h"))
+            self.map[real] = self.p.name(t["kind"], real, KIND_PREFIX.get(t["kind"], "h"))
         self.re = term_regex(self.map)
 
     def _ip(self, m):
@@ -96,6 +102,13 @@ class Scrubber:
         keep = 3 if len(labels) >= 3 and ".".join(labels[-2:]) in TWO_LEVEL_TLD else 2
         cut = ".".join(labels[-keep:])
         return self.map.get(cut, cut)
+
+    def _syslog_host(self, m):
+        h = m.group(4)
+        if RE_TOKEN.fullmatch(h.lower()) or h.startswith("<") or RE_IP4.fullmatch(h) or ":" in h:     # addresses are rewritten later, once
+            return m.group(0)
+        self.hits["syslog_host"] += 1
+        return (m.group(1) or "") + m.group(2) + m.group(3) + self.host(h)
 
     def _term(self, m):
         self.hits["dictionary"] += 1
@@ -116,6 +129,7 @@ class Scrubber:
         s = self._sub("secret", RE_BEARER, lambda m: m.group(1) + " <secret>", s)
         s = self._sub("url_query", RE_URLQ, lambda m: m.group(1) + "?<query>", s)
         s = self._sub("email", RE_EMAIL, "<email>", s)
+        s = RE_SYSLOG_HOST.sub(self._syslog_host, s, count=1)
         if self.re:
             s = self.re.sub(self._term, s)
         s = self._sub("dom_user", RE_DOMUSER, "<domain_user>", s)
@@ -271,6 +285,18 @@ def add_term(out, kind, value):
             out.setdefault(labels[-keep], "domain")
 
 
+def extra_reject(kind, v):
+    """Why a reviewed term is not taken, or None."""
+    v = v.strip().lower()
+    if kind not in KIND_PREFIX:
+        return "kind"
+    if kind == "domain" and not RE_DOMAIN.fullmatch(v):
+        return "domain_shape"
+    if not is_name(v):
+        return "generic_or_no_letters"
+    return None
+
+
 def add_user(out, value):
     """An account as logged, DOMAIN\\name or name: the name is the term."""
     v = str(value or "").strip()
@@ -312,12 +338,17 @@ def cmd_dict(a):
                 det = node.get("details") if isinstance(node.get("details"), dict) else {}
                 proc = det.get("process") if isinstance(det.get("process"), dict) else {}
                 add_user(terms, (proc.get("user") or {}).get("user_name") if isinstance(proc.get("user"), dict) else None)
+    rejected = collections.Counter()
     for path in a.extra:      # one term per line: <kind><TAB><value>, what the site knows and the logs do not say
         with open(path, encoding="utf-8") as f:
             for line in f:
                 if "\t" in line:
                     kind, v = line.rstrip("\n").split("\t", 1)
-                    add_term(terms, kind, v)
+                    why = extra_reject(kind, v)
+                    if why:
+                        rejected[why] += 1
+                    else:
+                        add_term(terms, kind, v)
     dropped = 0
     for spec in a.vocab:      # words of the product's own rule vocabulary: an account called the same is not a secret
         path, cols = spec.rsplit(":", 1)
@@ -335,7 +366,7 @@ def cmd_dict(a):
         for v, kind in sorted(terms.items()):
             f.write(json.dumps({"kind": kind, "real": v}, ensure_ascii=False) + "\n")
     c = collections.Counter(terms.values())
-    print(f"scrub dict: {n} rows read, {len(terms)} terms {dict(c)}, {dropped} dropped as rule vocabulary")
+    print(f"scrub dict: {n} rows read, {len(terms)} terms {dict(c)}, {dropped} dropped as rule vocabulary, extra rejected {dict(rejected)}")
 
 
 # ------------------------------------------------------------------ csv

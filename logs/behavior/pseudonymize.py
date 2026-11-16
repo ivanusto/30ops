@@ -57,6 +57,11 @@ NAME_KEYS = ("dst_name",)
 TWO_LEVEL_TLD = {"com.tw", "org.tw", "edu.tw", "gov.tw", "net.tw", "co.uk", "co.jp", "com.cn", "com.au", "com.hk"}
 
 
+# dictionary kinds and the letter their pseudonyms start with
+# (org: an organisation's name without a TLD; a domain is dotted)
+KIND_PREFIX = {"user": "u", "host": "h", "domain": "d", "org": "o", "file": "f", "path": "p", "hash": "x", "device": "m"}
+
+
 class Pseudonymizer:
     def __init__(self, key, level, vault=None):
         if level not in LEVELS:
@@ -132,8 +137,7 @@ class Pseudonymizer:
 
     def set_terms(self, terms, rx):
         """The site dictionary from scrub.py: a kept path segment can still name a host or an account."""
-        prefix = {"user": "u", "host": "h", "domain": "d"}
-        self.term_map = {t["real"].lower(): self.name(t["kind"], t["real"].lower(), prefix.get(t["kind"], "h")) for t in terms}
+        self.term_map = {t["real"].lower(): self.name(t["kind"], t["real"].lower(), KIND_PREFIX.get(t["kind"], "h")) for t in terms}
         self.term_rx = rx
 
     def path(self, value, share):

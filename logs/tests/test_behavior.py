@@ -336,6 +336,31 @@ class ScrubDictTerms(unittest.TestCase):
         self.assertNotIn("alice", out); self.assertNotIn("srv01", out)
         self.assertEqual(out.split("/")[0], scrub.Scrubber(KEY, "standard", terms).map["srv01"] + "-data")
 
+    def test_syslog_header_host(self):
+        sc = scrub.Scrubber(KEY, "standard", [])
+        out = sc.text("Nov 15 12:00:01 wazuh sshd[42]: Accepted publickey for root")
+        self.assertNotIn(" wazuh ", out)
+        self.assertIn(" sshd[42]: ", out)
+        self.assertEqual(out.split()[3], sc.host("wazuh"))
+        iso = sc.text("2026-11-15T12:00:01+08:00 nas205 kernel: x")
+        self.assertEqual(iso.split()[1], sc.host("nas205"))
+        ip = sc.text("Nov 15 12:00:01 192.0.2.5 sshd[1]: x")
+        self.assertEqual(ip.split()[3], sc.ip("192.0.2.5"))
+        self.assertEqual(sc.text("rule wazuh fired"), "rule wazuh fired")
+
+    def test_extra_reject(self):
+        self.assertEqual(scrub.extra_reject("domain", "openai"), "domain_shape")
+        self.assertIsNone(scrub.extra_reject("domain", "example.inc"))
+        self.assertEqual(scrub.extra_reject("host", "haproxy"), "generic_or_no_letters")
+        self.assertEqual(scrub.extra_reject("host", "203.0.113.9:9090"), "generic_or_no_letters")
+        self.assertEqual(scrub.extra_reject("color", "blue"), "kind")
+        self.assertIsNone(scrub.extra_reject("file", "a1b2c3.php"))
+
+    def test_new_kinds_get_their_prefix(self):
+        sc = scrub.Scrubber(KEY, "standard", [{"kind": "file", "real": "a1b2c3.php"}, {"kind": "hash", "real": "sha256:abcdef"}])
+        out = sc.text("GET /a1b2c3.php key SHA256:abcdef")
+        self.assertRegex(out, r"/f-[0-9a-f]{10} key x-[0-9a-f]{10}$")
+
     def test_name_with_digits_is_kept(self):
         out = {}
         scrub.add_term(out, "host", "srv01.corp.local")
