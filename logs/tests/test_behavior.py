@@ -303,6 +303,83 @@ class Scrub(unittest.TestCase):
             self.assertEqual([r["n"] for r in rows], [2, 1])
 
 
+class ScrubDictTerms(unittest.TestCase):
+    """The dictionary must not learn our own pseudonyms or bare numbers."""
+
+    def test_pseudonym_is_not_a_term(self):
+        out = {}
+        scrub.add_term(out, "host", "h-0123456789")
+        scrub.add_term(out, "user", "u-abcdef0123")
+        self.assertEqual(out, {})
+
+    def test_numeric_label_is_not_a_term(self):
+        out = {}
+        scrub.add_term(out, "host", "203.web01.example.local")
+        self.assertNotIn("203", out)
+        self.assertIn("203.web01.example.local", out)
+
+    def test_span_with_pseudonym_is_not_a_term(self):
+        out = {}
+        scrub.add_term(out, "host", "portal.h-0123456789")
+        self.assertEqual(out, {})
+
+    def test_residual_names(self):
+        self.assertEqual(scrub.residual_names("203.10-h-0123456789-h-abcdef0123"), [])
+        self.assertEqual(scrub.residual_names("portal7.h-0123456789"), ["portal7"])
+        self.assertEqual(scrub.residual_names("h-0123456789->abc"), ["abc"])
+
+    def test_kept_path_segment_uses_dictionary(self):
+        terms = [{"kind": "user", "real": "alice"}, {"kind": "host", "real": "srv01"}]
+        p = pseudonymize.Pseudonymizer(KEY, "standard")
+        p.set_terms(terms, scrub.term_regex({t["real"]: t["kind"] for t in terms}))
+        out = p.path("/srv01-data/alice/report.pdf", "")
+        self.assertNotIn("alice", out); self.assertNotIn("srv01", out)
+        self.assertEqual(out.split("/")[0], scrub.Scrubber(KEY, "standard", terms).map["srv01"] + "-data")
+
+    def test_name_with_digits_is_kept(self):
+        out = {}
+        scrub.add_term(out, "host", "srv01.corp.local")
+        self.assertIn("srv01", out)
+
+
+class ScrubJsonDepth(unittest.TestCase):
+    """Bitdefender incidents arrive as a list of objects under data.nodes."""
+    TERMS = [{"kind": "user", "real": "alice"}, {"kind": "host", "real": "srv01"}]
+
+    def run_json(self, level, obj):
+        return scrub.scrub_json(scrub.Scrubber(b"k" * 32, level, self.TERMS), obj, scrub.Templates(None))
+
+    def line(self):
+        return {"data": {
+            "nodes": [{"name": "SRV01", "type": "endpoint", "details": {"ips": ["192.0.2.10"], "macs": ["00:11:22:33:44:55"],
+                       "process": {"command_line": "run.exe -u alice", "user": {"user_name": "CORP\\\\carol", "user_sid": "S-1-5-21-1-2-3-1104"}},
+                       "file": {"path": "C:\\\\Users\\\\carol\\\\a.exe"}}}],
+            "alice": "field named after an account",
+            "user": {"name": "\u738b\u5c0f\u660e"},
+            "vulnerability": {"cve": "CVE-2026-1", "severity": "High", "reference": "https://srv01.example.org/x", "package": {"name": "alice-tools", "architecture": "amd64"}},
+            "matrix": [[{"who": "alice"}]]}}
+
+    def test_nothing_real_survives(self):
+        text = json.dumps(self.run_json("standard", self.line()), ensure_ascii=False)
+        for real in ("alice", "SRV01", "srv01", "carol", "192.0.2.10", "00:11:22:33:44:55", "run.exe", "S-1-5-21", "\u738b\u5c0f\u660e"):
+            self.assertNotIn(real, text)
+
+    def test_catalogue_words_stay(self):
+        v = self.run_json("standard", self.line())["data"]["vulnerability"]
+        self.assertEqual((v["cve"], v["severity"], v["package"]["architecture"]), ("CVE-2026-1", "High", "amd64"))
+
+    def test_strict_keeps_structure_only(self):
+        text = json.dumps(self.run_json("strict", self.line()), ensure_ascii=False)
+        for real in ("alice", "SRV01", "carol", "Users", "00:11:22:33:44:55"):
+            self.assertNotIn(real, text)
+        self.assertIn("CVE-2026-1", text)
+
+    def test_account_term_drops_the_domain(self):
+        out = {}
+        scrub.add_user(out, "CORP\\\\carol")
+        self.assertEqual(out, {"carol": "user"})
+
+
 class Audit(unittest.TestCase):
     def test_canary_classes_and_hit(self):
         import random

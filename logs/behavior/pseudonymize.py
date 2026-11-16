@@ -64,6 +64,7 @@ class Pseudonymizer:
         self.key, self.level, self.vault = key, level, vault
         self.seen = {}
         self.ipc = {}
+        self.term_rx, self.term_map = None, {}
         self.dropped_keys = 0
 
     def mac(self, kind, value, n=10):
@@ -129,6 +130,12 @@ class Pseudonymizer:
         keep = 3 if len(labels) >= 3 and ".".join(labels[-2:]) in TWO_LEVEL_TLD else 2
         return ".".join(labels[-keep:])
 
+    def set_terms(self, terms, rx):
+        """The site dictionary from scrub.py: a kept path segment can still name a host or an account."""
+        prefix = {"user": "u", "host": "h", "domain": "d"}
+        self.term_map = {t["real"].lower(): self.name(t["kind"], t["real"].lower(), prefix.get(t["kind"], "h")) for t in terms}
+        self.term_rx = rx
+
     def path(self, value, share):
         if value in (None, ""):
             return value
@@ -140,6 +147,8 @@ class Pseudonymizer:
                 parts[i + 1] = "<user>"
         if self.level == "strict" or len(parts) < 2:
             return share or (parts[0] if parts else "")
+        if self.term_rx:
+            parts = [self.term_rx.sub(lambda m: self.term_map.get(m.group(0).lower(), "<term>"), x) for x in parts]
         ext = os.path.splitext(parts[-1])[1].lower() if len(parts) > 1 else ""
         return "/".join(parts[:2]) + (f"/*{ext}" if ext else "")
 
@@ -258,10 +267,15 @@ def main():
     ap.add_argument("--schedule", help="injection schedule (tsv) to pseudonymize with the same key")
     ap.add_argument("--schedule-out")
     ap.add_argument("--timing", help="append one JSON line with the batch wall time")
+    ap.add_argument("--terms", help="site dictionary from scrub.py dict; also replaced inside kept path segments")
     a = ap.parse_args()
     key = load_key(a)
     vault = open(a.vault, "a", encoding="utf-8") if a.vault else None
     p = Pseudonymizer(key, a.level, vault)
+    if a.terms:
+        from scrub import load_terms, term_regex     # scrub imports this module, so not at the top
+        terms = load_terms(a.terms)
+        p.set_terms(terms, term_regex({t["real"].lower(): t["kind"] for t in terms}))
     n = 0
     t0 = time.perf_counter()
     with open(a.inp, encoding="utf-8") as fi, open(a.out, "w", encoding="utf-8") as fo:

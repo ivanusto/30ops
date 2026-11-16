@@ -42,6 +42,7 @@ PUBLIC_SUFFIX = {"com", "net", "org", "info", "biz", "io", "gov", "edu", "tw", "
 
 RE_URLQ = re.compile(r"([\w/.%~:-]*/[\w/.%~:-]*)\?[^\s\"'<>]*")
 RE_EMAIL = re.compile(r"[\w.+%-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+")
+RE_TOKEN = re.compile(r"[a-z]-[0-9a-f]{10}")     # what Pseudonymizer.name() writes: never a site term
 RE_MAC = re.compile(r"\b(?:[0-9a-fA-F]{2}[:-]){5}[0-9a-fA-F]{2}\b")
 RE_IP4 = re.compile(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])")
 # whole addresses or ones with "::"; three groups of digits is a time of day
@@ -76,6 +77,7 @@ class Scrubber:
         self.level = level
         self.hits = collections.Counter()
         self.map = {}
+        self.keys = {}
         for t in terms:
             real = t["real"].lower()
             self.map[real] = self.p.name(t["kind"], real, {"user": "u", "host": "h", "domain": "d"}.get(t["kind"], "h"))
@@ -128,6 +130,13 @@ class Scrubber:
             s = RE_FQDN.sub(self._fqdn, s)
         return s
 
+    def key(self, k):
+        """A field name can be an account's name too. Paths are matched on the
+        original, so this only changes what is written."""
+        if k not in self.keys:
+            self.keys[k] = self.re.sub(self._term, k) if self.re else k
+        return self.keys[k]
+
     def host(self, v):
         return self.map.get(str(v).lower()) or self.p.host_or_ip(str(v).lower()) if v else v
 
@@ -163,17 +172,23 @@ POLICIES = {
                     "attack_types": KEEP, "mitre_att_ck_ids": KEEP, "computer_name": HOST, "computer_fqdn": HOST, "computer_ip": IP, "username": USER, "process_path": TEXT, "parent_process_path": TEXT,
                     "process_command_line": TEXT, "endpoints_involved": TEXT, "detection_name": TEXT, "file_hash_sha256": KEEP},
     "vcenter": {"vm_name": HOST, "vm_id": HOST, "ip": IP, "datastore_name": HOST, "datastore_id": HOST, "datastore_type": KEEP, "ds_capacity_gb": KEEP, "ds_used_gb": KEEP, "ds_free_gb": KEEP,
-                "power_state": KEEP, "cpus": KEEP, "ram_mb": KEEP, "vm_committed_gb": KEEP, "vm_uncommitted_gb": KEEP, "os": KEEP},
+                "power_state": KEEP, "cpus": KEEP, "ram_mb": KEEP, "vm_committed_gb": KEEP, "vm_uncommitted_gb": KEEP, "os": TEXT},
     "metrics": {"timestamp_utc": TIME, "metric_name": TEXT, "job": TEXT, "value": KEEP, "role": TEXT, "instance": TEXT, "hostname": HOST, "ip": IP, "device_or_item": TEXT, "labels_json": TEXT},
 }
 # JSON paths of a manager's alert or archive line
-JSON_HOST = {"agent.name", "manager.name", "predecoder.hostname", "data.computer_name", "data.computer_fqdn", "data.dstname", "data.hostname"}
-JSON_USER = {"data.srcuser", "data.dstuser", "syscheck.uname_after", "syscheck.uname_before", "data.username", "data.process.euser", "data.process.ruser", "data.process.suser", "data.process.fuser"}
-JSON_IP = {"agent.ip", "data.srcip", "data.dstip", "data.computer_ip"}
-JSON_TIME = {"timestamp", "@timestamp"}
-JSON_DROP = {"data.command", "data.pwd", "previous_output", "data.process.cmd", "data.process.argvs"}
-JSON_KEEP_PREFIX = ("rule.", "decoder.", "data.vulnerability.", "syscheck.mode", "syscheck.event", "syscheck.size_", "syscheck.perm_", "syscheck.changed_")
-JSON_TEXT = {"full_log", "location", "data.url", "syscheck.path"}
+JSON_HOST = {"agent.name", "manager.name", "predecoder.hostname", "data.computer_name", "data.computer_fqdn", "data.dstname", "data.hostname", "data.nodes.id", "data.nodes.details.hardware_id"}
+JSON_USER = {"data.srcuser", "data.dstuser", "syscheck.uname_after", "syscheck.uname_before", "data.username", "data.process.euser", "data.process.ruser", "data.process.suser", "data.process.fuser",
+             "data.user.name", "data.user.id", "data.nodes.details.process.user.user_name", "data.nodes.details.process.user.user_sid"}
+JSON_IP = {"agent.ip", "data.srcip", "data.dstip", "data.computer_ip", "data.source_ip", "data.nodes.details.ip", "data.nodes.details.ips"}
+JSON_TIME = {"timestamp", "@timestamp", "data.nodes.details.process.execution_date"}
+JSON_DROP = {"data.command", "data.pwd", "previous_output", "data.process.cmd", "data.process.argvs",
+             "data.nodes.details.process.command_line", "data.process_command_line", "data.process_info_command_line", "data.command_line_parameters"}
+# only the closed vocabulary of a feed; its titles, references and package names are text like any other
+JSON_KEEP_PREFIX = ("rule.", "decoder.", "data.vulnerability.cve", "data.vulnerability.cvss.", "data.vulnerability.score.", "data.vulnerability.severity", "data.vulnerability.status",
+                    "data.vulnerability.classification", "data.vulnerability.enumeration", "data.vulnerability.type", "data.vulnerability.published", "data.vulnerability.updated",
+                    "data.vulnerability.scanner.reference", "data.vulnerability.package.architecture", "syscheck.mode", "syscheck.event", "syscheck.size_", "syscheck.perm_", "syscheck.changed_")
+# public catalogue text: scrubbed, but sampling it for the audit only measures the feed
+JSON_NO_SAMPLE = ("data.vulnerability.", "data.sca.")
 
 
 class Templates:
@@ -228,21 +243,38 @@ def private_gzip(path):
 
 # ------------------------------------------------------------------ dictionary
 
+def is_name(v):
+    """A name has letters (10.1:443 is not one) and is not one of our own pseudonyms."""
+    return bool(v) and v not in GENERIC and len(v) >= 3 and bool(re.search(r"[^\W\d_]", v)) and not RE_TOKEN.search(v)
+
+
+def residual_names(span):
+    """A span copied from scrubbed text can carry our pseudonyms (h-0123456789.portal).
+    Only the pieces outside them can still be the site's; a person has to say which."""
+    return [x for x in re.split(r"[\s.:/\\<>=,;'\"()\[\]{}|]+|-(?=>)|>", RE_TOKEN.sub(" ", span.strip().lower())) if is_name(x.strip("-_"))]
+
+
 def add_term(out, kind, value):
     v = str(value or "").strip().lower()
-    if not v or v in GENERIC or len(v) < 3 or not re.search(r"[^\W\d_]", v):     # a name has letters; 10.1:443 is not one
+    if not is_name(v):
         return
     out[v] = kind if out.get(v) != "user" else "user"
     if kind == "host" and "." in v:
         labels = v.split(".")
-        if labels[0] not in GENERIC and len(labels[0]) >= 3:
+        if is_name(labels[0]):
             out.setdefault(labels[0], "host")
         keep = 3 if len(labels) >= 3 and ".".join(labels[-2:]) in TWO_LEVEL_TLD else 2
         dom = ".".join(labels[-keep:])
         # a private zone's registered name is the organisation's name
-        if len(labels) >= 2 and labels[-1] in PUBLIC_SUFFIX and labels[-keep] not in GENERIC and len(labels[-keep]) >= 3:
+        if len(labels) >= 2 and labels[-1] in PUBLIC_SUFFIX and is_name(labels[-keep]):
             out.setdefault(dom, "domain")
             out.setdefault(labels[-keep], "domain")
+
+
+def add_user(out, value):
+    """An account as logged, DOMAIN\\name or name: the name is the term."""
+    v = str(value or "").strip()
+    add_term(out, "user", v.rsplit("\\", 1)[-1])
 
 
 def cmd_dict(a):
@@ -270,6 +302,16 @@ def cmd_dict(a):
                 add_term(terms, "user", d.get(k))
             sc = x.get("syscheck") if isinstance(x.get("syscheck"), dict) else {}
             add_term(terms, "user", sc.get("uname_after"))
+            u = d.get("user") if isinstance(d.get("user"), dict) else {}
+            add_user(terms, u.get("name")); add_user(terms, d.get("username"))
+            for node in d.get("nodes") if isinstance(d.get("nodes"), list) else ():
+                if not isinstance(node, dict):
+                    continue
+                if node.get("type") in ("endpoint", "container_or_container_host"):
+                    add_term(terms, "host", node.get("name"))
+                det = node.get("details") if isinstance(node.get("details"), dict) else {}
+                proc = det.get("process") if isinstance(det.get("process"), dict) else {}
+                add_user(terms, (proc.get("user") or {}).get("user_name") if isinstance(proc.get("user"), dict) else None)
     for path in a.extra:      # one term per line: <kind><TAB><value>, what the site knows and the logs do not say
         with open(path, encoding="utf-8") as f:
             for line in f:
@@ -344,39 +386,46 @@ def cmd_csv(a):
 
 # ------------------------------------------------------------------ wazuh json
 
+_GONE = object()
+
+
+def scrub_value(sc, path, v, tpl):
+    """One JSON value by its path. A list holds what the path holds, objects
+    included, so nothing in a line escapes by being one level further down."""
+    if path in JSON_DROP:
+        return _GONE
+    if isinstance(v, dict):
+        return scrub_json(sc, v, tpl, path)
+    if isinstance(v, list):
+        out = [x for x in (scrub_value(sc, path, y, tpl) for y in v) if x is not _GONE]
+        return out if out or not v else _GONE
+    if not isinstance(v, str):
+        return v
+    if path in JSON_HOST:
+        return sc.host(v)
+    if path in JSON_USER:
+        return sc.user(v)
+    if path in JSON_IP:
+        return sc.ip(v)
+    if path in JSON_TIME:
+        return sc.when(v)
+    if path.startswith(JSON_KEEP_PREFIX) and path != "rule.description":
+        return v
+    if sc.level == "strict":
+        return _GONE
+    t = sc.text(v)
+    if not path.startswith(JSON_NO_SAMPLE):
+        tpl.add(path, t)
+    return t
+
+
 def scrub_json(sc, obj, tpl, pre=""):
     out = {}
     for k, v in obj.items():
         path = f"{pre}.{k}" if pre else k
-        if path in JSON_DROP:
-            continue
-        if isinstance(v, dict):
-            out[k] = scrub_json(sc, v, tpl, path)
-            continue
-        if isinstance(v, list):
-            if path.startswith(JSON_KEEP_PREFIX):
-                out[k] = v
-            elif sc.level != "strict":
-                out[k] = [sc.text(x) if isinstance(x, str) else x for x in v]
-            continue
-        if not isinstance(v, str):
-            out[k] = v
-        elif path in JSON_HOST:
-            out[k] = sc.host(v)
-        elif path in JSON_USER:
-            out[k] = sc.user(v)
-        elif path in JSON_IP:
-            out[k] = sc.ip(v)
-        elif path in JSON_TIME:
-            out[k] = sc.when(v)
-        elif path.startswith(JSON_KEEP_PREFIX) and path != "rule.description":
-            out[k] = v
-        elif sc.level == "strict":
-            continue
-        else:
-            out[k] = sc.text(v)
-            if path in JSON_TEXT or path == "rule.description":
-                tpl.add(path, out[k])
+        x = scrub_value(sc, path, v, tpl)
+        if x is not _GONE:
+            out[sc.key(k)] = x
     return out
 
 
@@ -415,6 +464,40 @@ def report(a, n, t0, sc, tpl, unknown, bad=0):
 
 # ------------------------------------------------------------------ verify
 
+def verify_json_paths(path, rx, kinds):
+    """Where in a JSON log the hits are: dotted path, kind, and term number. A
+    name inside a key would show up here, so a key that hits prints as <key>."""
+    if not rx:
+        return
+    order = {t: i for i, t in enumerate(sorted(kinds))}
+    by, terms = collections.Counter(), collections.Counter()
+
+    def walk(o, pre):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                for m in rx.finditer(k):
+                    by[(f"{pre}.<key>" if pre else "<key>", kinds.get(m.group(0).lower(), "?"))] += 1
+                    terms[(order.get(m.group(0).lower(), -1), "<key>")] += 1
+                walk(v, f"{pre}.<key>" if rx.search(k) else (f"{pre}.{k}" if pre else k))
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, pre)
+        elif isinstance(o, str):
+            for m in rx.finditer(o):
+                by[(pre, kinds.get(m.group(0).lower(), "?"))] += 1
+                terms[(order.get(m.group(0).lower(), -1), pre)] += 1
+
+    op = gzip.open if path.endswith(".gz") else open
+    with op(path, "rt", encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if rx.search(line):
+                walk(json.loads(line), "")
+    for k, v in sorted(by.items(), key=lambda x: -x[1]):
+        print(f"  {re.sub(r'[0-9]+', 'N', k[0])[:60]:60s} {k[1]:7s} {v}")
+    for k, v in sorted(terms.items(), key=lambda x: -x[1])[:40]:
+        print(f"  term#{k[0]:<4d} {re.sub(r'[0-9]+', 'N', k[1])[:60]:60s} {v}")
+
+
 def cmd_verify(a):
     """How often each file still contains a dictionary term. Counts per file and
     per kind only; the terms themselves never go to the terminal."""
@@ -434,6 +517,8 @@ def cmd_verify(a):
                                 by[(col, kinds.get(m.group(0).lower(), "?"), "gap" if len(m.group(0)) < 5 else "long")] += 1
             for k, v in sorted(by.items()):
                 print(f"  {k[0]:20s} {k[1]:7s} {k[2]:5s} {v}")
+        if a.by_column and ".jsonl" in path:
+            verify_json_paths(path, rx, kinds)
         c, lines = collections.Counter(), 0
         op = gzip.open(path, "rt", encoding="utf-8", errors="replace") if path.endswith(".gz") else open(path, encoding="utf-8", errors="replace")
         with op as f:
