@@ -281,41 +281,62 @@ def ask_pieces(tty_in, tty, span):
     return out
 
 
+def span_kind(t):
+    return "user" if re.search(r"(?i)帳號|account|user", t) else "domain" if re.search(r"(?i)組織|單位|org", t) else "host"
+
+
 def cmd_review(a):
-    """y: a real identifier, n: a false alarm, q: stop. Only the verdict counts leave this function."""
+    """Each flagged span is judged on its own: y a real identifier, n a false alarm,
+    q stop (the line in progress is not counted). A line is real when any of its
+    spans is. Only counts leave this function."""
     tty_in, tty = open_tty("review")
     rows = read_jsonl(a.flagged)
     c = collections.Counter()
-    types = collections.Counter()
+    types, false_types = collections.Counter(), collections.Counter()
     keep = {}
+    quit_ = False
     for r in rows:
         tty.write(f"\n[{c['seen'] + 1}/{len(rows)}] x{r.get('n')} {r.get('source')}\n{r['text']}\n")
-        for s in r["spans"]:
-            tty.write(f"  -> ({s['type']}) {s['span']}\n")
-        tty.write("real identifier? [y/n/q] ")
-        tty.flush()
-        ans = tty_in.readline().strip().lower()
-        if ans == "q":
+        got, line = {}, collections.Counter()
+        for k, sp in enumerate(r["spans"], 1):
+            v = sp["span"].strip()
+            if RE_TOKEN.fullmatch(v.lower()):     # our own pseudonym, flagged anyway
+                line["pseudonym"] += 1
+                continue
+            if RE_TOKEN.search(v.lower()):
+                tty.write(f"  [{k}] ({sp['type']}) {v}\n")
+                pieces = ask_pieces(tty_in, tty, v)
+                ok = bool(pieces)
+            else:
+                tty.write(f"  [{k}] ({sp['type']}) {v}\n      real identifier? [y/n/q] ")
+                tty.flush()
+                ans = tty_in.readline().strip().lower()
+                if ans == "q":
+                    quit_ = True
+                    break
+                ok, pieces = ans == "y", [v]
+            line["real" if ok else "false"] += 1
+            (types if ok else false_types)[sp["type"]] += 1
+            for x in pieces if ok else ():
+                got[x] = span_kind(sp["type"])
+        if quit_:
             break
         c["seen"] += 1
-        c["real" if ans == "y" else "false_alarm"] += 1
-        if ans == "y":     # a line is judged whole; a pseudonym the model also flagged is still not a term
-            for s in r["spans"]:
-                if RE_TOKEN.fullmatch(s["span"].strip().lower()):
-                    continue
-                types[s["type"]] += 1
-                kind = "user" if re.search(r"(?i)帳號|account|user", s["type"]) else "domain" if re.search(r"(?i)組織|單位|org", s["type"]) else "host"
-                for v in ask_pieces(tty_in, tty, s["span"]) if RE_TOKEN.search(s["span"].lower()) else [s["span"]]:
-                    keep[v] = kind
+        c["real" if line["real"] else "false_alarm"] += 1
+        c["spans_real"] += line["real"]; c["spans_false"] += line["false"]; c["spans_pseudonym"] += line["pseudonym"]
+        keep.update(got)
     tty.close(); tty_in.close()
     if a.terms_out:
         with private(a.terms_out) as f:
             for v, kind in sorted(keep.items()):
                 f.write(f"{kind}\t{v}\n")
-    out = {"flagged_lines": len(rows), "reviewed": c["seen"], "real": c["real"], "false_alarm": c["false_alarm"], "real_by_type": dict(types)}
+    out = {"flagged_lines": len(rows), "reviewed": c["seen"], "real": c["real"], "false_alarm": c["false_alarm"],
+           "spans_real": c["spans_real"], "spans_false": c["spans_false"], "spans_pseudonym": c["spans_pseudonym"],
+           "terms": len(keep), "unit": "span", "real_by_type": dict(types), "false_by_type": dict(false_types)}
     with open(a.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False, indent=1)
-    print(f"reviewed {c['seen']}/{len(rows)}: {c['real']} real, {c['false_alarm']} false alarms -> {a.out}")
+    print(f"reviewed {c['seen']}/{len(rows)} lines: {c['real']} with a real identifier, {c['false_alarm']} false alarms; "
+          f"spans {c['spans_real']} real, {c['spans_false']} false, {c['spans_pseudonym']} pseudonyms skipped; {len(keep)} terms -> {a.out}")
 
 
 def cmd_confirm_terms(a):
