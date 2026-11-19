@@ -36,7 +36,7 @@ versions" of the reproducibility plan.
 
 Standard library only.
 """
-import argparse, glob, hashlib, json, os, platform, re, sys, time, urllib.request
+import argparse, glob, hashlib, json, os, platform, random, re, sys, time, urllib.request
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "..", "lib", "python"))
 import ops30  # noqa: E402
@@ -286,6 +286,48 @@ def verify(path):
 
 # ------------------------------------------------------------------ run
 
+REUSE_SAME = ("slm", "llm", "think", "think_llm", "entity", "seed", "engine", "prompt1_sha256", "prompt2_sha256", "t1", "t2", "prescreen_min")
+
+
+def load_reuse(a, recs):
+    """Verdicts of an earlier run on the very same summary text, with the same
+    models, prompts, seed and engine. Returns {summary_sha256: (stage1, stage2)}
+    and the indexes of a random sample of hits that are judged again anyway."""
+    if not a.reuse:
+        return {}, set()
+    with open(a.reuse_manifest, encoding="utf-8") as f:
+        old = json.load(f)
+    if not a.reuse_manifest:
+        sys.exit("detect: --reuse needs --reuse-manifest")
+    now = {"slm": a.slm if a.slm_backend != "rules" else "rules", "llm": a.llm if a.llm_backend != "rules" else "rules", "think": a.think, "think_llm": a.think_llm, "entity": a.entity, "seed": a.seed, "engine": a.engine,
+           "prompt1_sha256": sha256(PROMPTS[a.entity][0]), "prompt2_sha256": sha256(PROMPTS[a.entity][1]), "t1": a.t1, "t2": a.t2, "prescreen_min": a.prescreen_min}
+    diff = [k for k in REUSE_SAME if old.get(k) != now[k]]
+    if diff:
+        sys.exit(f"detect: --reuse run differs in {', '.join(diff)}; its verdicts cannot stand in for this run")
+    cache = {}
+    with open(a.reuse, encoding="utf-8") as f:
+        for line in f:
+            r = json.loads(line)
+            if not (r["stage1"].get("error") or r["stage1"].get("parse_error") or (r["stage2"] or {}).get("error") or (r["stage2"] or {}).get("parse_error")):
+                cache[r["summary_sha256"]] = (r["stage1"], r["stage2"])
+    hits = [i for i, r in enumerate(recs) if sha256(r["text"]) in cache]
+    check = set(random.Random(a.seed).sample(hits, min(a.reuse_check, len(hits))))
+    return cache, check
+
+
+def reuse_report(a, recs, s1s, s2s, cache, check):
+    if not a.reuse:
+        return None
+    agree = 0
+    for i in check:
+        old = cache[sha256(recs[i]["text"])]
+        v_old = old[1]["verdict"] if old[1] else "NORMAL"
+        v_new = s2s[i]["verdict"] if s2s[i] else "NORMAL"
+        agree += v_old == v_new and bool(old[0].get("flag")) == bool(s1s[i].get("flag"))
+    return {"source": os.path.basename(a.reuse), "source_sha256": file_sha256(a.reuse), "reused": sum(1 for x in s1s if x.get("reused")),
+            "checked": len(check), "checked_agree": agree}
+
+
 def run(a):
     a.slm_backend = a.slm_backend or a.backend
     a.llm_backend = a.llm_backend or a.backend
@@ -302,24 +344,32 @@ def run(a):
     if last and not a.append:
         sys.exit(f"detect: {a.out} exists; use --append to continue the chain or choose another file")
     started = rfc3339.format(rfc3339.now())
+    cache, check = load_reuse(a, recs)
     # two passes: every summary through the small model first, then the
     # flagged ones through the large one. On a host that cannot hold both
     # models at once this is the difference between two loads and hundreds.
     s1s, n1 = [], 0
     for i, rec in enumerate(recs, 1):
-        if rec.get("prescreen", 0) < a.prescreen_min:
+        hit = cache.get(sha256(rec["text"]))
+        if hit and (i - 1) not in check:
+            s1s.append(dict(hit[0], reused=True))
+        elif rec.get("prescreen", 0) < a.prescreen_min:
             s1s.append({"model": "skipped", "flag": False, "category": "NONE", "confidence": 0, "ms": 0, "skipped": True})
         else:
             s1s.append(be.stage1(rec)); n1 += 1
         if models and (i % 25 == 0 or i == len(recs)):
             print(f"detect: stage 1 {i}/{len(recs)}, {sum(1 for x in s1s if x['flag'])} flagged", file=sys.stderr, flush=True)
     s2s, n2 = [None] * len(recs), 0
-    todo = [i for i, x in enumerate(s1s) if x["flag"]]
+    for i, x in enumerate(s1s):
+        if x.get("reused"):
+            hit = cache[sha256(recs[i]["text"])][1]
+            s2s[i] = dict(hit, reused=True) if hit else None
+    todo = [i for i, x in enumerate(s1s) if x["flag"] and not x.get("reused")]
     for j, i in enumerate(todo, 1):
         s2s[i] = be.stage2(recs[i], s1s[i]); n2 += 1
         if models and (j % 10 == 0 or j == len(todo)):
             print(f"detect: stage 2 {j}/{len(todo)}, {sum(1 for x in s2s if x and x['verdict'] == 'THREAT')} THREAT", file=sys.stderr, flush=True)
-    flagged, threats = len(todo), 0
+    flagged, threats = sum(1 for x in s1s if x["flag"]), 0
     with open(a.out, "a", encoding="utf-8") as fo:
         for rec, s1, s2 in zip(recs, s1s, s2s):
             final = ({"verdict": s2["verdict"], "category": s2["category"], "risk": s2["risk"], "reason": s2["reason"]} if s2
@@ -342,6 +392,7 @@ def run(a):
                "parse_errors": sum(1 for x in s1s if x.get("parse_error")) + sum(1 for x in s2s if x and x.get("parse_error")),
                "call_errors": sum(1 for x in s1s if x.get("error")) + sum(1 for x in s2s if x and x.get("error")),
                "ops30_version": ops30.version(), "python": platform.python_version(),
+               "reuse": reuse_report(a, recs, s1s, s2s, cache, check),
                "ollama": a.ollama if "ollama" in (a.slm_backend, a.llm_backend) else None,
                "base_url": a.base_url if "openai" in (a.slm_backend, a.llm_backend) else None}
         if "openai" in (a.slm_backend, a.llm_backend):
@@ -385,6 +436,9 @@ def main():
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--append", action="store_true")
     r.add_argument("--manifest")
+    r.add_argument("--reuse", help="detections of an earlier run: a summary with the same text keeps its verdict")
+    r.add_argument("--reuse-manifest", help="that run's manifest; models, prompts, seed and engine must match")
+    r.add_argument("--reuse-check", type=int, default=30, help="hits judged again anyway, to show the reuse is faithful")
     v = sub.add_parser("verify")
     v.add_argument("--in", dest="inp", required=True)
     a = ap.parse_args()

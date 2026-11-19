@@ -128,6 +128,19 @@ if grep -Eq 'carol|web01|dave|example' "$tmp/siem.p.jsonl"; then fail "a real na
 python3 "$B/summarize.py" --entity host --exclude-kinds malware.detect --in "$tmp/siem.p.jsonl" --out "$tmp/siem.s.jsonl" --baseline-until 2026-07-15 >/dev/null
 python3 "$B/detect.py" run --entity host --in "$tmp/siem.s.jsonl" --out "$tmp/siem.d.jsonl" --backend rules --manifest "$tmp/siem.m.json" >/dev/null
 python3 "$B/evaluate.py" --triage --detections "$tmp/siem.d.jsonl" --events "$tmp/siem.p.jsonl" --out "$tmp/siem.r.md" --json "$tmp/siem.m2.json" >/dev/null
+# the overlaid run keeps the verdicts of untouched host-days and re-judges a sample of them
+python3 "$B/detect.py" run --entity host --in "$tmp/siem.s.jsonl" --out "$tmp/siem.dr.jsonl" --backend rules --manifest "$tmp/siem.mr.json" \
+  --reuse "$tmp/siem.d.jsonl" --reuse-manifest "$tmp/siem.m.json" --reuse-check 2 >/dev/null
+python3 "$B/detect.py" verify --in "$tmp/siem.dr.jsonl" >/dev/null || fail "reused run breaks the chain"
+python3 -c "
+import json, sys
+m = json.load(open(sys.argv[1]))['reuse']; n = sum(1 for _ in open(sys.argv[2]))
+assert m['reused'] + m['checked'] == n and m['checked_agree'] == m['checked'], (m, n)
+a = [json.loads(l)['final'] for l in open(sys.argv[2])]; b = [json.loads(l)['final'] for l in open(sys.argv[3])]
+assert a == b, 'reused verdicts differ'
+" "$tmp/siem.mr.json" "$tmp/siem.d.jsonl" "$tmp/siem.dr.jsonl" || fail "reuse is not faithful"
+if python3 "$B/detect.py" run --entity host --in "$tmp/siem.s.jsonl" --out "$tmp/siem.dx.jsonl" --backend rules --seed 11 \
+  --reuse "$tmp/siem.d.jsonl" --reuse-manifest "$tmp/siem.m.json" >/dev/null 2>&1; then fail "reuse across seeds must be refused"; fi
 if grep -q '^| F1' "$tmp/siem.r.md"; then fail "a triage report must not print F1"; fi
 if python3 "$B/evaluate.py" --detections "$tmp/siem.d.jsonl" --out "$tmp/x.md" 2>/dev/null; then fail "evaluate must refuse to score without a schedule"; fi
 python3 "$B/overlay.py" --in "$tmp/siem.p.jsonl" --out "$tmp/siem.o.jsonl" --schedule "$tmp/siem.sch.tsv" --from 2026-07-15 --to 2026-08-28 --per-scenario 4 >/dev/null
