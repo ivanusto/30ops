@@ -459,5 +459,138 @@ class HostDays(unittest.TestCase):
         self.assertEqual(len(days), 1)
 
 
+cert = load("cert")
+
+
+def cert_release(d, release):
+    """a few rows of each CERT file, in the column order of the release"""
+    def w(name, head, rows):
+        with open(os.path.join(d, name), "w", encoding="utf-8") as f:
+            f.write(",".join(head) + "\n")
+            for r in rows:
+                f.write(",".join(f'"{x}"' for x in r) + "\n")
+    six = release == "r6.2"
+    w("logon.csv", ["id", "date", "user", "pc", "activity"],
+      [["{L1}", "01/04/2010 08:01:00", "AAA0001", "PC-1", "Logon"], ["{L2}", "01/04/2010 17:00:00", "AAA0001", "PC-1", "Logoff"],
+       ["{L3}", "01/05/2010 23:10:00", "BBB0002", "PC-2", "Logon"], ["{L4}", "bad", "BBB0002", "PC-2", "Logon"]])
+    w("device.csv", ["id", "date", "user", "pc"] + (["file_tree"] if six else []) + ["activity"],
+      [["{D1}", "01/05/2010 23:20:00", "BBB0002", "PC-2"] + (["R:\\"] if six else []) + ["Connect"],
+       ["{D2}", "01/05/2010 23:40:00", "BBB0002", "PC-2"] + (["R:\\"] if six else []) + ["Disconnect"]])
+    if six:
+        w("file.csv", ["id", "date", "user", "pc", "filename", "activity", "to_removable_media", "from_removable_media", "content"],
+          [["{F1}", "01/05/2010 23:30:00", "BBB0002", "PC-2", "R:\\x\\a.zip", "File Copy", "True", "False", "secret words"],
+           ["{F2}", "01/04/2010 09:00:00", "AAA0001", "PC-1", "C:\\d\\b.doc", "File Open", "False", "False", "x"]])
+    else:
+        w("file.csv", ["id", "date", "user", "pc", "filename", "content"], [["{F1}", "01/05/2010 23:30:00", "BBB0002", "PC-2", "R:\\x\\a.zip", "secret words"]])
+    w("http.csv", ["id", "date", "user", "pc", "url"] + (["activity"] if six else []) + ["content"],
+      [["{H1}", "01/05/2010 23:35:00", "BBB0002", "PC-2", "http://wikileaks.org/a/b.php"] + (["WWW Upload"] if six else []) + ["words"],
+       ["{H2}", "01/04/2010 10:00:00", "AAA0001", "PC-1", "https://www.example.com/q?x=1"] + (["WWW Visit"] if six else []) + ["words"]])
+    w("email.csv", ["id", "date", "user", "pc", "to", "cc", "bcc", "from"] + (["activity"] if six else []) + ["size", "attachments", "content"],
+      [["{E1}", "01/04/2010 11:00:00", "AAA0001", "PC-1", "x@dtaa.com", "", "", "aaa@dtaa.com"] + (["Send"] if six else []) + ["1000", "0", "hi"],
+       ["{E2}", "01/05/2010 23:50:00", "BBB0002", "PC-2", "y@dtaa.com;me@hotmail.com", "", "", "bbb@dtaa.com"] + (["Send"] if six else []) + ["250000", "1", "hi"]])
+    os.makedirs(os.path.join(d, "LDAP"))
+    w(os.path.join("LDAP", "2010-01.csv"), ["employee_name", "user_id", "email", "role"], [["A A", "AAA0001", "a@dtaa.com", "Salesman"], ["B B", "BBB0002", "b@dtaa.com", "ITAdmin"]])
+
+
+def cert_answers(d, release):
+    os.makedirs(d)
+    with open(os.path.join(d, "insiders.csv"), "w", encoding="utf-8") as f:
+        f.write("dataset,scenario,details,user,start,end\n")
+        f.write(f"{release.lstrip('r')},1,{release}-1-BBB0002.csv,BBB0002,01/05/2010 23:10:00,01/05/2010 23:50:00\n")
+        f.write("9.9,1,other.csv,ZZZ0009,01/05/2010 23:10:00,01/05/2010 23:50:00\n")
+    sub = os.path.join(d, f"{release}-1") if release == "r4.2" else d
+    os.makedirs(sub, exist_ok=True)
+    with open(os.path.join(sub, f"{release}-1-BBB0002.csv"), "w", encoding="utf-8") as f:
+        f.write("logon,{L3},01/05/2010 23:10:00,BBB0002,PC-2,Logon\n")
+        f.write("device,{D1},01/05/2010 23:20:00,BBB0002,PC-2,Connect\n")
+        f.write("http,{H1},01/05/2010 23:35:00,BBB0002,PC-2,http://wikileaks.org/a/b.php,words\n")
+        f.write("device,{D2},01/05/2010 23:40:00,BBB0002,PC-2,Disconnect\n")
+
+
+class Cert(unittest.TestCase):
+    def run_load(self, release, shards=1):
+        t = tempfile.mkdtemp()
+        os.makedirs(os.path.join(t, "data"))
+        cert_release(os.path.join(t, "data"), release)
+        cert_answers(os.path.join(t, "answers"), release)
+        a = type("A", (), dict(dir=os.path.join(t, "data"), release=release, out=os.path.join(t, "ev.jsonl"), shards=shards,
+                               answers=os.path.join(t, "answers"), stats=os.path.join(t, "stats.json")))
+        cert.load(a)
+        return t, json.load(open(a.stats))
+
+    def events(self, t):
+        out = []
+        for p in sorted(os.listdir(t)):
+            if p.startswith("ev") and p.endswith(".jsonl"):
+                out += [json.loads(x) for x in open(os.path.join(t, p))]
+        return out
+
+    def test_rows_balance_and_mapping(self):
+        for rel in cert.RELEASES:
+            t, st = self.run_load(rel)
+            for k, v in st["files"].items():
+                self.assertTrue(v["balanced"], (rel, k))
+            ev = self.events(t)
+            kinds = collections_counter(e["kind"] for e in ev)
+            self.assertEqual(kinds["auth.logon"], 2)                       # logoff and the bad time dropped
+            self.assertEqual(kinds["usb.attach"], 1)
+            self.assertEqual(kinds["net.file"], 1)                         # internal-only mail dropped
+            mail = next(e for e in ev if e["kind"] == "net.file")
+            self.assertEqual((mail["dst_name"], mail["bytes"], mail["direction"]), ("hotmail.com", 250000, "up"))
+            web = next(e for e in ev if e["kind"] == "net.conn" and e["user"] == "AAA0001")
+            self.assertEqual((web["dst_name"], web["dst_port"]), ("www.example.com", 443))
+            self.assertTrue(all(e["ts"].endswith("Z") and e["source"] == "cert" for e in ev))
+            self.assertTrue(all(events.valid(e) for e in ev))
+            self.assertEqual({e["role"] for e in ev if e["user"] == "BBB0002"}, {"ITAdmin"})
+            self.assertNotIn("secret", json.dumps(ev))                     # content never read into an event
+            self.assertNotIn("q?x", json.dumps(ev))                        # nor the url beyond the host
+            usb = next(e for e in ev if e["kind"] == "file.access" and e["user"] == "BBB0002")
+            self.assertEqual((usb["share"], usb["action"]), ("removable", "write" if rel == "r4.2" else "copy"))
+            self.assertEqual(st["answers"], {"ids": 4, "kept": 3, "dropped": 1, "not_found": 0, "insiders": 1})
+
+    def test_shards_split_users_whole(self):
+        t, _ = self.run_load("r4.2", shards=4)
+        by = {}
+        for p in os.listdir(t):
+            if p.startswith("ev.s"):
+                for x in open(os.path.join(t, p)):
+                    by.setdefault(json.loads(x)["user"], set()).add(p)
+        self.assertTrue(all(len(v) == 1 for v in by.values()))
+        self.assertEqual(cert.shard_of("AAA0001", 4), cert.shard_of("AAA0001", 4))
+
+    def test_labels_one_row_per_insider_day(self):
+        for rel in cert.RELEASES:
+            t = tempfile.mkdtemp()
+            cert_answers(os.path.join(t, "answers"), rel)
+            out = os.path.join(t, "s.tsv")
+            cert.labels(type("A", (), dict(answers=os.path.join(t, "answers"), release=rel, out=out)))
+            rows = [l.rstrip("\n").split("\t") for l in open(out)][1:]
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0][:5], ["2010-01-05T23:10:00Z", "2010-01-05T23:40:00Z", "BBB0002", "PC-2", "S1"])
+            self.assertEqual(set(evaluate.labels(out)), {("BBB0002", "2010-01-05")})
+
+    def test_sample_keeps_insiders_and_is_seeded(self):
+        t = tempfile.mkdtemp()
+        s, sch = os.path.join(t, "s.jsonl"), os.path.join(t, "sch.tsv")
+        with open(s, "w") as f:
+            for i in range(50):
+                f.write(json.dumps({"user": f"u{i}", "date": "2010-02-01"}) + "\n")
+        with open(sch, "w") as f:
+            f.write("start\tend\tuser\thost\tscenario\tnote\n2010-02-01T01:00:00Z\t2010-02-01T02:00:00Z\tu3\th\tS1\tx\n")
+        got = []
+        for _ in range(2):
+            out = os.path.join(t, "o.jsonl")
+            cert.sample(type("A", (), dict(summaries=s, schedule=sch, normal=5, seed=7, out=out, users_out=None)))
+            got.append({json.loads(x)["user"] for x in open(out)})
+        self.assertEqual(got[0], got[1])
+        self.assertIn("u3", got[0])
+        self.assertEqual(len(got[0]), 6)
+
+
+def collections_counter(it):
+    import collections
+    return collections.Counter(it)
+
+
 if __name__ == "__main__":
     unittest.main()
