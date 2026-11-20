@@ -41,7 +41,7 @@ GENERIC = {"root", "admin", "administrator", "system", "user", "users", "test", 
            # tools and daemons a reviewer or the model can take for a name
            "sudo", "systemd", "pam_unix", "kernel", "bash", "sh", "haproxy", "apache2", "docker", "pm2", "wazuh-agent", "grafana", "bitdefender", "cis", "ucf",
            # role accounts as common as admin or test
-           "dev", "app"}
+           "dev", "app", "prometheus"}
 # a reviewed domain is a domain: dotted, with a TLD of letters
 RE_DOMAIN = re.compile(r"(?:[a-z0-9-]+\.)+[a-z]{2,10}")
 # the host field of a syslog header, after a BSD or an ISO timestamp
