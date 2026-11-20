@@ -5,6 +5,8 @@ through the same pipeline as a site, as the external benchmark.
     cert.py load   --dir r4.2/ --release r4.2 --out events.jsonl [--shards 4] [--answers answers/] --stats load-stats.json
     cert.py labels --answers answers/ --release r4.2 --out schedule.tsv
     cert.py sample --summaries summaries.p.jsonl --schedule schedule.p.tsv --normal 130 --seed 7 --out sample.jsonl [--users-out users.txt]
+    cert.py sample --summaries summaries.p.jsonl --schedule schedule.p.tsv --negatives 4000 --seed 7 --out sample.jsonl --frac-out frac.json
+    cert.py weigh  --detections det.jsonl --schedule schedule.p.tsv --frac frac.json --out weighed.json
 
 load reads logon, device, file, http and email CSVs of an extracted release
 and writes the event schema of events.py, one line per kept row, in file
@@ -44,6 +46,11 @@ the scenario mapped once to the thesis' S1 to S6:
 
 sample keeps every insider and N other users drawn with a fixed seed, all of
 their user-days: the model layer reads the sample, the rules read everything.
+With --negatives it is a case-control sample instead: every labelled day and N
+other days, spread over the users in proportion to their days. The false
+positive rate holds on the sample as it is; precision does not, because the
+negatives were thinned, and weigh scales the false positives back by the
+sampling fraction and bootstraps over whole users.
 
 Standard library only.
 """
@@ -273,9 +280,10 @@ def labels(a):
     print(f"cert: {n_ins} insiders, {len(days)} labelled user-days -> {a.out}")
 
 
-def sample(a):
-    pos = set()
-    with open(a.schedule, encoding="utf-8") as f:
+def schedule_days(path):
+    """(user, date) of every labelled day, the key evaluate.py uses"""
+    out = set()
+    with open(path, encoding="utf-8") as f:
         head = None
         for line in f:
             cols = line.rstrip("\n").split("\t")
@@ -284,7 +292,89 @@ def sample(a):
             if head is None:
                 head = cols
                 continue
-            pos.add(dict(zip(head, cols))["user"])
+            r = dict(zip(head, cols))
+            out.add((r["user"], r["start"][:10]))
+    return out
+
+
+def case_control(a):
+    """every labelled day, and a.negatives other days spread over the users in
+    proportion to how many such days each has (largest remainder), drawn with
+    a fixed seed; the fraction is written so precision can be weighed back"""
+    lab = schedule_days(a.schedule)
+    neg = collections.defaultdict(list)
+    n_pos = 0
+    with open(a.summaries, encoding="utf-8") as f:
+        for line in f:
+            if line.strip():
+                r = json.loads(line)
+                if (r["user"], r["date"]) in lab:
+                    n_pos += 1
+                else:
+                    neg[r["user"]].append(r["date"])
+    total = sum(len(v) for v in neg.values())
+    want = min(a.negatives, total)
+    share = {u: want * len(v) / total for u, v in neg.items()}
+    quota = {u: int(s) for u, s in share.items()}
+    for u in sorted(share, key=lambda u: (-(share[u] - quota[u]), u))[:want - sum(quota.values())]:
+        quota[u] += 1
+    rng = random.Random(a.seed)
+    keep = set()
+    for u in sorted(neg):
+        keep |= {(u, d) for d in rng.sample(sorted(neg[u]), quota[u])}
+    n = 0
+    with open(a.summaries, encoding="utf-8") as f, open(a.out, "w", encoding="utf-8") as fo:
+        for line in f:
+            if line.strip():
+                r = json.loads(line)
+                if (r["user"], r["date"]) in lab or (r["user"], r["date"]) in keep:
+                    fo.write(line); n += 1
+    frac = {"design": "case-control", "seed": a.seed, "positives": n_pos, "labelled_days": len(lab),
+            "negatives_total": total, "negatives_sampled": len(keep), "fraction": len(keep) / total if total else 0.0}
+    if a.frac_out:
+        with open(a.frac_out, "w", encoding="utf-8") as fo:
+            json.dump(frac, fo, indent=1)
+    print(f"cert: {n_pos} labelled days (of {len(lab)}) + {len(keep)} of {total} other days, {n} user-days -> {a.out}")
+
+
+def weigh(a):
+    """precision and F1 at the population's prevalence: a false positive in the
+    sample stands for 1/fraction of them; bootstrap over whole users"""
+    frac = json.load(open(a.frac, encoding="utf-8"))["fraction"]
+    lab = schedule_days(a.schedule)
+    by = collections.defaultdict(lambda: [0, 0, 0, 0])            # tp fp fn tn per user
+    with open(a.detections, encoding="utf-8") as f:
+        for line in f:
+            d = json.loads(line)
+            pos, pred = (d["user"], d["date"]) in lab, d["final"]["verdict"] == "THREAT"
+            by[d["user"]][(0 if pred else 2) if pos else (1 if pred else 3)] += 1
+
+    def metrics(users):
+        tp, fp, fn, tn = (sum(by[u][i] for u in users) for i in range(4))
+        fpw = fp / frac
+        p = tp / (tp + fpw) if tp + fpw else 0.0
+        r = tp / (tp + fn) if tp + fn else 0.0
+        return {"tp": tp, "fp": fp, "fn": fn, "tn": tn, "fpr": fp / (fp + tn) if fp + tn else 0.0, "recall": r,
+                "precision_weighted": p, "f1_weighted": 2 * p * r / (p + r) if p + r else 0.0, "fp_population_est": fpw}
+    users = sorted(by)
+    out = {"fraction": frac, "overall": metrics(users)}
+    rng = random.Random(a.seed)
+    boots = collections.defaultdict(list)
+    for _ in range(a.bootstrap):
+        m = metrics([rng.choice(users) for _ in users])
+        for k in ("precision_weighted", "f1_weighted", "recall", "fpr"):
+            boots[k].append(m[k])
+    out["ci95"] = {k: [sorted(v)[int(0.025 * len(v))], sorted(v)[int(0.975 * len(v)) - 1]] for k, v in boots.items()} if a.bootstrap else {}
+    with open(a.out, "w", encoding="utf-8") as fo:
+        json.dump(out, fo, indent=1)
+    o = out["overall"]
+    print(f"cert: weighed P {o['precision_weighted']:.3f} R {o['recall']:.3f} F1 {o['f1_weighted']:.3f} FPR {o['fpr']:.4f} -> {a.out}")
+
+
+def sample(a):
+    if a.negatives is not None:
+        return case_control(a)
+    pos = {u for u, _ in schedule_days(a.schedule)}
     users = set()
     with open(a.summaries, encoding="utf-8") as f:
         for line in f:
@@ -315,10 +405,16 @@ def main():
     p.add_argument("--answers", required=True); p.add_argument("--release", choices=RELEASES, required=True); p.add_argument("--out", required=True)
     p = sub.add_parser("sample")
     p.add_argument("--summaries", required=True); p.add_argument("--schedule", required=True)
-    p.add_argument("--normal", type=int, required=True); p.add_argument("--seed", type=int, default=7)
-    p.add_argument("--out", required=True); p.add_argument("--users-out")
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--normal", type=int, help="every insider and N other users, all their days")
+    g.add_argument("--negatives", type=int, help="case-control: every labelled day and N other days")
+    p.add_argument("--seed", type=int, default=7)
+    p.add_argument("--out", required=True); p.add_argument("--users-out"); p.add_argument("--frac-out")
+    p = sub.add_parser("weigh")
+    p.add_argument("--detections", required=True); p.add_argument("--schedule", required=True); p.add_argument("--frac", required=True)
+    p.add_argument("--bootstrap", type=int, default=1000); p.add_argument("--seed", type=int, default=1); p.add_argument("--out", required=True)
     a = ap.parse_args()
-    {"load": load, "labels": labels, "sample": sample}[a.cmd](a)
+    {"load": load, "labels": labels, "sample": sample, "weigh": weigh}[a.cmd](a)
 
 
 if __name__ == "__main__":

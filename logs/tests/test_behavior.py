@@ -580,11 +580,43 @@ class Cert(unittest.TestCase):
         got = []
         for _ in range(2):
             out = os.path.join(t, "o.jsonl")
-            cert.sample(type("A", (), dict(summaries=s, schedule=sch, normal=5, seed=7, out=out, users_out=None)))
+            cert.sample(type("A", (), dict(summaries=s, schedule=sch, normal=5, negatives=None, seed=7, out=out, users_out=None)))
             got.append({json.loads(x)["user"] for x in open(out)})
         self.assertEqual(got[0], got[1])
         self.assertIn("u3", got[0])
         self.assertEqual(len(got[0]), 6)
+
+    def test_case_control_and_weigh(self):
+        t = tempfile.mkdtemp()
+        s, sch, out, fr = (os.path.join(t, x) for x in ("s.jsonl", "sch.tsv", "o.jsonl", "f.json"))
+        with open(s, "w") as f:
+            for u in range(4):
+                for d in range(1, 26 if u else 6):
+                    f.write(json.dumps({"user": f"u{u}", "date": f"2010-03-{d:02d}"}) + "\n")
+        with open(sch, "w") as f:
+            f.write("start\tend\tuser\thost\tscenario\tnote\n2010-03-02T01:00:00Z\t2010-03-02T02:00:00Z\tu0\th\tS1\tx\n")
+        a = type("A", (), dict(summaries=s, schedule=sch, normal=None, negatives=20, seed=7, out=out, frac_out=fr, users_out=None))
+        cert.sample(a)
+        rows = [json.loads(x) for x in open(out)]
+        fj = json.load(open(fr))
+        self.assertIn({"user": "u0", "date": "2010-03-02"}, rows)
+        self.assertEqual((fj["positives"], fj["negatives_total"], fj["negatives_sampled"]), (1, 79, 20))
+        per = collections_counter(r["user"] for r in rows)
+        self.assertEqual(per["u0"], 2)                                   # 4/79 of 20 rounds to 1, plus the positive
+        first = rows
+        cert.sample(a)
+        self.assertEqual([json.loads(x) for x in open(out)], first)
+        det = os.path.join(t, "d.jsonl")
+        with open(det, "w") as f:
+            for r in rows:
+                pred = r["user"] == "u0" or r == rows[-1]
+                f.write(json.dumps(dict(r, final={"verdict": "THREAT" if pred else "NORMAL"})) + "\n")
+        w = os.path.join(t, "w.json")
+        cert.weigh(type("A", (), dict(detections=det, schedule=sch, frac=fr, bootstrap=50, seed=1, out=w)))
+        o = json.load(open(w))["overall"]
+        self.assertEqual((o["tp"], o["fp"], o["fn"]), (1, 2, 0))
+        self.assertAlmostEqual(o["fp_population_est"], 2 / (20 / 79))
+        self.assertAlmostEqual(o["precision_weighted"], 1 / (1 + 2 * 79 / 20))
 
 
 def collections_counter(it):
