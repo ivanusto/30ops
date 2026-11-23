@@ -8,6 +8,7 @@ that produce it from what a site already has.
     events.py load  --wazuh-tar wazuh_raw_logs.tar.gz --bitdefender bd.csv --spill-dir /srv/tmp/spill --out events.jsonl
     events.py load  --wazuh-csv alerts.csv --out events.jsonl
     events.py load  --wazuh-tar MIRROR --wazuh-archives MIRROR --only-users t_alpha,t_bravo --out events.jsonl
+    events.py load  --wazuh-tar MIRROR --wazuh-archives MIRROR --fortigate-sessions ws-w1=192.0.2.10:t_delta --out events.jsonl
 
 One line per event, JSON, UTF-8. Keys that every kind carries:
 
@@ -474,6 +475,134 @@ def from_wazuh_archives(path):
                 yield e
 
 
+# ------------------------------------------------------------------ FortiGate within account sessions
+# A firewall line names an address, not a person. On a machine that a test
+# account shares with other people, --fortigate-sessions AGENT=IP[,IP]:ACCOUNT[,ACCOUNT]
+# keeps that machine's FortiGate lines only while one of ACCOUNTS is logged on
+# there, as the Windows logon and logoff events the agent sent say; the rest
+# is dropped at load and counted. Fixed rules:
+#   session      4624 of the account with logon type 2 (interactive), 7 (unlock),
+#                10 (remote interactive) or 11 (cached interactive); network,
+#                service and batch logons do not count
+#   end          4634 or 4647 with the same logon id; none -> 12 h after the logon
+#   other people an interactive session (same types) of any other account that
+#                is not a system one (ends in $, dwm-N, umfd-N, system, local
+#                service, network service, anonymous logon) is cut out of it
+#   clock        the session is widened by 5 s each side (two NTP clocks)
+#   time         a connection (net.conn) counts by when it started, eventtime
+#                less its duration; other lines by their own time
+#   kept lines   take the account as their user
+# The Windows events come from the alerts (the Wazuh rules for 4624 and 4634
+# fire); their own systemTime is used, not the manager's arrival time.
+
+SESSION_TYPES = {2, 7, 10, 11}
+SESSION_CAP_S = 12 * 3600
+SESSION_SKEW_S = 5
+SYSTEM_ACCOUNT = re.compile(r"(.*\$|dwm-\d+|umfd-\d+|system|local service|network service|anonymous logon)$")
+
+
+def parse_sessions_spec(specs):
+    """["agent=ip,ip:acct,acct", ...] -> {agent: (set of ips, set of accounts)}"""
+    out = {}
+    for spec in specs:
+        m = re.fullmatch(r"([^=]+)=([^:]+):(.+)", spec.strip())
+        if not m:
+            raise SystemExit(f"--fortigate-sessions {spec!r}: want AGENT=IP[,IP]:ACCOUNT[,ACCOUNT]")
+        out[low(m[1])] = ({i.strip() for i in m[2].split(",") if i.strip()}, {low(u) for u in m[3].split(",") if u.strip()})
+    return out
+
+
+def win_time(x):
+    """Windows systemTime (UTC, up to 7 fraction digits) -> epoch seconds"""
+    m = re.fullmatch(r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(\.\d+)?Z?", str(x or "").strip())
+    d = rfc3339.parse(m[1] + "+00:00") if m else None
+    return d.timestamp() + float("0" + (m[2] or "")) if d else None
+
+
+def windows_logon_events(alerts, agents):
+    """-> [(agent, epoch, "on"|"off", logon id, account, logon type)] from 4624, 4634, 4647"""
+    out = []
+    for a in alerts:
+        agent = low((a.get("agent") or {}).get("name"))
+        if agent not in agents:
+            continue
+        data = a.get("data") if isinstance(a.get("data"), dict) else {}
+        win = data.get("win") if isinstance(data.get("win"), dict) else {}
+        sysd = win.get("system") if isinstance(win.get("system"), dict) else {}
+        ev = win.get("eventdata") if isinstance(win.get("eventdata"), dict) else {}
+        eid = str(sysd.get("eventID", ""))
+        if eid not in ("4624", "4634", "4647"):
+            continue
+        t = win_time(sysd.get("systemTime"))
+        if t is None:
+            d = rfc3339.parse(wazuh_ts(a.get("timestamp")) or "")
+            t = d.timestamp() if d else None
+        if t is None:
+            continue
+        out.append((agent, t, "on" if eid == "4624" else "off", str(ev.get("targetLogonId") or ""),
+                    low(ev.get("targetUserName")), num(ev.get("logonType"))))
+    return out
+
+
+def build_sessions(logons, spec):
+    """-> {agent: [(start, end, account)]} for the listed accounts, other people's time cut out; and stats"""
+    opened, ended = {}, {}
+    for agent, t, what, lid, acct, lt in sorted(logons, key=lambda x: x[1]):
+        if what == "on":
+            if lt in SESSION_TYPES and acct and not SYSTEM_ACCOUNT.fullmatch(acct) and (agent, lid) not in opened:
+                opened[(agent, lid)] = (t, acct)
+        elif (agent, lid) in opened and (agent, lid) not in ended:
+            ended[(agent, lid)] = t
+    mine, others, stats = collections.defaultdict(list), collections.defaultdict(list), collections.Counter()
+    for (agent, lid), (t, acct) in opened.items():
+        end = ended.get((agent, lid))
+        capped = end is None or end - t > SESSION_CAP_S
+        end = t + SESSION_CAP_S if capped else end
+        if acct in spec[agent][1]:
+            mine[agent].append((t - SESSION_SKEW_S, end + SESSION_SKEW_S, acct))
+            stats[(agent, "sessions")] += 1
+            stats[(agent, "capped at 12 h" if capped else "closed by logoff")] += 1
+        else:
+            others[agent].append((t - SESSION_SKEW_S, end + SESSION_SKEW_S))
+    out = {}
+    for agent in spec:
+        pieces = []
+        for s0, s1, acct in sorted(mine[agent]):
+            segs = [(s0, s1)]
+            for o0, o1 in others[agent]:
+                segs = [p for a0, a1 in segs for p in ((a0, min(a1, o0)), (max(a0, o1), a1)) if p[1] > p[0]]
+            pieces += [(a0, a1, acct) for a0, a1 in segs]
+        out[agent] = sorted(pieces)
+        stats[(agent, "other accounts' sessions")] = len(others[agent])
+    return out, stats
+
+
+class SessionFilter:
+    def __init__(self, spec, sessions, stats):
+        self.by_ip = {ip: agent for agent, (ips, _) in spec.items() for ip in ips}
+        self.sessions, self.stats = sessions, stats
+
+    def __call__(self, events):
+        for e in events:
+            agent = self.by_ip.get(e.get("src_ip", "")) if e.get("source") == "fortigate" else None
+            if agent is None:
+                yield e
+                continue
+            t = rfc3339.parse(e["ts"]).timestamp()
+            if e["kind"] == "net.conn":
+                t -= float(e.get("duration_s") or 0)
+            hit = [acct for s0, s1, acct in self.sessions[agent] if s0 <= t <= s1]
+            if hit:
+                self.stats[(agent, "fortigate kept")] += 1
+                if not e.get("user"):
+                    e["user"] = hit[0]
+                yield e
+            else:
+                self.stats[(agent, "fortigate dropped outside sessions")] += 1
+        for (agent, what), n in sorted(self.stats.items()):
+            print(f"fortigate-sessions {agent}: {what} {n}", file=sys.stderr)
+
+
 def only_users(events, users):
     """drop events attributed to an account outside `users`; events without an account stay"""
     dropped = 0
@@ -583,6 +712,8 @@ def main():
         p.add_argument("--wazuh-tar", action="append", default=[], help="tar of the manager's logs/, or a mirror directory of it (alerts)")
         p.add_argument("--wazuh-archives", action="append", default=[], help="same, read for the QuLog connection lines in logs/archives")
         p.add_argument("--only-users", default="", help="comma-separated accounts; events of any other account are dropped at load")
+        p.add_argument("--fortigate-sessions", action="append", default=[], metavar="AGENT=IP[,IP]:ACCOUNT[,ACCOUNT]",
+                       help="keep that machine's FortiGate lines only while one of the accounts is logged on to it (Windows 4624/4634 in --wazuh-tar)")
         p.add_argument("--bitdefender", action="append", default=[])
         p.add_argument("--spill-dir", help="sort through per-day files here instead of in memory; holds real names until done")
         p.add_argument("--vl"); p.add_argument("--window", default="7d"); p.add_argument("--fw-host", default="")
@@ -611,6 +742,10 @@ def main():
             yield from from_vl(a.vl, a.window, a.fw_host, a.limit)
 
     src = check(gen())
+    if a.fortigate_sessions:
+        spec = parse_sessions_spec(a.fortigate_sessions)
+        logons = [x for p in a.wazuh_tar for x in windows_logon_events(wazuh_tar_alerts(p), spec)]
+        src = SessionFilter(spec, *build_sessions(logons, spec))(src)
     if a.only_users:
         src = only_users(src, {low(u) for u in a.only_users.split(",") if u.strip()})
     events = spill_sort(src, a.spill_dir) if a.spill_dir else sorted(src, key=lambda e: e["ts"])

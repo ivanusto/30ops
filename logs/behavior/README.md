@@ -101,6 +101,29 @@ python3 evaluate.py --triage --detections d.jsonl --events events.p.jsonl --out 
 
 公網位址的告警單獨計數、不計分：對外服務被掃描，與內部人無關。`src_scope`（internal、external）在位址改寫前算好，改寫只保留前綴，不保留前綴的意義。
 
+## 經 Wazuh 轉接的防火牆與 NAS 紀錄
+
+防火牆（FortiGate）與 NAS（QuLog）以 syslog 送進 Wazuh 時，多數行不觸發規則，只在 manager 的 `logs/archives`。`--wazuh-archives` 從 archives 讀 FortiGate 的一般連線、網頁過濾、app-ctrl（轉成 `net.conn`、`fw.utm`）與 QuLog 的 `conn log:`（登入轉成 `auth.logon`，讀寫刪改轉成 `file.access`）；同時給 `--wazuh-tar` 時，告警中的同一批 FortiGate 行交給 archives，不重複。`--wazuh-tar`、`--wazuh-archives` 都可以給 tar 或 manager `logs/` 的鏡像目錄。`--only-users` 在載入時丟掉其他帳號的事件（沒有帳號的事件保留）。
+
+```sh
+python3 events.py load --wazuh-tar MIRROR --wazuh-archives MIRROR --only-users t_alpha,t_delta \
+  --fortigate-sessions ws-w1=192.0.2.10:t_delta --spill-dir /secure/spill --out /secure/events.jsonl
+```
+
+**測試帳號與他人共用的機器**：防火牆紀錄只有位址，沒有帳號。`--fortigate-sessions AGENT=IP[,IP]:ACCOUNT[,ACCOUNT]` 讓該機的 FortiGate 行只在指定帳號登入期間保留，依據是該機 agent 送來的 Windows 登入、登出事件（取自告警）；其餘在載入時丟棄，只計數、不落地。為資料最小化與標籤正確，規則固定如下：
+
+| 項目 | 規則 |
+|---|---|
+| 工作階段 | 指定帳號的 4624，登入類型 2（互動）、7（解鎖）、10（遠端互動）、11（快取互動）；網路、服務、批次登入不算 |
+| 結束 | 同一 logon id 的 4634 或 4647；沒有登出事件時，登入後 12 小時截止 |
+| 他人同時登入 | 其他非系統帳號（結尾 `$`、`dwm-N`、`umfd-N`、system、local service、network service、anonymous logon 以外）同類型的互動工作階段，與指定帳號重疊的部分扣除 |
+| 時鐘偏差 | 工作階段前後各放寬 5 秒 |
+| 時間點 | `net.conn` 以連線開始時間（eventtime 減連線秒數）判斷，其他行以本身時間 |
+| 歸屬 | 保留的行沒有帳號時，填入該工作階段的帳號 |
+| 時間來源 | Windows 事件本身的 systemTime（UTC），不是 manager 收到的時間 |
+
+載入時在 stderr 列出每台機器的工作階段數（以登出結束、以 12 小時截止）、他人工作階段數、保留與丟棄的 FortiGate 行數，所以輸入行數＝輸出事件＋各項捨棄。
+
 ## 資料治理
 
 - 金鑰由不是研究者的人產生與保管；研究者拿到的是 `events.p.jsonl` 之後的檔案。`--vault` 的對照表放在金鑰保管人那裡。

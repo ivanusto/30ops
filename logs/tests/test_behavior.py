@@ -15,6 +15,8 @@ def load(name):
 
 import sys
 sys.path.insert(0, os.path.join(HERE, "..", "behavior"))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "lib", "python"))
+from ops30 import rfc3339  # noqa: E402
 pseudonymize = load("pseudonymize")
 scrub = load("scrub")
 pii_audit = load("pii_audit")
@@ -250,6 +252,40 @@ class SiemLoaders(unittest.TestCase):
                 f.write("\n".join(json.dumps(x) for x in alerts) + "\n")
             self.assertEqual([e["kind"] for e in events.from_wazuh_tar(d)], ["fw.utm", "sec.alert"])
             self.assertEqual([e["kind"] for e in events.from_wazuh_tar(d, archives_too=True)], ["sec.alert"])
+
+    def test_fortigate_sessions(self):
+        T0 = 1795249800                                          # 2026-11-21T08:30:00Z
+        def win(t, eid, lid, user, lt=2, agent="WS-W1"):
+            return {"timestamp": "2026-11-21T00:00:00.000+0000", "agent": {"name": agent},
+                    "data": {"win": {"system": {"eventID": eid, "systemTime": events.epoch_to_ts(t).replace("Z", ".1234567Z")},
+                                     "eventdata": {"targetLogonId": lid, "targetUserName": user, "logonType": str(lt)}}}}
+        alerts = [win(T0, "4624", "0x1", "T_Delta"), win(T0 + 3600, "4634", "0x1", "t_delta"),          # 1 h, closed by logoff
+                  win(T0 + 7200, "4624", "0x9", "t_delta", lt=3),                                         # network logon: not a session
+                  win(T0 + 10000, "4624", "0x2", "t_delta", lt=10),                                       # RDP, no logoff: capped at 12 h
+                  win(T0 + 1000, "4624", "0x3", "bob"), win(T0 + 1500, "4647", "0x3", "bob"),             # someone else: cut out
+                  win(T0 + 100, "4624", "0x4", "DWM-1"), win(T0 + 200, "4624", "0x5", "WS-W1$"),          # system accounts: ignored
+                  win(T0 + 300, "4624", "0x6", "t_delta", agent="WS-OTHER")]                             # another machine
+        spec = events.parse_sessions_spec(["ws-w1=192.0.2.10:t_delta"])
+        sessions, stats = events.build_sessions(events.windows_logon_events(alerts, spec), spec)
+        self.assertEqual((stats[("ws-w1", "sessions")], stats[("ws-w1", "closed by logoff")], stats[("ws-w1", "capped at 12 h")],
+                          stats[("ws-w1", "other accounts' sessions")]), (2, 1, 1, 1))
+        def fgt(t, kind="fw.utm", ip="192.0.2.10", source="fortigate", **kw):
+            return {"ts": events.epoch_to_ts(t), "kind": kind, "user": "", "src_host": ip, "src_ip": ip, "source": source, **kw}
+        ev = [fgt(T0 - 4), fgt(T0 + 500), fgt(T0 + 1200), fgt(T0 + 3604, "net.conn", duration_s=10), fgt(T0 + 3604),
+              fgt(T0 + 3606), fgt(T0 + 3700, "net.conn", duration_s=200), fgt(T0 + 10000 + 11 * 3600), fgt(T0 + 10000 + 13 * 3600),
+              fgt(T0 + 1200, ip="192.0.2.81"), fgt(T0 + 1200, source="wazuh")]
+        f = events.SessionFilter(spec, sessions, stats)
+        import contextlib, io
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            kept = list(f(iter(ev)))
+        self.assertEqual([round(rfc3339.parse(e["ts"]).timestamp() - T0) for e in kept if e["src_ip"] == "192.0.2.10" and e["source"] == "fortigate"],
+                         [-4, 500, 3604, 3604, 3700, 10000 + 11 * 3600])
+        self.assertEqual(len(kept), 8)                           # the other address and the non-FortiGate line pass untouched
+        self.assertTrue(all(e["user"] == "t_delta" for e in kept[:6]) and kept[6]["user"] == "" and kept[7]["user"] == "")
+        self.assertEqual((stats[("ws-w1", "fortigate kept")], stats[("ws-w1", "fortigate dropped outside sessions")]), (6, 3))
+        self.assertIn("fortigate dropped outside sessions 3", err.getvalue())
+        with self.assertRaises(SystemExit):
+            events.parse_sessions_spec(["ws-w1:t_delta"])
 
     def test_windows_logon_account(self):
         a = {"timestamp": "2026-11-21T16:30:00.000+0800", "agent": {"name": "WS-W1"}, "decoder": {"name": "windows_eventchannel"},
