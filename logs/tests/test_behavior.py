@@ -217,6 +217,84 @@ class SiemLoaders(unittest.TestCase):
             self.assertEqual((out.get("rule_id"), out.get("rule_level")), (e["rule_id"], e["rule_level"]), level)
             self.assertNotIn("not_allowed", out, level)
 
+    def fgt_alert(self, line, groups=("fortigate", "syslog")):
+        return {"timestamp": "2026-11-23T10:00:01.000+0800", "agent": {"name": "SIEM-1"}, "decoder": {"name": "fortigate-firewall-v5"},
+                "rule": {"id": "81618", "level": 3, "groups": list(groups)}, "data": {"srcip": "192.0.2.81"}, "full_log": line}
+
+    def test_wazuh_fortigate_activity(self):
+        head = 'date=2026-11-23 time=10:00:00 eventtime=1763863200000000000 tz="+0800" srcip=192.0.2.81 dstip=198.51.100.7 '
+        e = events.wazuh_alert_event(self.fgt_alert(head + 'type="traffic" subtype="forward" dstport=443 proto=6 service="HTTPS" '
+                                                    'sentbyte=1200 rcvdbyte=3400 duration=5 action="close" hostname="example.org"'))
+        self.assertEqual((e["kind"], e["bytes_out"], e["dst_name"], e["asset"], e["rule_id"], e["rule_level"], e["source"]),
+                         ("net.conn", 1200, "example.org", "siem-1", "81618", 3, "fortigate"))
+        self.assertTrue(events.valid(e))
+        u = events.wazuh_alert_event(self.fgt_alert(head + 'type="utm" subtype="webfilter" hostname="jobs.example.com" catdesc="Job Search" action="passthrough"'))
+        self.assertEqual((u["kind"], u["category"], u["action"], u["asset"]), ("fw.utm", "Job Search", "allow", "siem-1"))
+        for o in (pseudonymize.Pseudonymizer(KEY, lv).event(dict(x)) for lv in ("minimal", "standard", "strict") for x in (e, u)):
+            self.assertEqual((o["rule_id"], o["rule_level"]), ("81618", 3))
+        ips = events.wazuh_alert_event(self.fgt_alert(head + 'type="utm" subtype="ips" attack="x"', groups=("fortigate", "attack")))
+        self.assertEqual(ips["kind"], "sec.alert")
+        web_attack = events.wazuh_alert_event(self.fgt_alert(head + 'type="utm" subtype="webfilter" hostname="x.example"', groups=("fortigate", "web_scan")))
+        self.assertEqual(web_attack["kind"], "sec.alert")
+        self.assertEqual(events.wazuh_alert_event(self.fgt_alert(head + 'type="event" subtype="system" action="x"'))["kind"], "sec.alert")
+        self.assertEqual(events.wazuh_alert_event(self.fgt_alert(head + 'type="utm" subtype="dns" qname="x.example"'))["kind"], "sec.alert")
+
+    def test_fortigate_alerts_left_to_archives(self):
+        head = 'eventtime=1763863200000000000 srcip=192.0.2.81 '
+        alerts = [self.fgt_alert(head + 'type="utm" subtype="app-ctrl" app="SSH"'), self.fgt_alert(head + 'type="utm" subtype="ips"', groups=("fortigate", "attack"))]
+        import gzip, tarfile
+        with tempfile.TemporaryDirectory() as d:
+            sub = os.path.join(d, "logs", "alerts", "2026", "Nov")
+            os.makedirs(sub)
+            with gzip.open(os.path.join(sub, "ossec-alerts-23.json.gz"), "wt") as f:
+                f.write("\n".join(json.dumps(x) for x in alerts) + "\n")
+            self.assertEqual([e["kind"] for e in events.from_wazuh_tar(d)], ["fw.utm", "sec.alert"])
+            self.assertEqual([e["kind"] for e in events.from_wazuh_tar(d, archives_too=True)], ["sec.alert"])
+
+    def test_windows_logon_account(self):
+        a = {"timestamp": "2026-11-21T16:30:00.000+0800", "agent": {"name": "WS-W1"}, "decoder": {"name": "windows_eventchannel"},
+             "rule": {"id": "60106", "level": 3, "groups": ["windows", "authentication_success"]},
+             "data": {"win": {"system": {"eventID": "4624"}, "eventdata": {"targetUserName": "T_Delta", "logonType": "10"}}}}
+        e = events.wazuh_alert_event(a)
+        self.assertEqual((e["kind"], e["user"], e["logon_type"], e["dst"]), ("auth.logon", "t_delta", 10, "ws-w1"))
+        a["data"]["win"]["eventdata"] = {}
+        self.assertEqual((events.wazuh_alert_event(a)["user"], events.wazuh_alert_event(a)["logon_type"]), ("", "local"))
+
+    def test_qulog_from_archives(self):
+        def arch(t, line):
+            return json.dumps({"timestamp": t, "predecoder": {"hostname": "NAS-1"}, "full_log": line})
+        hdr = "Nov 21 16:41:41 NAS-1 qulogd[1]: "
+        rows = [arch("2026-11-21T16:41:41.000+0800", hdr + "conn log: Users: WORKGROUP\\t_alpha, Source IP: 192.0.2.81, Computer name: ---, "
+                     "Connection type: SAMBA, Accessed resources: ---, Action: Login Success"),
+                arch("2026-11-21T16:41:48.000+0800", hdr + "conn log: Users: WORKGROUP\\t_alpha, Source IP: 192.0.2.81, Computer name: ---, "
+                     "Connection type: SAMBA, Accessed resources: TestHR/q4, plan.txt, Action: Read"),
+                arch("2026-11-21T16:42:00.000+0800", hdr + "conn log: Users: t_bravo, Source IP: 192.0.2.83, Computer name: WS-B, "
+                     "Connection type: SAMBA, Accessed resources: TestFinance/new.txt, Action: Add"),
+                arch("2026-11-21T16:43:00.000+0800", hdr + "conn log: Users: t_bravo, Action: Logout"),
+                arch("2026-11-21T16:44:00.000+0800", "date=2026-11-21 type=\"traffic\""),
+                json.dumps({"timestamp": "2026-11-21T16:45:00.000+0800", "agent": {"name": "SIEM-1"}, "decoder": {"name": "fortigate-firewall-v5"},
+                            "full_log": 'devid="FG1" eventtime=1763714700000000000 srcip=192.0.2.81 type="utm" subtype="webfilter" hostname="jobs.example.com" catdesc="Job Search" action="passthrough"'}),
+                "not json"]
+        import gzip, io, tarfile
+        with tempfile.TemporaryDirectory() as d:
+            sub = os.path.join(d, "logs", "archives", "2026", "Nov")
+            os.makedirs(sub)
+            with gzip.open(os.path.join(sub, "ossec-archive-21.json.gz"), "wt") as f:
+                f.write("\n".join(rows) + "\n")
+            got = list(events.from_wazuh_archives(d))
+            tar = os.path.join(d, "m.tar.gz")
+            with tarfile.open(tar, "w:gz") as t:
+                t.add(os.path.join(d, "logs"), arcname="logs")
+            self.assertEqual(list(events.from_wazuh_archives(tar)), got)
+        self.assertEqual([(e["kind"], e["user"], e.get("share"), e.get("path"), e.get("action")) for e in got],
+                         [("auth.logon", "t_alpha", None, None, None), ("file.access", "t_alpha", "TestHR", "q4, plan.txt", "read"),
+                          ("file.access", "t_bravo", "TestFinance", "new.txt", "write"), ("fw.utm", "", None, None, "allow")])
+        self.assertEqual((got[3]["dst_name"], got[3]["asset"], got[3]["rule_id"]), ("jobs.example.com", "siem-1", ""))
+        self.assertTrue(all(events.valid(e) for e in got))
+        self.assertEqual((got[0]["src_ip"], got[0]["dst"], got[0]["asset"], got[0]["logon_type"], got[0]["source"]), ("192.0.2.81", "nas-1", "nas-1", "samba", "qulog"))
+        kept = list(events.only_users(iter(got + [{"user": "", "kind": "sec.alert"}]), {"t_bravo"}))
+        self.assertEqual([e["user"] for e in kept], ["t_bravo", "", ""])
+
     def test_flatten_agrees_with_csv(self):
         alert = {"timestamp": "2026-09-01T02:00:00.000+0000", "agent": {"name": "SRV01.corp.example.net", "ip": "192.0.2.10"}, "decoder": {"name": "sshd"},
                  "rule": {"id": "5715", "level": 3, "groups": ["syslog", "sshd", "authentication_success"]}, "data": {"dstuser": "alice"}, "full_log": "x"}

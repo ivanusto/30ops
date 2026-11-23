@@ -7,6 +7,7 @@ that produce it from what a site already has.
     events.py load  --vl http://127.0.0.1:9428 --window 7d --fw-host fgt-edge --out events.jsonl
     events.py load  --wazuh-tar wazuh_raw_logs.tar.gz --bitdefender bd.csv --spill-dir /srv/tmp/spill --out events.jsonl
     events.py load  --wazuh-csv alerts.csv --out events.jsonl
+    events.py load  --wazuh-tar MIRROR --wazuh-archives MIRROR --only-users t_alpha,t_bravo --out events.jsonl
 
 One line per event, JSON, UTF-8. Keys that every kind carries:
 
@@ -15,7 +16,7 @@ One line per event, JSON, UTF-8. Keys that every kind carries:
               | sec.alert | priv.exec | file.integrity | pkg.change | malware.detect
     user      account the action is attributed to ("" when the source has none)
     src_host  workstation or server the action came from
-    source    zeek | fortigate | ad | speslog | print | endpoint | synth | wazuh | bitdefender
+    source    zeek | fortigate | ad | speslog | print | endpoint | synth | wazuh | bitdefender | qulog
     asset     the monitored machine that reported the event (host-day analysis); optional
 
 Per kind (absent keys mean "the source did not say"):
@@ -263,11 +264,28 @@ def from_winsec(path):
 
 # ------------------------------------------------------------------ wazuh
 # Alerts from the CSV export (flat columns) or from the manager's own
-# logs/alerts JSON (streamed out of a tar without touching the disk). Both go
-# through flat -> wazuh_event, so the two can be counted against each other.
+# logs/alerts JSON (streamed out of a tar, or read from a mirror directory of
+# the manager's logs/). Both go through flat -> wazuh_event, so the two can be
+# counted against each other.
+#
+# Two kinds of line reach a manager as syslog and are activity, not alerts:
+# FortiGate traffic and web/app-control lines become the events the FortiGate
+# loader makes (with the alert's agent, rule_id and rule_level kept, so a
+# host-day still counts them where it did); FortiGate lines Wazuh files under
+# recon, web_scan or attack stay alerts. Most of these lines fire no rule
+# (in a two-day sample every app-ctrl line was an alert, 0.2% of traffic and no
+# webfilter line), so --wazuh-archives reads them from logs/archives, along
+# with the QuLog connection lines (SMB and the like), which also fire none.
+# Given both, the alerts path leaves the FortiGate activity to the archives.
 
 EVASION_TOOL = re.compile(r"(?i)\b(openvpn|wireguard|wg-quick|tor|torsocks|proxychains|cloudflared|ngrok|frpc?|chisel|socat|tailscale|zerotier|dnscrypt|stubby)\b")
 WAZUH_ALERT_MEMBER = re.compile(r"(^|/)logs/alerts/(alerts\.json|\d{4}/\w{3}/ossec-alerts-\d+\.json(\.gz)?)$")
+WAZUH_ARCHIVE_MEMBER = re.compile(r"(^|/)logs/archives/(archives\.json|\d{4}/\w{3}/ossec-archive-\d+\.json(\.gz)?)$")
+FGT_ACTIVITY = {("traffic", "forward"), ("traffic", "local"), ("utm", "webfilter"), ("utm", "app-ctrl")}
+FGT_STAYS_ALERT = {"recon", "web_scan", "attack"}
+QULOG = re.compile(r"conn log: Users: (?P<user>.*?), Source IP: (?P<ip>.*?), Computer name: (?P<cn>.*?), Connection type: (?P<ct>.*?), "
+                   r"Accessed resources: (?P<res>.*), Action: (?P<act>[^,]*?)\s*$")
+QULOG_ACTION = {"read": "read", "write": "write", "add": "write", "delete": "delete", "rename": "rename", "move": "rename", "copy": "copy"}
 
 
 def low(x):
@@ -295,8 +313,9 @@ def wazuh_event(r):
         return {**base, "kind": "malware.detect", "asset": real, "src_host": real, "dst": real, "category": "wazuh", "incident": ""}
     if groups & {"authentication_success", "authentication_failed", "authentication_failures", "invalid_login"}:
         ok = "authentication_success" in groups
+        lt = "ssh" if dec.startswith("ssh") else (num(r.get("logon_type")) if r.get("logon_type") not in (None, "") else "local")
         return {**base, "kind": "auth.logon", "user": low(r.get("dstuser") or r.get("srcuser")), "src_host": ip or asset, "dst": asset,
-                "logon_type": "ssh" if dec.startswith("ssh") else "local", "result": "success" if ok else "failure", "method": dec}
+                "logon_type": lt, "result": "success" if ok else "failure", "method": dec}
     if "sudo" in groups:
         return {**base, "kind": "priv.exec", "user": low(r.get("srcuser")), "dst": asset, "target": low(r.get("dstuser")),
                 "category": "evasion" if EVASION_TOOL.search(r.get("command") or "") else ""}
@@ -319,10 +338,13 @@ def flatten_alert(a):
     """a manager alert object -> the flat columns the CSV export has"""
     rule, agent, data = a.get("rule") or {}, a.get("agent") or {}, a.get("data") if isinstance(a.get("data"), dict) else {}
     sc = a.get("syscheck") if isinstance(a.get("syscheck"), dict) else {}
+    win = data.get("win") if isinstance(data.get("win"), dict) else {}
+    wev = win.get("eventdata") if isinstance(win.get("eventdata"), dict) else {}   # Windows event channel: the account is here
     mitre = (rule.get("mitre") or {}).get("id") or []
     return {"timestamp": a.get("timestamp"), "agent_name": agent.get("name"), "agent_ip": agent.get("ip"), "rule_id": rule.get("id"),
             "rule_level": rule.get("level"), "rule_groups": ",".join(rule.get("groups") or []), "decoder": (a.get("decoder") or {}).get("name"),
-            "srcip": data.get("srcip"), "srcuser": data.get("srcuser"), "dstuser": data.get("dstuser"), "mitre_id": ",".join(mitre) if isinstance(mitre, list) else mitre,
+            "srcip": data.get("srcip"), "srcuser": data.get("srcuser"), "dstuser": data.get("dstuser") or wev.get("targetUserName"),
+            "logon_type": wev.get("logonType"), "mitre_id": ",".join(mitre) if isinstance(mitre, list) else mitre,
             "command": data.get("command"), "package": data.get("package"), "dpkg_status": data.get("dpkg_status"),
             "computer_name": data.get("computer_name"), "syscheck_path": sc.get("path"), "syscheck_event": sc.get("event")}
 
@@ -340,26 +362,128 @@ def from_wazuh_csv(path):
             yield e
 
 
-def wazuh_tar_alerts(path):
-    """every alert object in the tar's logs/alerts JSON, nothing else is read"""
-    with tarfile.open(path, "r|gz") as t:
+def wazuh_members(path, rx):
+    """(name, text lines) for each file whose path matches rx, in a tar or
+    under a mirror directory of the manager's logs/; nothing else is read"""
+    def lines(name, raw):
+        return gzip.open(raw, "rt", encoding="utf-8", errors="replace") if name.endswith(".gz") else (line.decode("utf-8", "replace") for line in raw)
+    if os.path.isdir(path):
+        found = []
+        for root, dirs, files in os.walk(path):
+            dirs.sort()
+            found += [os.path.join(root, f) for f in files if rx.search(os.path.relpath(os.path.join(root, f), path).replace(os.sep, "/"))]
+        for p in sorted(found):
+            with open(p, "rb") as raw:
+                yield p, lines(p, raw)
+        return
+    with tarfile.open(path, "r|*") as t:
         for m in t:
-            if not (m.isfile() and WAZUH_ALERT_MEMBER.search(m.name)):
+            if m.isfile() and rx.search(m.name):
+                yield m.name, lines(m.name, t.extractfile(m))
+
+
+def wazuh_tar_alerts(path):
+    """every alert object in logs/alerts JSON (a tar or a mirror directory)"""
+    for _, fh in wazuh_members(path, WAZUH_ALERT_MEMBER):
+        for line in fh:
+            try:
+                yield json.loads(line)
+            except ValueError:
                 continue
-            raw = t.extractfile(m)
-            fh = gzip.open(raw, "rt", encoding="utf-8", errors="replace") if m.name.endswith(".gz") else (line.decode("utf-8", "replace") for line in raw)
-            for line in fh:
-                try:
-                    yield json.loads(line)
-                except ValueError:
-                    continue
 
 
-def from_wazuh_tar(path):
+def wazuh_fortigate(a, flat):
+    """a FortiGate traffic or web/app line relayed through Wazuh -> the FortiGate
+    loader's event, keeping the alert's agent and rule; None keeps it an alert"""
+    if not low((a.get("decoder") or {}).get("name")).startswith("fortigate"):
+        return None
+    if set((a.get("rule") or {}).get("groups") or []) & FGT_STAYS_ALERT:
+        return None
+    line = a.get("full_log") or ""
+    d = logfmt(line)
+    if (d.get("type"), d.get("subtype")) not in FGT_ACTIVITY:
+        return None
+    for e in from_fortigate_lines([line]):
+        e.update(asset=low(flat.get("agent_name")), rule_id=str(flat.get("rule_id") or ""), rule_level=num(flat.get("rule_level")))
+        return e
+    return None
+
+
+def wazuh_alert_event(a):
+    flat = flatten_alert(a)
+    return wazuh_fortigate(a, flat) or wazuh_event(flat)
+
+
+def from_wazuh_tar(path, archives_too=False):
+    skipped = 0
     for a in wazuh_tar_alerts(path):
-        e = wazuh_event(flatten_alert(a))
+        flat = flatten_alert(a)
+        f = wazuh_fortigate(a, flat)
+        if f is not None and archives_too:
+            skipped += 1                        # the same line is in logs/archives
+            continue
+        e = f or wazuh_event(flat)
         if e:
             yield e
+    if skipped:
+        print(f"events: {skipped} FortiGate activity alert(s) left to --wazuh-archives", file=sys.stderr)
+
+
+def qulog_event(ts, nas, line):
+    """one QuLog "conn log:" line -> auth.logon (Login ...) or file.access; None when unread"""
+    m = QULOG.search(line)
+    if not m:
+        return None
+    ip, cn = m["ip"].strip(), m["cn"].strip()
+    ip = "" if ip in ("", "---") else ip
+    base = {"ts": ts, "user": low(m["user"].rsplit("\\", 1)[-1]), "src_host": ip or ("" if cn in ("", "---") else low(cn)),
+            "asset": nas, "dst": nas, "source": "qulog"}
+    if ip:
+        base["src_ip"] = ip
+    act, ct = m["act"].strip().lower(), m["ct"].strip().lower()
+    if act.startswith("login"):
+        return {**base, "kind": "auth.logon", "logon_type": ct, "result": "success" if "success" in act else "failure", "method": ct}
+    if act not in QULOG_ACTION:
+        return None
+    share, _, rest = m["res"].strip().partition("/")
+    return {**base, "kind": "file.access", "share": share, "path": rest, "action": QULOG_ACTION[act]}
+
+
+def from_wazuh_archives(path):
+    """FortiGate traffic and web/app lines and QuLog connection lines in
+    logs/archives JSON; every other archived line is skipped unparsed"""
+    for _, fh in wazuh_members(path, WAZUH_ARCHIVE_MEMBER):
+        for line in fh:
+            qulog, fgt = "conn log:" in line, "devid=" in line
+            if not (qulog or fgt):
+                continue
+            try:
+                a = json.loads(line)
+            except ValueError:
+                continue
+            fl = a.get("full_log") or ""
+            if qulog and "conn log:" in fl:
+                ts = wazuh_ts(a.get("timestamp"))
+                nas = low((a.get("predecoder") or {}).get("hostname")) or low((a.get("agent") or {}).get("name"))
+                e = qulog_event(ts, nas, fl) if ts else None
+            elif fgt:
+                e = wazuh_fortigate(a, flatten_alert(a))
+            else:
+                e = None
+            if e:
+                yield e
+
+
+def only_users(events, users):
+    """drop events attributed to an account outside `users`; events without an account stay"""
+    dropped = 0
+    for e in events:
+        if e.get("user") and e["user"] not in users:
+            dropped += 1
+            continue
+        yield e
+    if dropped:
+        print(f"events: {dropped} event(s) of other accounts dropped (--only-users)", file=sys.stderr)
 
 
 # ------------------------------------------------------------------ bitdefender
@@ -456,7 +580,9 @@ def main():
         p.add_argument("--fortigate", action="append", default=[])
         p.add_argument("--winsec", action="append", default=[])
         p.add_argument("--wazuh-csv", action="append", default=[])
-        p.add_argument("--wazuh-tar", action="append", default=[])
+        p.add_argument("--wazuh-tar", action="append", default=[], help="tar of the manager's logs/, or a mirror directory of it (alerts)")
+        p.add_argument("--wazuh-archives", action="append", default=[], help="same, read for the QuLog connection lines in logs/archives")
+        p.add_argument("--only-users", default="", help="comma-separated accounts; events of any other account are dropped at load")
         p.add_argument("--bitdefender", action="append", default=[])
         p.add_argument("--spill-dir", help="sort through per-day files here instead of in memory; holds real names until done")
         p.add_argument("--vl"); p.add_argument("--window", default="7d"); p.add_argument("--fw-host", default="")
@@ -476,13 +602,18 @@ def main():
         for p in a.wazuh_csv:
             yield from from_wazuh_csv(p)
         for p in a.wazuh_tar:
-            yield from from_wazuh_tar(p)
+            yield from from_wazuh_tar(p, archives_too=bool(a.wazuh_archives))
+        for p in a.wazuh_archives:
+            yield from from_wazuh_archives(p)
         for p in a.bitdefender:
             yield from from_bitdefender(p)
         if a.vl:
             yield from from_vl(a.vl, a.window, a.fw_host, a.limit)
 
-    events = spill_sort(check(gen()), a.spill_dir) if a.spill_dir else sorted(check(gen()), key=lambda e: e["ts"])
+    src = check(gen())
+    if a.only_users:
+        src = only_users(src, {low(u) for u in a.only_users.split(",") if u.strip()})
+    events = spill_sort(src, a.spill_dir) if a.spill_dir else sorted(src, key=lambda e: e["ts"])
     if a.cmd == "probe":
         probe(events)
     else:

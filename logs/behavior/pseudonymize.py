@@ -39,13 +39,14 @@ from ops30 import rfc3339  # noqa: E402
 LEVELS = ("minimal", "standard", "strict")
 COMMON = {"ts", "kind", "user", "src_host", "src_ip", "src_scope", "asset", "source", "role", "host_class"}
 PER_KIND = {
-    "net.conn": {"dst", "dst_name", "dst_port", "proto", "service", "bytes_out", "bytes_in", "duration_s", "category", "action"},
+    "net.conn": {"dst", "dst_name", "dst_port", "proto", "service", "bytes_out", "bytes_in", "duration_s", "category", "action",
+                 "rule_id", "rule_level"},  # FortiGate lines relayed through a SIEM carry its rule fields
     "net.file": {"dst", "dst_name", "filename", "bytes", "direction"},
     "auth.logon": {"dst", "logon_type", "result", "method", "rule_id", "rule_level"},  # SIEM-derived logons carry rule fields
     "file.access": {"dst", "share", "path", "action", "bytes"},
     "print.job": {"dst", "pages", "filename"},
     "usb.attach": {"device"},
-    "fw.utm": {"dst", "dst_name", "category", "app", "action"},
+    "fw.utm": {"dst", "dst_name", "category", "app", "action", "rule_id", "rule_level"},
     "sec.alert": {"rule_id", "rule_level", "rule_group", "mitre"},
     "priv.exec": {"dst", "target", "category", "rule_id", "rule_level"},
     "file.integrity": {"dst", "path", "action", "rule_id", "rule_level"},
