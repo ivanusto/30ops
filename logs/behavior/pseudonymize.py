@@ -41,7 +41,7 @@ COMMON = {"ts", "kind", "user", "src_host", "src_ip", "src_scope", "asset", "sou
 PER_KIND = {
     "net.conn": {"dst", "dst_name", "dst_port", "proto", "service", "bytes_out", "bytes_in", "duration_s", "category", "action"},
     "net.file": {"dst", "dst_name", "filename", "bytes", "direction"},
-    "auth.logon": {"dst", "logon_type", "result", "method"},
+    "auth.logon": {"dst", "logon_type", "result", "method", "rule_id", "rule_level"},  # SIEM-derived logons carry rule fields
     "file.access": {"dst", "share", "path", "action", "bytes"},
     "print.job": {"dst", "pages", "filename"},
     "usb.attach": {"device"},

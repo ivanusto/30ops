@@ -208,6 +208,15 @@ class SiemLoaders(unittest.TestCase):
         self.assertNotIn("full_log", a)
         self.assertIsNone(events.wazuh_event(wazuh_row(timestamp="not a time")))
 
+    def test_siem_logon_keeps_rule_fields(self):
+        e = events.wazuh_event(wazuh_row(srcip=PRIV))
+        self.assertEqual(e["kind"], "auth.logon")
+        self.assertIn("rule_id", e); self.assertIn("rule_level", e)
+        for level in ("minimal", "standard", "strict"):
+            out = pseudonymize.Pseudonymizer(KEY, level).event(dict(e, not_allowed="x"))
+            self.assertEqual((out.get("rule_id"), out.get("rule_level")), (e["rule_id"], e["rule_level"]), level)
+            self.assertNotIn("not_allowed", out, level)
+
     def test_flatten_agrees_with_csv(self):
         alert = {"timestamp": "2026-09-01T02:00:00.000+0000", "agent": {"name": "SRV01.corp.example.net", "ip": "192.0.2.10"}, "decoder": {"name": "sshd"},
                  "rule": {"id": "5715", "level": 3, "groups": ["syslog", "sshd", "authentication_success"]}, "data": {"dstuser": "alice"}, "full_log": "x"}
